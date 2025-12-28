@@ -1,0 +1,106 @@
+{
+  "$schema": "../schema/character_aliases.schema.json",
+  "description": "SF6キャラクター名の正規化マッピング（Gemini API認識結果 → 正規名）",
+  "characters": {
+    "Ryu": {
+      "canonical": "Ryu",
+      "aliases": ["ryu", "リュウ", "RYU", "Ryuu"]
+    },
+    "Ken": {
+      "canonical": "Ken",
+      "aliases": ["ken", "ケン", "KEN"]
+    },
+    "Chun-Li": {
+      "canonical": "Chun-Li",
+      "aliases": ["chun-li", "chunli", "chun li", "春麗", "ChunLi", "CHUN-LI"]
+    },
+    "Guile": {
+      "canonical": "Guile",
+      "aliases": ["guile", "ガイル", "GUILE"]
+    },
+    "Zangief": {
+      "canonical": "Zangief",
+      "aliases": ["zangief", "ザンギエフ", "ZANGIEF"]
+    },
+    "Dhalsim": {
+      "canonical": "Dhalsim",
+      "aliases": ["dhalsim", "ダルシム", "DHALSIM"]
+    },
+    "E.Honda": {
+      "canonical": "E.Honda",
+      "aliases": ["e.honda", "honda", "本田", "E Honda", "HONDA"]
+    },
+    "Blanka": {
+      "canonical": "Blanka",
+      "aliases": ["blanka", "ブランカ", "BLANKA"]
+    },
+    "JP": {
+      "canonical": "JP",
+      "aliases": ["jp", "J.P.", "J.P", "ジェイピー"]
+    },
+    "Juri": {
+      "canonical": "Juri",
+      "aliases": ["juri", "ジュリ", "JURI"]
+    },
+    "Kimberly": {
+      "canonical": "Kimberly",
+      "aliases": ["kimberly", "キンバリー", "KIMBERLY"]
+    },
+    "Lily": {
+      "canonical": "Lily",
+      "aliases": ["lily", "リリー", "LILY"]
+    },
+    "Manon": {
+      "canonical": "Manon",
+      "aliases": ["manon", "マノン", "MANON"]
+    },
+    "Marisa": {
+      "canonical": "Marisa",
+      "aliases": ["marisa", "マリーザ", "MARISA"]
+    },
+    "Dee Jay": {
+      "canonical": "Dee Jay",
+      "aliases": ["dee jay", "deejay", "ディージェイ", "DeeJay", "DEE JAY"]
+    },
+    "Cammy": {
+      "canonical": "Cammy",
+      "aliases": ["cammy", "キャミィ", "CAMMY"]
+    },
+    "Luke": {
+      "canonical": "Luke",
+      "aliases": ["luke", "ルーク", "LUKE"]
+    },
+    "Jamie": {
+      "canonical": "Jamie",
+      "aliases": ["jamie", "ジェイミー", "JAMIE"]
+    },
+    "A.K.I.": {
+      "canonical": "A.K.I.",
+      "aliases": ["aki", "a.k.i", "A.K.I", "アキ", "AKI"]
+    },
+    "Ed": {
+      "canonical": "Ed",
+      "aliases": ["ed", "エド", "ED"]
+    },
+    "Rashid": {
+      "canonical": "Rashid",
+      "aliases": ["rashid", "ラシード", "RASHID"]
+    },
+    "Akuma": {
+      "canonical": "Akuma",
+      "aliases": ["akuma", "豪鬼", "AKUMA", "Gouki"]
+    },
+    "M.Bison": {
+      "canonical": "M.Bison",
+      "aliases": ["m.bison", "bison", "ベガ", "M Bison", "BISON", "Vega"]
+    },
+    "Terry": {
+      "canonical": "Terry",
+      "aliases": ["terry", "テリー", "TERRY", "Terry Bogard"]
+    },
+    "Mai": {
+      "canonical": "Mai",
+      "aliases": ["mai", "マイ", "MAI", "Mai Shiranui", "不知火舞"]
+    }
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sf6-chapter.example.com/schemas/video.json",
+  "title": "SF6 Video Metadata",
+  "description": "YouTube動画のメタデータとチャプター情報",
+  "type": "object",
+  "required": ["videoId", "title", "channelId", "channelTitle", "publishedAt", "duration", "processedAt"],
+  "properties": {
+    "videoId": {
+      "type": "string",
+      "description": "YouTube動画ID",
+      "pattern": "^[A-Za-z0-9_-]{11}$"
+    },
+    "title": {
+      "type": "string",
+      "description": "動画タイトル"
+    },
+    "channelId": {
+      "type": "string",
+      "description": "YouTubeチャンネルID"
+    },
+    "channelTitle": {
+      "type": "string",
+      "description": "チャンネル名"
+    },
+    "publishedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "動画公開日時（ISO 8601形式）"
+    },
+    "duration": {
+      "type": "integer",
+      "description": "動画の長さ（秒）",
+      "minimum": 0
+    },
+    "processedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "処理完了日時（ISO 8601形式）"
+    },
+    "thumbnailUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "サムネイルURL"
+    },
+    "description": {
+      "type": "string",
+      "description": "動画説明文"
+    },
+    "chapters": {
+      "type": "array",
+      "description": "検出されたチャプター一覧",
+      "items": {
+        "type": "object",
+        "required": ["startTime", "title"],
+        "properties": {
+          "startTime": {
+            "type": "integer",
+            "description": "チャプター開始時刻（秒）",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "チャプタータイトル"
+          },
+          "matchId": {
+            "type": "string",
+            "description": "対応する対戦データのID（match.schema.jsonのid）"
+          }
+        }
+      }
+    },
+    "detectionStats": {
+      "type": "object",
+      "description": "検出処理の統計情報",
+      "properties": {
+        "totalFrames": {
+          "type": "integer",
+          "description": "処理したフレーム総数",
+          "minimum": 0
+        },
+        "matchedFrames": {
+          "type": "integer",
+          "description": "マッチ検出されたフレーム数",
+          "minimum": 0
+        },
+        "processingTimeSeconds": {
+          "type": "number",
+          "description": "処理時間（秒）",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

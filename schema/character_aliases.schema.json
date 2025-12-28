@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sf6-chapter.example.com/schemas/character_aliases.json",
+  "title": "SF6 Character Aliases",
+  "description": "キャラクター名の正規化マッピング定義",
+  "type": "object",
+  "required": ["characters"],
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "このマッピングファイルの説明"
+    },
+    "characters": {
+      "type": "object",
+      "description": "キャラクター名マッピング",
+      "patternProperties": {
+        "^[A-Za-z0-9._ -]+$": {
+          "type": "object",
+          "required": ["canonical", "aliases"],
+          "properties": {
+            "canonical": {
+              "type": "string",
+              "description": "正規化されたキャラクター名"
+            },
+            "aliases": {
+              "type": "array",
+              "description": "認識される可能性のある別名リスト",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
