@@ -21,3 +21,6 @@ dist/
 # Secrets
 *.secret.json
 client_secrets.json
+
+# download
+download/
