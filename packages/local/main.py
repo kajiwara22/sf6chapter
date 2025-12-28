@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List,Tuple
 
 # プロジェクトルートのconfigディレクトリをパスに追加
 project_root = Path(__file__).parent.parent.parent.parent
