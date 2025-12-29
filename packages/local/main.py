@@ -32,13 +32,25 @@ class SF6ChapterProcessor:
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
         self.crop_region = (339, 886, 1748, 980)  # キャラクター名表示領域
 
+        # 除外テンプレート（Round 2, Final Round）
+        self.reject_templates = [
+            os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
+            os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
+        ]
+
         # モジュール初期化
         self.subscriber = PubSubSubscriber()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
+        # Round 1表示領域（画面中央上部）
+        self.round1_search_region = (575, 333, 1500, 700)
+
         self.matcher = TemplateMatcher(
             template_path=self.template_path,
-            threshold=0.8,
+            threshold=0.32,
             min_interval_sec=2.0,
+            reject_templates=self.reject_templates,
+            reject_threshold=0.35,
+            search_region=self.round1_search_region,
         )
         self.recognizer = CharacterRecognizer(
             aliases_path=str(project_root / "config" / "character_aliases.json")
@@ -196,10 +208,21 @@ def test_detection(video_path: str) -> List[MatchDetection]:
     """対戦シーン検出のテスト"""
     print(f"[TEST] Detecting matches in: {video_path}")
     template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
+
+    # Round 1表示領域（画面中央上部）
+    round1_search_region = (575, 333, 1500, 800)
+
+    reject_templates = [
+        os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
+        os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
+    ]
     matcher = TemplateMatcher(
         template_path=template_path,
-        threshold=0.8,
+        threshold=0.32,
         min_interval_sec=2.0,
+        reject_templates=reject_templates,
+        reject_threshold=0.35,
+        search_region=round1_search_region,
     )
     crop_region = (339, 886, 1748, 980)
     detections = matcher.detect_matches(video_path=video_path, crop_region=crop_region)

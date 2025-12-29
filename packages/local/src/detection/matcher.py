@@ -25,24 +25,61 @@ class TemplateMatcher:
     def __init__(
         self,
         template_path: str,
-        threshold: float = 0.8,
+        threshold: float = 0.4,
         min_interval_sec: float = 2.0,
-        frame_interval: int = 30,
+        frame_interval: int = 6,
+        reject_templates: List[str] | None = None,
+        reject_threshold: float = 0.35,
+        search_region: Tuple[int, int, int, int] | None = None,
     ):
         """
         Args:
-            template_path: テンプレート画像のパス
+            template_path: テンプレート画像のパス（Round 1）
             threshold: マッチング閾値（0.0-1.0）
             min_interval_sec: 連続検出を避けるための最小間隔（秒）
             frame_interval: チェックするフレーム間隔
+            reject_templates: 除外したい画像のパスリスト（Round 2, Final Roundなど）
+            reject_threshold: 除外判定の閾値（これ以上マッチしたら除外）
+            search_region: Round 1表示領域の限定 (x1, y1, x2, y2)
         """
         self.template = cv2.imread(template_path, cv2.IMREAD_COLOR)
         if self.template is None:
             raise FileNotFoundError(f"Template image not found: {template_path}")
 
+        # テンプレートを前処理（エッジ抽出）
+        self.template_edges = self._preprocess_for_matching(self.template)
+
+        # 除外用テンプレート（Round 2, Final Round）
+        self.reject_templates_edges = []
+        if reject_templates:
+            for reject_path in reject_templates:
+                reject_img = cv2.imread(reject_path, cv2.IMREAD_COLOR)
+                if reject_img is not None:
+                    reject_edges = self._preprocess_for_matching(reject_img)
+                    self.reject_templates_edges.append(reject_edges)
+
         self.threshold = threshold
+        self.reject_threshold = reject_threshold
         self.min_interval_sec = min_interval_sec
         self.frame_interval = frame_interval
+        self.search_region = search_region
+
+    @staticmethod
+    def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
+        """
+        文字検出用の前処理: エッジ抽出
+        背景の影響を除去して文字の輪郭を強調
+        """
+        # グレースケール化
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+
+        # ガウシアンブラーでノイズ除去
+        blurred = cv2.GaussianBlur(gray, (17, 17), 0)
+
+        # Cannyエッジ検出
+        edges = cv2.Canny(blurred, 50, 150)
+
+        return edges
 
     def detect_matches(
         self,
@@ -83,6 +120,7 @@ class TemplateMatcher:
         prev_timestamp: float | None = None
 
         print(f"Scanning video from {start_sec}s to {end_frame/fps:.1f}s...")
+        print(f"Threshold is {self.threshold}")
 
         while frame_count < end_frame:
             ret, frame = cap.read()
@@ -96,10 +134,38 @@ class TemplateMatcher:
 
             # frame_interval毎にマッチング
             if (frame_count - start_frame) % self.frame_interval == 0:
-                result = cv2.matchTemplate(frame, self.template, cv2.TM_CCOEFF_NORMED)
+                # 検索範囲を限定
+                if self.search_region:
+                    x1, y1, x2, y2 = self.search_region
+                    search_frame = frame[y1:y2, x1:x2]
+                else:
+                    search_frame = frame
+
+                # フレームを前処理（エッジ抽出）
+                frame_edges = self._preprocess_for_matching(search_frame)
+
+                # エッジ画像同士でマッチング
+                result = cv2.matchTemplate(frame_edges, self.template_edges, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
                 if max_val >= self.threshold:
+                    # 除外テンプレート（Round 2, Final Round）との照合
+                    should_reject = False
+                    reject_reason = ""
+                    for idx, reject_template in enumerate(self.reject_templates_edges):
+                        reject_result = cv2.matchTemplate(frame_edges, reject_template, cv2.TM_CCOEFF_NORMED)
+                        _, reject_max_val, _, _ = cv2.minMaxLoc(reject_result)
+
+                        if reject_max_val >= self.reject_threshold:
+                            should_reject = True
+                            reject_reason = f"reject_template_{idx} (confidence: {reject_max_val:.3f})"
+                            break
+
+                    if should_reject:
+                        print(f"Rejected match at {frame_count / fps:.1f}s - matched {reject_reason}")
+                        frame_count += 1
+                        continue
+
                     timestamp = frame_count / fps
 
                     # 連続マッチのスキップ
