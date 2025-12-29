@@ -27,7 +27,7 @@ class TemplateMatcher:
         template_path: str,
         threshold: float = 0.4,
         min_interval_sec: float = 2.0,
-        frame_interval: int = 6,
+        frame_interval: int = 2,
         reject_templates: List[str] | None = None,
         reject_threshold: float = 0.35,
         search_region: Tuple[int, int, int, int] | None = None,
