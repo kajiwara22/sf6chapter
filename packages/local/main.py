@@ -6,20 +6,20 @@ Pub/Subから新着動画を受信し、チャプター生成・アップロー�
 
 import os
 import sys
-from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, List,Tuple
+from pathlib import Path
+from typing import Any
 
 # プロジェクトルートのconfigディレクトリをパスに追加
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.pubsub import PubSubSubscriber
-from src.video import VideoDownloader
-from src.detection import TemplateMatcher, MatchDetection
 from src.character import CharacterRecognizer
-from src.youtube import YouTubeChapterUpdater
+from src.detection import MatchDetection, TemplateMatcher
+from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
+from src.video import VideoDownloader
+from src.youtube import YouTubeChapterUpdater
 
 
 class SF6ChapterProcessor:
@@ -54,13 +54,11 @@ class SF6ChapterProcessor:
             post_check_frames=10,  # 検出後10フレームをチェック
             post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
         )
-        self.recognizer = CharacterRecognizer(
-            aliases_path=str(project_root / "config" / "character_aliases.json")
-        )
+        self.recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
         self.youtube_updater = YouTubeChapterUpdater()
         self.r2_uploader = R2Uploader()
 
-    def process_video(self, message_data: Dict[str, Any]) -> None:
+    def process_video(self, message_data: dict[str, Any]) -> None:
         """
         動画処理のメインフロー
 
@@ -72,10 +70,10 @@ class SF6ChapterProcessor:
             print("Error: videoId not found in message")
             return
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Processing video: {video_id}")
         print(f"Title: {message_data.get('title', 'N/A')}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         try:
             # 1. 動画ダウンロード
@@ -97,8 +95,8 @@ class SF6ChapterProcessor:
 
             # 3. Gemini APIでキャラクター認識
             print("[3/6] Recognizing characters...")
-            matches: List[Dict[str, Any]] = []
-            chapters: List[Dict[str, Any]] = []
+            matches: list[dict[str, Any]] = []
+            chapters: list[dict[str, Any]] = []
 
             for i, detection in enumerate(detections, 1):
                 try:
@@ -175,11 +173,12 @@ class SF6ChapterProcessor:
             print(f"\n✅ Successfully processed video: {video_id}")
             print(f"   - Detected {len(matches)} matches")
             print(f"   - Created {len(chapters)} chapters")
-            print(f"   - Uploaded to R2")
+            print("   - Uploaded to R2")
 
         except Exception as e:
             print(f"\n❌ Error processing video {video_id}: {e}")
             import traceback
+
             traceback.print_exc()
 
     def run_once(self) -> None:
@@ -206,7 +205,7 @@ def test_download(video_id: str) -> str:
     return video_path
 
 
-def test_detection(video_path: str) -> List[MatchDetection]:
+def test_detection(video_path: str) -> list[MatchDetection]:
     """対戦シーン検出のテスト"""
     print(f"[TEST] Detecting matches in: {video_path}")
     template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
@@ -236,13 +235,11 @@ def test_detection(video_path: str) -> List[MatchDetection]:
     return detections
 
 
-def test_recognition(detections: List[MatchDetection]) -> List[Tuple[Dict[str, str], Dict[str, str]]]:
+def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, str], dict[str, str]]]:
     """キャラクター認識のテスト"""
     print(f"[TEST] Recognizing characters from {len(detections)} frames")
     project_root = Path(__file__).parent.parent.parent.parent
-    recognizer = CharacterRecognizer(
-        aliases_path=str(project_root / "config" / "character_aliases.json")
-    )
+    recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
 
     results = []
     for i, detection in enumerate(detections, 1):
@@ -255,26 +252,28 @@ def test_recognition(detections: List[MatchDetection]) -> List[Tuple[Dict[str, s
     return results
 
 
-def test_chapters(video_id: str, detections: List[MatchDetection], results: List[Tuple[Dict[str, str], Dict[str, str]]]) -> None:
+def test_chapters(
+    video_id: str, detections: list[MatchDetection], results: list[tuple[dict[str, str], dict[str, str]]]
+) -> None:
     """YouTubeチャプター更新のテスト"""
     print(f"[TEST] Updating YouTube chapters for video: {video_id}")
 
     chapters = []
-    for i, (detection, (normalized, _)) in enumerate(zip(detections, results), 1):
+    for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
         chapter = {
             "startTime": int(detection.timestamp),
             "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
         }
         chapters.append(chapter)
 
-    print(f"Generated chapters:")
+    print("Generated chapters:")
     for ch in chapters:
         print(f"   {ch['startTime']}s - {ch['title']}")
 
     # 実際に更新
     updater = YouTubeChapterUpdater()
     updater.update_video_description(video_id, chapters)
-    print(f"✅ Updated YouTube description")
+    print("✅ Updated YouTube description")
 
 
 def main():

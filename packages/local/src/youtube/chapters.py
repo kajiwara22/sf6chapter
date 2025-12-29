@@ -3,14 +3,13 @@ YouTube Data APIを使用したチャプター更新
 動画の説明文にチャプター情報を追加
 """
 
-import os
-from typing import List, Dict, Any
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 import pickle
 from pathlib import Path
+from typing import Any
+
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
 
 
 class YouTubeChapterUpdater:
@@ -46,9 +45,7 @@ class YouTubeChapterUpdater:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.client_secrets_file, self.SCOPES
-                )
+                flow = InstalledAppFlow.from_client_secrets_file(self.client_secrets_file, self.SCOPES)
                 creds = flow.run_local_server(port=0)
 
             # トークンを保存
@@ -57,7 +54,7 @@ class YouTubeChapterUpdater:
 
         return build("youtube", "v3", credentials=creds)
 
-    def get_video_info(self, video_id: str) -> Dict[str, Any]:
+    def get_video_info(self, video_id: str) -> dict[str, Any]:
         """
         動画情報を取得
 
@@ -67,10 +64,7 @@ class YouTubeChapterUpdater:
         Returns:
             動画情報
         """
-        request = self.youtube.videos().list(
-            part="snippet,contentDetails",
-            id=video_id
-        )
+        request = self.youtube.videos().list(part="snippet,contentDetails", id=video_id)
         response = request.execute()
 
         if not response.get("items"):
@@ -107,7 +101,7 @@ class YouTubeChapterUpdater:
 
     def generate_chapter_description(
         self,
-        chapters: List[Dict[str, Any]],
+        chapters: list[dict[str, Any]],
         original_description: str = "",
     ) -> str:
         """
@@ -155,7 +149,7 @@ class YouTubeChapterUpdater:
     def update_video_description(
         self,
         video_id: str,
-        chapters: List[Dict[str, Any]],
+        chapters: list[dict[str, Any]],
         preserve_original: bool = True,
     ) -> None:
         """
@@ -182,10 +176,10 @@ class YouTubeChapterUpdater:
                     "title": video_info["title"],
                     "description": new_description,
                     "categoryId": "20",  # Gaming
-                }
-            }
+                },
+            },
         )
-        response = request.execute()
+        request.execute()
 
         print(f"Updated description for video {video_id}")
         print(f"Added {len(chapters)} chapters")

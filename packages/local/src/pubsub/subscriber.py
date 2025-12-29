@@ -5,9 +5,11 @@ GCPのPub/Subから新着動画情報を受信
 
 import json
 import os
-from typing import Dict, Any, Callable
-from google.cloud import pubsub_v1
+from collections.abc import Callable
 from concurrent.futures import TimeoutError
+from typing import Any
+
+from google.cloud import pubsub_v1
 
 
 class PubSubSubscriber:
@@ -25,13 +27,11 @@ class PubSubSubscriber:
             raise ValueError("GCP_PROJECT_ID must be set")
 
         self.subscriber = pubsub_v1.SubscriberClient()
-        self.subscription_path = self.subscriber.subscription_path(
-            self.project_id, self.subscription_id
-        )
+        self.subscription_path = self.subscriber.subscription_path(self.project_id, self.subscription_id)
 
     def pull_messages(
         self,
-        callback: Callable[[Dict[str, Any]], None],
+        callback: Callable[[dict[str, Any]], None],
         max_messages: int = 10,
         timeout: float = 60.0,
     ) -> None:
@@ -88,7 +88,7 @@ class PubSubSubscriber:
 
     def listen_streaming(
         self,
-        callback: Callable[[Dict[str, Any]], None],
+        callback: Callable[[dict[str, Any]], None],
     ) -> None:
         """
         ストリーミング方式でメッセージを受信（常駐モード）
@@ -96,6 +96,7 @@ class PubSubSubscriber:
         Args:
             callback: メッセージ処理コールバック関数
         """
+
         def message_callback(message: pubsub_v1.subscriber.message.Message) -> None:
             try:
                 message_data = json.loads(message.data.decode("utf-8"))
@@ -105,9 +106,7 @@ class PubSubSubscriber:
                 print(f"Error processing message: {e}")
                 message.nack()
 
-        streaming_pull_future = self.subscriber.subscribe(
-            self.subscription_path, callback=message_callback
-        )
+        streaming_pull_future = self.subscriber.subscribe(self.subscription_path, callback=message_callback)
 
         print(f"Listening for messages on {self.subscription_path}...")
 

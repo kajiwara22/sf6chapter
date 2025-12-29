@@ -3,9 +3,9 @@ YouTube動画ダウンロードモジュール
 yt-dlpを使用して動画をダウンロード
 """
 
-import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
+
 import yt_dlp
 
 
@@ -38,7 +38,7 @@ class VideoDownloader:
         """
         url = f"https://www.youtube.com/watch?v={video_id}"
 
-        ydl_opts: Dict[str, Any] = {
+        ydl_opts: dict[str, Any] = {
             "outtmpl": str(self.download_dir / "%(upload_date)s[%(id)s].%(ext)s"),
             "ignoreerrors": True,
         }
@@ -76,7 +76,7 @@ class VideoDownloader:
 
             return str(file_path)
 
-    def get_video_info(self, video_id: str) -> Dict[str, Any]:
+    def get_video_info(self, video_id: str) -> dict[str, Any]:
         """
         動画情報を取得（ダウンロードなし）
 

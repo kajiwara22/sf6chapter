@@ -3,16 +3,16 @@
 OpenCVを使用してフレームから対戦開始画面を検出
 """
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
-from pathlib import Path
-from typing import List, Tuple, Dict, Any
-from dataclasses import dataclass
 
 
 @dataclass
 class MatchDetection:
     """マッチ検出結果"""
+
     timestamp: float  # 秒
     frame_number: int
     confidence: float  # マッチング信頼度
@@ -28,9 +28,9 @@ class TemplateMatcher:
         threshold: float = 0.4,
         min_interval_sec: float = 2.0,
         frame_interval: int = 2,
-        reject_templates: List[str] | None = None,
+        reject_templates: list[str] | None = None,
         reject_threshold: float = 0.35,
-        search_region: Tuple[int, int, int, int] | None = None,
+        search_region: tuple[int, int, int, int] | None = None,
         post_check_frames: int = 10,
         post_check_reject_limit: int = 2,
     ):
@@ -87,12 +87,7 @@ class TemplateMatcher:
 
         return edges
 
-    def _check_subsequent_frames(
-        self,
-        cap: cv2.VideoCapture,
-        start_frame: int,
-        num_frames: int
-    ) -> int:
+    def _check_subsequent_frames(self, cap: cv2.VideoCapture, start_frame: int, num_frames: int) -> int:
         """
         検出後の後続フレームで除外テンプレートマッチの回数をカウント
 
@@ -142,8 +137,8 @@ class TemplateMatcher:
         video_path: str,
         start_sec: float = 0,
         duration_sec: float | None = None,
-        crop_region: Tuple[int, int, int, int] | None = None,
-    ) -> List[MatchDetection]:
+        crop_region: tuple[int, int, int, int] | None = None,
+    ) -> list[MatchDetection]:
         """
         動画から対戦シーンを検出
 
@@ -158,7 +153,7 @@ class TemplateMatcher:
         """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise IOError(f"Cannot open video: {video_path}")
+            raise OSError(f"Cannot open video: {video_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -166,16 +161,13 @@ class TemplateMatcher:
         start_frame = int(start_sec * fps)
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-        if duration_sec is not None:
-            end_frame = start_frame + int(duration_sec * fps)
-        else:
-            end_frame = total_frames
+        end_frame = start_frame + int(duration_sec * fps) if duration_sec is not None else total_frames
 
-        detections: List[MatchDetection] = []
+        detections: list[MatchDetection] = []
         frame_count = start_frame
         prev_timestamp: float | None = None
 
-        print(f"Scanning video from {start_sec}s to {end_frame/fps:.1f}s...")
+        print(f"Scanning video from {start_sec}s to {end_frame / fps:.1f}s...")
         print(f"Threshold is {self.threshold}")
 
         while frame_count < end_frame:
@@ -229,13 +221,13 @@ class TemplateMatcher:
                         # 後続フレームで除外テンプレートマッチをチェック
                         if self.reject_templates_edges and self.post_check_frames > 0:
                             subsequent_reject_count = self._check_subsequent_frames(
-                                cap,
-                                frame_count + 1,
-                                self.post_check_frames
+                                cap, frame_count + 1, self.post_check_frames
                             )
 
                             if subsequent_reject_count >= self.post_check_reject_limit:
-                                print(f"Rejected match at {timestamp:.1f}s - subsequent frames have {subsequent_reject_count} reject matches (limit: {self.post_check_reject_limit})")
+                                print(
+                                    f"Rejected match at {timestamp:.1f}s - subsequent frames have {subsequent_reject_count} reject matches (limit: {self.post_check_reject_limit})"
+                                )
                                 # 誤検知判定されたら、次のチェックまでスキップ
                                 prev_timestamp = timestamp
                                 frame_count += 1

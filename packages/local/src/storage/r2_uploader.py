@@ -3,15 +3,14 @@ Cloudflare R2へのデータアップロード
 JSON/ParquetファイルをR2にアップロード
 """
 
-import os
 import json
-from pathlib import Path
-from typing import Dict, Any, List
-from datetime import datetime
+import os
+from typing import Any
+
 import boto3
-from botocore.exceptions import ClientError
 import pyarrow as pa
 import pyarrow.parquet as pq
+from botocore.exceptions import ClientError
 
 
 class R2Uploader:
@@ -53,7 +52,7 @@ class R2Uploader:
 
     def upload_json(
         self,
-        data: Dict[str, Any] | List[Dict[str, Any]],
+        data: dict[str, Any] | list[dict[str, Any]],
         key: str,
     ) -> str:
         """
@@ -83,7 +82,7 @@ class R2Uploader:
 
     def upload_parquet(
         self,
-        data: List[Dict[str, Any]],
+        data: list[dict[str, Any]],
         key: str,
         schema: pa.Schema | None = None,
     ) -> str:
@@ -99,13 +98,11 @@ class R2Uploader:
             アップロードされたオブジェクトのキー
         """
         # Parquetファイル作成
-        if schema:
-            table = pa.Table.from_pylist(data, schema=schema)
-        else:
-            table = pa.Table.from_pylist(data)
+        table = pa.Table.from_pylist(data, schema=schema) if schema else pa.Table.from_pylist(data)
 
         # メモリ上にParquetを書き込み
         import io
+
         buffer = io.BytesIO()
         pq.write_table(table, buffer, compression="snappy")
         buffer.seek(0)
@@ -125,7 +122,7 @@ class R2Uploader:
 
     def append_to_json_array(
         self,
-        new_data: Dict[str, Any],
+        new_data: dict[str, Any],
         key: str,
     ) -> str:
         """
@@ -162,7 +159,7 @@ class R2Uploader:
 
     def update_parquet_table(
         self,
-        new_data: List[Dict[str, Any]],
+        new_data: list[dict[str, Any]],
         key: str,
         schema: pa.Schema | None = None,
     ) -> str:
@@ -181,6 +178,7 @@ class R2Uploader:
             # 既存データを取得
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
             import io
+
             buffer = io.BytesIO(response["Body"].read())
             existing_table = pq.read_table(buffer)
             existing_data = existing_table.to_pylist()

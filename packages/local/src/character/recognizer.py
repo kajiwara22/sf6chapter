@@ -5,12 +5,11 @@ Gemini APIを使用したキャラクター認識
 
 import json
 import os
-from pathlib import Path
-from typing import Dict, Tuple
-import numpy as np
+
 import cv2
-from PIL import Image
 import google.generativeai as genai
+import numpy as np
+from PIL import Image
 
 
 class CharacterRecognizer:
@@ -36,13 +35,13 @@ class CharacterRecognizer:
         self.model = genai.GenerativeModel(model_name)
 
         # キャラクター名正規化マッピング読み込み
-        self.aliases_map: Dict[str, str] = {}
+        self.aliases_map: dict[str, str] = {}
         if aliases_path:
             self._load_aliases(aliases_path)
 
     def _load_aliases(self, aliases_path: str) -> None:
         """キャラクター名正規化マッピングを読み込み"""
-        with open(aliases_path, "r", encoding="utf-8") as f:
+        with open(aliases_path, encoding="utf-8") as f:
             data = json.load(f)
 
         # エイリアスから正規名へのマッピングを構築
@@ -68,7 +67,7 @@ class CharacterRecognizer:
         self,
         frame: np.ndarray,
         save_debug_image: str | None = None,
-    ) -> Tuple[Dict[str, str], Dict[str, str]]:
+    ) -> tuple[dict[str, str], dict[str, str]]:
         """
         フレーム画像からキャラクターを認識
 
@@ -93,15 +92,13 @@ class CharacterRecognizer:
             "この画像はストリートファイター6のラウンド開始画面です。"
             "左側のキャラクターを1p、右側のキャラクターを2pとし、"
             "それぞれのキャラクター名をJSONで返してください。"
-            "例: {\"1p\": \"Ryu\", \"2p\": \"Ken\"}"
+            '例: {"1p": "Ryu", "2p": "Ken"}'
         )
 
         # Gemini API呼び出し
         response = self.model.generate_content(
             [prompt, pil_image],
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json"
-            ),
+            generation_config=genai.types.GenerationConfig(response_mime_type="application/json"),
         )
 
         # レスポンスパース
@@ -118,7 +115,7 @@ class CharacterRecognizer:
     def recognize_batch(
         self,
         frames: list[np.ndarray],
-    ) -> list[Tuple[Dict[str, str], Dict[str, str]]]:
+    ) -> list[tuple[dict[str, str], dict[str, str]]]:
         """
         複数フレームを一括認識
 
