@@ -31,6 +31,8 @@ class TemplateMatcher:
         reject_templates: List[str] | None = None,
         reject_threshold: float = 0.35,
         search_region: Tuple[int, int, int, int] | None = None,
+        post_check_frames: int = 10,
+        post_check_reject_limit: int = 2,
     ):
         """
         Args:
@@ -41,6 +43,8 @@ class TemplateMatcher:
             reject_templates: 除外したい画像のパスリスト（Round 2, Final Roundなど）
             reject_threshold: 除外判定の閾値（これ以上マッチしたら除外）
             search_region: Round 1表示領域の限定 (x1, y1, x2, y2)
+            post_check_frames: 検出後に確認するフレーム数
+            post_check_reject_limit: この数以上除外マッチがあれば誤検知と判定
         """
         self.template = cv2.imread(template_path, cv2.IMREAD_COLOR)
         if self.template is None:
@@ -63,6 +67,8 @@ class TemplateMatcher:
         self.min_interval_sec = min_interval_sec
         self.frame_interval = frame_interval
         self.search_region = search_region
+        self.post_check_frames = post_check_frames
+        self.post_check_reject_limit = post_check_reject_limit
 
     @staticmethod
     def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
@@ -80,6 +86,56 @@ class TemplateMatcher:
         edges = cv2.Canny(blurred, 50, 150)
 
         return edges
+
+    def _check_subsequent_frames(
+        self,
+        cap: cv2.VideoCapture,
+        start_frame: int,
+        num_frames: int
+    ) -> int:
+        """
+        検出後の後続フレームで除外テンプレートマッチの回数をカウント
+
+        Args:
+            cap: VideoCapture オブジェクト
+            start_frame: 開始フレーム番号
+            num_frames: チェックするフレーム数
+
+        Returns:
+            除外テンプレートにマッチしたフレーム数
+        """
+        reject_count = 0
+        current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        for i in range(num_frames):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + i)
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # 検索範囲を限定
+            if self.search_region:
+                x1, y1, x2, y2 = self.search_region
+                search_frame = frame[y1:y2, x1:x2]
+            else:
+                search_frame = frame
+
+            # フレームを前処理
+            frame_edges = self._preprocess_for_matching(search_frame)
+
+            # 除外テンプレートとマッチング
+            for reject_template in self.reject_templates_edges:
+                reject_result = cv2.matchTemplate(frame_edges, reject_template, cv2.TM_CCOEFF_NORMED)
+                _, reject_max_val, _, _ = cv2.minMaxLoc(reject_result)
+
+                if reject_max_val >= self.reject_threshold:
+                    reject_count += 1
+                    break  # 1つでもマッチしたらカウント
+
+        # 元の位置に戻す
+        cap.set(cv2.CAP_PROP_POS_FRAMES, current_pos)
+
+        return reject_count
 
     def detect_matches(
         self,
@@ -170,6 +226,21 @@ class TemplateMatcher:
 
                     # 連続マッチのスキップ
                     if prev_timestamp is None or timestamp - prev_timestamp >= self.min_interval_sec:
+                        # 後続フレームで除外テンプレートマッチをチェック
+                        if self.reject_templates_edges and self.post_check_frames > 0:
+                            subsequent_reject_count = self._check_subsequent_frames(
+                                cap,
+                                frame_count + 1,
+                                self.post_check_frames
+                            )
+
+                            if subsequent_reject_count >= self.post_check_reject_limit:
+                                print(f"Rejected match at {timestamp:.1f}s - subsequent frames have {subsequent_reject_count} reject matches (limit: {self.post_check_reject_limit})")
+                                # 誤検知判定されたら、次のチェックまでスキップ
+                                prev_timestamp = timestamp
+                                frame_count += 1
+                                continue
+
                         prev_timestamp = timestamp
 
                         # キャラクター名領域を切り抜き

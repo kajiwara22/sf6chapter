@@ -51,6 +51,8 @@ class SF6ChapterProcessor:
             reject_templates=self.reject_templates,
             reject_threshold=0.35,
             search_region=self.round1_search_region,
+            post_check_frames=10,  # 検出後10フレームをチェック
+            post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
         )
         self.recognizer = CharacterRecognizer(
             aliases_path=str(project_root / "config" / "character_aliases.json")
@@ -223,6 +225,8 @@ def test_detection(video_path: str) -> List[MatchDetection]:
         reject_templates=reject_templates,
         reject_threshold=0.35,
         search_region=round1_search_region,
+        post_check_frames=10,  # 検出後10フレームをチェック
+        post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
     )
     crop_region = (339, 886, 1748, 980)
     detections = matcher.detect_matches(video_path=video_path, crop_region=crop_region)
