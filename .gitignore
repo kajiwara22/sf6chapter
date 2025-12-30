@@ -24,3 +24,6 @@ client_secrets.json
 
 # download
 download/
+
+# mise
+.mise.toml
