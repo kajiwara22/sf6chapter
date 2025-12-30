@@ -66,37 +66,62 @@ uv run python main.py --mode daemon
 
 ### テストモード（個別処理の動作確認）
 
-各処理ステップを個別に実行してテスト可能：
+各処理ステップを個別に実行してテスト可能。`--video-id` を指定すれば、既存ファイルがある場合は自動的に再利用し、ない場合はダウンロードします。
 
 #### 1. 動画ダウンロードのみ
 
 ```bash
-uv run python main.py --mode test --test-step download --video-id ZHA10O69Eew
+uv run python main.py --mode test --test-step download --video-id YFQU_kkhZtg
 ```
+
+**動作**: 既存ファイルがあれば「既存ファイルを使用」と表示して再利用、なければダウンロード。
 
 #### 2. 対戦シーン検出のみ
 
 ```bash
-uv run python main.py --mode test --test-step detect --video-path ./download/20250513[ZHA10O69Eew].mkv
+# video-idを指定（既存ファイル自動検索、なければダウンロード）
+uv run python main.py --mode test --test-step detect --video-id YFQU_kkhZtg
+
+# または、video-pathを直接指定
+uv run python main.py --mode test --test-step detect --video-path ./download/20250513[YFQU_kkhZtg].mkv
 ```
 
 #### 3. キャラクター認識のみ
 
 ```bash
-uv run python main.py --mode test --test-step recognize --video-path ./download/20250513[ZHA10O69Eew].mkv
+# video-idを指定（既存ファイル自動検索、なければダウンロード）
+uv run python main.py --mode test --test-step recognize --video-id YFQU_kkhZtg
+
+# または、video-pathを直接指定
+uv run python main.py --mode test --test-step recognize --video-path ./download/20250513[YFQU_kkhZtg].mkv
 ```
 
 #### 4. YouTubeチャプター更新のみ
 
 ```bash
-uv run python main.py --mode test --test-step chapters --video-id ZHA10O69Eew --video-path ./download/20250513[ZHA10O69Eew].mkv
+# video-idのみ指定（既存ファイル自動検索、なければダウンロード）
+uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg
 ```
+
+**動作**:
+1. 既存ファイルを検索（パターン: `*[video_id].{mp4,webm,mkv}`）
+2. 見つかればそれを使用、なければダウンロード
+3. 対戦シーン検出 → キャラクター認識 → チャプター更新を実行
 
 #### 5. 全ステップを順次実行
 
 ```bash
-uv run python main.py --mode test --test-step all --video-id ZHA10O69Eew
+uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
 ```
+
+**動作**: ダウンロード → 検出 → 認識 → チャプター更新を一括実行。既存ファイルがあれば再利用。
+
+### オプションパラメータ
+
+- `--video-id`: YouTube動画ID（推奨）
+- `--video-path`: ダウンロード済みファイルのパス（省略可、上級者向け）
+
+**推奨**: 基本的には `--video-id` のみを指定すれば、既存ファイルの再利用とダウンロードを自動判断します。
 
 ## モジュール構成
 

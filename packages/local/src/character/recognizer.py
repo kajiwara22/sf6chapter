@@ -7,8 +7,8 @@ import json
 import os
 
 import cv2
-import google.generativeai as genai
 import numpy as np
+from google import genai
 from PIL import Image
 
 
@@ -18,7 +18,7 @@ class CharacterRecognizer:
     def __init__(
         self,
         api_key: str | None = None,
-        model_name: str = "gemini-2.0-flash-exp",
+        model_name: str = "gemini-2.5-flash-lite",
         aliases_path: str | None = None,
     ):
         """
@@ -31,8 +31,8 @@ class CharacterRecognizer:
         if not api_key:
             raise ValueError("GEMINI_API_KEY must be set")
 
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = model_name
 
         # キャラクター名正規化マッピング読み込み
         self.aliases_map: dict[str, str] = {}
@@ -96,9 +96,10 @@ class CharacterRecognizer:
         )
 
         # Gemini API呼び出し
-        response = self.model.generate_content(
-            [prompt, pil_image],
-            generation_config=genai.types.GenerationConfig(response_mime_type="application/json"),
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[prompt, pil_image],
+            config=genai.types.GenerateContentConfig(response_mime_type="application/json"),
         )
 
         # レスポンスパース

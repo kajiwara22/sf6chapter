@@ -197,10 +197,10 @@ class SF6ChapterProcessor:
 
 
 def test_download(video_id: str) -> str:
-    """動画ダウンロードのテスト"""
+    """動画ダウンロードのテスト（既存ファイルがあれば再利用）"""
     print(f"[TEST] Downloading video: {video_id}")
     downloader = VideoDownloader(download_dir="./download")
-    video_path = downloader.download(video_id)
+    video_path = downloader.download(video_id, skip_if_exists=True)
     print(f"✅ Downloaded: {video_path}")
     return video_path
 
@@ -238,7 +238,7 @@ def test_detection(video_path: str) -> list[MatchDetection]:
 def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, str], dict[str, str]]]:
     """キャラクター認識のテスト"""
     print(f"[TEST] Recognizing characters from {len(detections)} frames")
-    project_root = Path(__file__).parent.parent.parent.parent
+    project_root = Path(__file__).parent.parent.parent
     recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
 
     results = []
@@ -324,13 +324,19 @@ def main():
 
         if args.test_step in ["detect", "all"]:
             if not video_path:
-                parser.error("--video-path is required for detection test")
+                # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
+                if not args.video_id:
+                    parser.error("--video-id or --video-path is required for detection test")
+                video_path = test_download(args.video_id)
             detections = test_detection(video_path)
 
         if args.test_step in ["recognize", "all"]:
             if not detections:
                 if not video_path:
-                    parser.error("--video-path is required")
+                    # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
+                    if not args.video_id:
+                        parser.error("--video-id or --video-path is required")
+                    video_path = test_download(args.video_id)
                 detections = test_detection(video_path)
             results = test_recognition(detections)
 
@@ -339,7 +345,8 @@ def main():
                 parser.error("--video-id is required for chapters test")
             if not detections or not results:
                 if not video_path:
-                    parser.error("--video-path is required")
+                    # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
+                    video_path = test_download(args.video_id)
                 detections = test_detection(video_path)
                 results = test_recognition(detections)
             test_chapters(args.video_id, detections, results)
