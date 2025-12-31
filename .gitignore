@@ -41,3 +41,6 @@ token.pickle
 
 # Log
 *.log
+
+# temp Output
+packages/local/*/*.json
