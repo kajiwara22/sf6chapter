@@ -39,3 +39,5 @@ chapters/
 # Auth Pickle
 token.pickle
 
+# Log
+*.log
