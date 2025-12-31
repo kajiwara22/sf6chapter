@@ -60,7 +60,7 @@ sf6-chapter/
 - [x] アーキテクチャ設計完了
 - [x] ADR作成（001〜004）
 - [ ] スキーマ定義 (`schema/`)
-- [ ] ローカル処理実装 (`packages/local/`)
+- [*] ローカル処理実装 (`packages/local/`)
 - [ ] GCP Functions実装 (`packages/gcp-functions/`)
 - [ ] Webフロントエンド実装 (`packages/web/`)
 
