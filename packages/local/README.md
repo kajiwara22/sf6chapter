@@ -19,7 +19,27 @@
 uv sync
 ```
 
-### 2. 環境変数の設定
+### 2. OAuth2認証の設定
+
+Google Cloud Consoleで以下のAPIを有効化し、OAuth2クライアントシークレットを取得：
+
+1. **Google Cloud Consoleにアクセス**
+   - https://console.cloud.google.com/
+
+2. **APIを有効化**
+   - YouTube Data API v3
+   - Vertex AI API
+
+3. **OAuth2クライアントを作成**
+   - 認証情報 → OAuth 2.0 クライアント ID を作成
+   - アプリケーションの種類: デスクトップアプリ
+   - `client_secrets.json` としてダウンロード
+
+4. **ファイル配置**
+   - `client_secrets.json`: プロジェクトルートに配置
+   - `token.pickle`: 初回実行時に自動生成（YouTube API と Vertex AI で共通）
+
+### 3. 環境変数の設定
 
 `.env` ファイルを作成：
 
@@ -27,9 +47,6 @@ uv sync
 # Google Cloud
 GCP_PROJECT_ID=your-project-id
 PUBSUB_SUBSCRIPTION=sf6-video-process-sub
-
-# Gemini API
-GEMINI_API_KEY=your-gemini-api-key
 
 # Cloudflare R2
 CLOUDFLARE_ACCOUNT_ID=your-account-id
@@ -41,14 +58,23 @@ TEMPLATE_PATH=./template/round1.png
 DOWNLOAD_DIR=./download
 ```
 
-### 3. 認証ファイルの配置
-
-- `client_secrets.json`: YouTube Data API のOAuth2クライアントシークレット
-- `token.pickle`: 認証トークン（初回実行時に自動生成）
+**注**: Gemini APIはVertex AI経由でOAuth2認証を使用するため、`GEMINI_API_KEY`は不要です。
 
 ### 4. テンプレート画像
 
 `template/round1.png` に「ROUND 1」画面のスクリーンショットを配置。
+
+### 5. 初回認証フロー
+
+初回実行時、ブラウザが自動的に開き、Googleアカウントでの認証が求められます：
+
+1. Googleアカウントでログイン
+2. アプリケーションへのアクセスを許可
+3. 認証完了後、`token.pickle` が自動生成されます
+
+**認証スコープ**:
+- `https://www.googleapis.com/auth/youtube.force-ssl` - YouTube Data API
+- `https://www.googleapis.com/auth/cloud-platform` - Vertex AI (Gemini API)
 
 ## 実行方法
 
@@ -159,6 +185,21 @@ R2アップロード (JSON + Parquet)
 
 ## トラブルシューティング
 
+### OAuth2認証エラー
+
+**症状**: `FileNotFoundError: OAuth2クライアントシークレットファイルが見つかりません`
+
+**解決方法**:
+1. Google Cloud Consoleから `client_secrets.json` をダウンロード
+2. プロジェクトルートに配置
+3. 両方のAPIが有効化されているか確認
+
+**症状**: `google.auth.exceptions.RefreshError`
+
+**解決方法**:
+1. `token.pickle` を削除
+2. 再度実行して認証フローをやり直す
+
 ### yt-dlpでのダウンロード失敗
 
 - Cookie認証が必要な場合は `cookie_path` を設定
@@ -166,10 +207,27 @@ R2アップロード (JSON + Parquet)
 
 ### Gemini APIのレート制限
 
-- 無料枠: 15 RPM (Requests Per Minute)
+- OAuth2認証使用時も無料枠の制限あり: 15 RPM (Requests Per Minute)
 - エラー時は自動でスキップし、次の対戦シーンへ
 
 ### R2アップロードエラー
 
 - 認証情報を確認
 - バケット名が正しいか確認
+
+## 認証方式の変更履歴
+
+### v2.0以降（推奨）
+- **YouTube API**: OAuth2認証
+- **Gemini API**: Vertex AI経由でOAuth2認証（共通トークン）
+- トークンファイル: `token.pickle`（pickle形式）
+- 環境変数 `GEMINI_API_KEY` は不要
+- 環境変数 `GCP_PROJECT_ID` が必須
+
+### v1.x（非推奨）
+- **YouTube API**: OAuth2認証
+- **Gemini API**: API Key認証
+- トークンファイル: `token.pickle`（pickle形式）
+- 環境変数 `GEMINI_API_KEY` が必要
+
+**後方互換性**: `CharacterRecognizer(use_oauth=False, api_key="...")` で旧方式も使用可能

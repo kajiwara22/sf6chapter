@@ -3,19 +3,15 @@ YouTube Data APIを使用したチャプター更新
 動画の説明文にチャプター情報を追加
 """
 
-import pickle
-from pathlib import Path
 from typing import Any
 
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+from ..auth import get_oauth_credentials
 
 
 class YouTubeChapterUpdater:
     """YouTube チャプター更新器"""
-
-    SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
     def __init__(
         self,
@@ -25,34 +21,14 @@ class YouTubeChapterUpdater:
         """
         Args:
             client_secrets_file: OAuth2クライアントシークレットファイルのパス
-            token_file: 認証トークン保存ファイルのパス
+            token_file: 認証トークン保存ファイルのパス（pickle形式）
         """
-        self.client_secrets_file = client_secrets_file
-        self.token_file = token_file
-        self.youtube = self._get_authenticated_service()
-
-    def _get_authenticated_service(self):
-        """認証済みYouTube Data APIサービスを取得"""
-        creds = None
-
-        # 保存済みトークンを読み込み
-        if Path(self.token_file).exists():
-            with open(self.token_file, "rb") as token:
-                creds = pickle.load(token)
-
-        # トークンが無効な場合は再認証
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(self.client_secrets_file, self.SCOPES)
-                creds = flow.run_local_server(port=0)
-
-            # トークンを保存
-            with open(self.token_file, "wb") as token:
-                pickle.dump(creds, token)
-
-        return build("youtube", "v3", credentials=creds)
+        # 共通のOAuth2認証を使用（Vertex AI / Gemini APIと共通）
+        creds = get_oauth_credentials(
+            client_secrets_file=client_secrets_file,
+            token_file=token_file,
+        )
+        self.youtube = build("youtube", "v3", credentials=creds)
 
     def get_video_info(self, video_id: str) -> dict[str, Any]:
         """

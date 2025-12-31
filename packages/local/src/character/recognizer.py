@@ -1,5 +1,5 @@
 """
-Gemini APIを使用したキャラクター認識
+Gemini APIを使用したキャラクター認識（Vertex AI経由）
 画像からSF6のキャラクター名を認識
 """
 
@@ -11,27 +11,57 @@ import numpy as np
 from google import genai
 from PIL import Image
 
+from ..auth import get_oauth_credentials
+
 
 class CharacterRecognizer:
-    """Gemini APIを使用したキャラクター認識器"""
+    """Gemini APIを使用したキャラクター認識器（Vertex AI経由）"""
 
     def __init__(
         self,
-        api_key: str | None = None,
         model_name: str = "gemini-2.5-flash-lite",
         aliases_path: str | None = None,
+        client_secrets_file: str = "client_secrets.json",
+        token_file: str = "token.pickle",
+        project_id: str | None = None,
+        location: str = "us-central1",
+        use_oauth: bool = True,
+        api_key: str | None = None,
     ):
         """
         Args:
-            api_key: Gemini API Key（省略時は環境変数GEMINI_API_KEYを使用）
             model_name: 使用するモデル名
             aliases_path: キャラクター名正規化マッピングファイルのパス
+            client_secrets_file: OAuth2クライアントシークレットファイルのパス
+            token_file: 認証トークン保存ファイルのパス（pickle形式）
+            project_id: Google Cloud プロジェクトID（省略時は環境変数GCP_PROJECT_IDを使用）
+            location: Vertex AIのロケーション（デフォルト: us-central1）
+            use_oauth: OAuth2認証を使用するか（Falseの場合はAPI Keyを使用）
+            api_key: Gemini API Key（use_oauth=Falseの場合に使用、省略時は環境変数GEMINI_API_KEYを使用）
         """
-        api_key = api_key or os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY must be set")
+        if use_oauth:
+            # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
+            project_id = project_id or os.environ.get("GCP_PROJECT_ID")
+            if not project_id:
+                raise ValueError("GCP_PROJECT_ID must be set when use_oauth=True")
 
-        self.client = genai.Client(api_key=api_key)
+            creds = get_oauth_credentials(
+                client_secrets_file=client_secrets_file,
+                token_file=token_file,
+            )
+            self.client = genai.Client(
+                vertexai=True,
+                project=project_id,
+                location=location,
+                credentials=creds,
+            )
+        else:
+            # API Key認証を使用（後方互換性のため）
+            api_key = api_key or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY must be set when use_oauth=False")
+            self.client = genai.Client(api_key=api_key)
+
         self.model_name = model_name
 
         # キャラクター名正規化マッピング読み込み
