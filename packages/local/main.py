@@ -11,14 +11,14 @@ from pathlib import Path
 from typing import Any
 
 # プロジェクトルートのconfigディレクトリをパスに追加
-project_root = Path(__file__).parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.character import CharacterRecognizer
 from src.detection import MatchDetection, TemplateMatcher
 from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import setup_logger
 from src.video import VideoDownloader
 from src.youtube import YouTubeChapterUpdater
 
@@ -36,6 +36,9 @@ class SF6ChapterProcessor:
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
         self.crop_region = (339, 886, 1748, 980)  # キャラクター名表示領域
 
+        # R2アップロードを有効にするかどうか（環境変数で制御）
+        self.enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
+
         # 除外テンプレート（Round 2, Final Round）
         self.reject_templates = [
             os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
@@ -46,7 +49,7 @@ class SF6ChapterProcessor:
         self.subscriber = PubSubSubscriber()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
         # Round 1表示領域（画面中央上部）
-        self.round1_search_region = (575, 333, 1500, 700)
+        self.round1_search_region = (575, 333, 1500, 800)
 
         self.matcher = TemplateMatcher(
             template_path=self.template_path,
@@ -60,7 +63,9 @@ class SF6ChapterProcessor:
         )
         self.recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
         self.youtube_updater = YouTubeChapterUpdater()
-        self.r2_uploader = R2Uploader()
+
+        # R2Uploaderはenable_r2がTrueの場合のみ初期化
+        self.r2_uploader = R2Uploader() if self.enable_r2 else None
 
     def process_video(self, message_data: dict[str, Any]) -> None:
         """
@@ -76,7 +81,7 @@ class SF6ChapterProcessor:
 
         logger.info("=" * 60)
         logger.info("Processing video: %s", video_id)
-        logger.info("Title: %s", message_data.get('title', 'N/A'))
+        logger.info("Title: %s", message_data.get("title", "N/A"))
         logger.info("=" * 60)
 
         try:
@@ -136,7 +141,7 @@ class SF6ChapterProcessor:
                     }
                     chapters.append(chapter)
 
-                    logger.info("  %s at %.1fs", chapter['title'], detection.timestamp)
+                    logger.info("  %s at %.1fs", chapter["title"], detection.timestamp)
 
                 except Exception:
                     logger.exception("Error recognizing characters for match %d", i)
@@ -146,39 +151,79 @@ class SF6ChapterProcessor:
             logger.info("[4/6] Updating YouTube chapters...")
             self.youtube_updater.update_video_description(video_id, chapters)
 
-            # 5. JSONデータをR2にアップロード
-            logger.info("[5/6] Uploading JSON data to R2...")
-            video_data = {
-                "videoId": video_id,
-                "title": message_data.get("title", ""),
-                "channelId": message_data.get("channelId", ""),
-                "channelTitle": message_data.get("channelTitle", ""),
-                "publishedAt": message_data.get("publishedAt", ""),
-                "processedAt": datetime.utcnow().isoformat() + "Z",
-                "chapters": chapters,
-                "detectionStats": {
-                    "totalFrames": 0,  # TODO: 実際のフレーム数
-                    "matchedFrames": len(detections),
-                },
-            }
+            # 5-6. R2アップロード処理（有効な場合のみ）
+            if self.enable_r2 and self.r2_uploader:
+                # 5. JSONデータをR2にアップロード
+                logger.info("[5/6] Uploading JSON data to R2...")
+                video_data = {
+                    "videoId": video_id,
+                    "title": message_data.get("title", ""),
+                    "channelId": message_data.get("channelId", ""),
+                    "channelTitle": message_data.get("channelTitle", ""),
+                    "publishedAt": message_data.get("publishedAt", ""),
+                    "processedAt": datetime.utcnow().isoformat() + "Z",
+                    "chapters": chapters,
+                    "detectionStats": {
+                        "totalFrames": 0,  # TODO: 実際のフレーム数
+                        "matchedFrames": len(detections),
+                    },
+                }
 
-            # 動画メタデータをアップロード
-            self.r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
+                # 動画メタデータをアップロード
+                self.r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
 
-            # 対戦データを個別にアップロード
-            for match in matches:
-                self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
+                # 対戦データを個別にアップロード
+                for match in matches:
+                    self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
 
-            # 6. Parquetファイルを更新
-            logger.info("[6/6] Updating Parquet files...")
-            self.r2_uploader.update_parquet_table([video_data], "videos.parquet")
-            self.r2_uploader.update_parquet_table(matches, "matches.parquet")
+                # 6. Parquetファイルを更新
+                logger.info("[6/6] Updating Parquet files...")
+                self.r2_uploader.update_parquet_table([video_data], "videos.parquet")
+                self.r2_uploader.update_parquet_table(matches, "matches.parquet")
+            else:
+                logger.info("[5/6] R2 upload disabled (ENABLE_R2=false)")
+                logger.info("[6/6] Skipping Parquet update")
+
+                # ローカルに保存
+                import json
+
+                output_dir = Path("./output")
+                output_dir.mkdir(exist_ok=True)
+
+                video_data = {
+                    "videoId": video_id,
+                    "title": message_data.get("title", ""),
+                    "channelId": message_data.get("channelId", ""),
+                    "channelTitle": message_data.get("channelTitle", ""),
+                    "publishedAt": message_data.get("publishedAt", ""),
+                    "processedAt": datetime.utcnow().isoformat() + "Z",
+                    "chapters": chapters,
+                    "detectionStats": {
+                        "totalFrames": 0,
+                        "matchedFrames": len(detections),
+                    },
+                }
+
+                # JSONファイルとして保存
+                video_json_path = output_dir / f"{video_id}_video.json"
+                with open(video_json_path, "w", encoding="utf-8") as f:
+                    json.dump(video_data, f, ensure_ascii=False, indent=2)
+                logger.info("   Saved video data: %s", video_json_path)
+
+                # 対戦データも保存
+                matches_json_path = output_dir / f"{video_id}_matches.json"
+                with open(matches_json_path, "w", encoding="utf-8") as f:
+                    json.dump(matches, f, ensure_ascii=False, indent=2)
+                logger.info("   Saved matches data: %s", matches_json_path)
 
             logger.info("")
             logger.info("✅ Successfully processed video: %s", video_id)
             logger.info("   - Detected %d matches", len(matches))
             logger.info("   - Created %d chapters", len(chapters))
-            logger.info("   - Uploaded to R2")
+            if self.enable_r2:
+                logger.info("   - Uploaded to R2")
+            else:
+                logger.info("   - Saved locally to ./output/")
 
         except Exception:
             logger.error("")
@@ -249,8 +294,8 @@ def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, s
         logger.info("   Processing match %d/%d...", i, len(detections))
         normalized, raw = recognizer.recognize_from_frame(detection.frame)
         results.append((normalized, raw))
-        logger.info("   ✅ %s VS %s", normalized.get('1p'), normalized.get('2p'))
-        logger.info("      (raw: %s vs %s)", raw.get('1p'), raw.get('2p'))
+        logger.info("   ✅ %s VS %s", normalized.get("1p"), normalized.get("2p"))
+        logger.info("      (raw: %s vs %s)", raw.get("1p"), raw.get("2p"))
 
     return results
 
@@ -355,7 +400,7 @@ def test_chapters(
 
     logger.info("Generated chapters:")
     for ch in chapters:
-        logger.info("   %ds - %s", ch['startTime'], ch['title'])
+        logger.info("   %ds - %s", ch["startTime"], ch["title"])
 
     # 実際に更新
     updater = YouTubeChapterUpdater()

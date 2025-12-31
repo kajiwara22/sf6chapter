@@ -58,7 +58,7 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜003）
+- [x] ADR作成（001〜004）
 - [ ] スキーマ定義 (`schema/`)
 - [ ] ローカル処理実装 (`packages/local/`)
 - [ ] GCP Functions実装 (`packages/gcp-functions/`)
@@ -85,6 +85,17 @@ sf6-chapter/
 
 ### 認証
 
+#### Google Cloud API
+
+- **すべてのAPI呼び出しでOAuth2認証を使用** (詳細: `docs/adr/004-oauth2-authentication-for-all-gcp-apis.md`)
+- `oauth.py` の `get_oauth_credentials()` で統一的に認証情報を取得
+- 環境変数 `GOOGLE_APPLICATION_CREDENTIALS` は使用しない
+- 対象API: YouTube Data API, Cloud Pub/Sub, Vertex AI (Gemini)
+- トークンは `token.pickle` に保存（pickle形式、パスは引数で変更可能）
+- クライアントシークレットは `client_secrets.json` から読み込み（パスは引数で変更可能）
+
+#### Cloudflare
+
 - Cloudflare Accessで自分のメールアドレスのみ許可
 - R2への直接アクセスは不可
 
@@ -99,3 +110,19 @@ sf6-chapter/
 - Node: pnpm使用
 - Cloudflare: wrangler CLI使用
 - GCP: gcloud CLI使用
+
+## ドキュメント管理
+
+### ADR (Architecture Decision Records)
+
+**管理場所**: `/docs/adr/`
+
+重要なアーキテクチャ決定はすべて `/docs/adr/` に記録します。
+
+**既存のADR**:
+- [001: クラウドサービス選定](docs/adr/001-cloud-service-selection.md)
+- [002: データ保存・検索基盤](docs/adr/002-data-storage-search.md)
+- [003: リポジトリ構成](docs/adr/003-repository-structure.md)
+- [004: OAuth2認証の統一](docs/adr/004-oauth2-authentication-for-all-gcp-apis.md)
+
+新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。

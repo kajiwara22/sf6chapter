@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "google-cloud-pubsub>=2.18.0",
-    "yt-dlp>=2024.0.0",
+    "yt-dlp>=2025.0.0",
     "opencv-python>=4.8.0",
     "google-genai>=1.0.0",
     "google-api-python-client>=2.100.0",

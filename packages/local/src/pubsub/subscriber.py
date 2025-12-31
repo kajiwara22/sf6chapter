@@ -11,6 +11,7 @@ from typing import Any
 
 from google.cloud import pubsub_v1
 
+from ..auth.oauth import get_oauth_credentials
 from ..utils.logger import get_logger
 
 logger = get_logger()
@@ -30,7 +31,11 @@ class PubSubSubscriber:
         if not self.project_id:
             raise ValueError("GCP_PROJECT_ID must be set")
 
-        self.subscriber = pubsub_v1.SubscriberClient()
+        # OAuth2認証情報を取得
+        credentials = get_oauth_credentials()
+
+        # 認証情報を使ってPub/Subクライアントを初期化
+        self.subscriber = pubsub_v1.SubscriberClient(credentials=credentials)
         self.subscription_path = self.subscriber.subscription_path(self.project_id, self.subscription_id)
 
     def pull_messages(
