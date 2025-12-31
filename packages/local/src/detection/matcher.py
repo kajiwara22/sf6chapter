@@ -8,6 +8,10 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from ..utils.logger import get_logger
+
+logger = get_logger()
+
 
 @dataclass
 class MatchDetection:
@@ -167,8 +171,8 @@ class TemplateMatcher:
         frame_count = start_frame
         prev_timestamp: float | None = None
 
-        print(f"Scanning video from {start_sec}s to {end_frame / fps:.1f}s...")
-        print(f"Threshold is {self.threshold}")
+        logger.info("Scanning video from %.1fs to %.1fs...", start_sec, end_frame / fps)
+        logger.info("Threshold is %.2f", self.threshold)
 
         while frame_count < end_frame:
             ret, frame = cap.read()
@@ -178,7 +182,7 @@ class TemplateMatcher:
             # 進捗表示（10秒ごと）
             if (frame_count - start_frame) % int(fps * 10) == 0:
                 progress = 100 * (frame_count - start_frame) / (end_frame - start_frame)
-                print(f"Progress: {progress:.1f}% ({frame_count - start_frame}/{end_frame - start_frame} frames)")
+                logger.info("Progress: %.1f%% (%d/%d frames)", progress, frame_count - start_frame, end_frame - start_frame)
 
             # frame_interval毎にマッチング
             if (frame_count - start_frame) % self.frame_interval == 0:
@@ -210,7 +214,7 @@ class TemplateMatcher:
                             break
 
                     if should_reject:
-                        print(f"Rejected match at {frame_count / fps:.1f}s - matched {reject_reason}")
+                        logger.info("Rejected match at %.1fs - matched %s", frame_count / fps, reject_reason)
                         frame_count += 1
                         continue
 
@@ -225,8 +229,9 @@ class TemplateMatcher:
                             )
 
                             if subsequent_reject_count >= self.post_check_reject_limit:
-                                print(
-                                    f"Rejected match at {timestamp:.1f}s - subsequent frames have {subsequent_reject_count} reject matches (limit: {self.post_check_reject_limit})"
+                                logger.info(
+                                    "Rejected match at %.1fs - subsequent frames have %d reject matches (limit: %d)",
+                                    timestamp, subsequent_reject_count, self.post_check_reject_limit
                                 )
                                 # 誤検知判定されたら、次のチェックまでスキップ
                                 prev_timestamp = timestamp
@@ -249,12 +254,12 @@ class TemplateMatcher:
                         )
                         detections.append(detection)
 
-                        print(f"Match detected at {timestamp:.1f}s (confidence: {max_val:.3f})")
+                        logger.info("Match detected at %.1fs (confidence: %.3f)", timestamp, max_val)
 
             frame_count += 1
 
         cap.release()
-        print(f"Detection complete. Found {len(detections)} matches.")
+        logger.info("Detection complete. Found %d matches.", len(detections))
 
         return detections
 

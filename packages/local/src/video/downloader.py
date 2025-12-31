@@ -8,6 +8,10 @@ from typing import Any
 
 import yt_dlp
 
+from ..utils.logger import get_logger
+
+logger = get_logger()
+
 
 class VideoDownloader:
     """YouTube動画ダウンローダー"""
@@ -44,7 +48,7 @@ class VideoDownloader:
         if skip_if_exists:
             existing_file = self._find_existing_file(video_id)
             if existing_file:
-                print(f"既存ファイルを使用: {existing_file}")
+                logger.info("既存ファイルを使用: %s", existing_file)
                 return str(existing_file)
 
         ydl_opts: dict[str, Any] = {

@@ -11,6 +11,10 @@ from typing import Any
 
 from google.cloud import pubsub_v1
 
+from ..utils.logger import get_logger
+
+logger = get_logger()
+
 
 class PubSubSubscriber:
     """Pub/Subサブスクライバー"""
@@ -65,8 +69,8 @@ class PubSubSubscriber:
                     # 処理成功したメッセージをACK対象に追加
                     ack_ids.append(received_message.ack_id)
 
-                except Exception as e:
-                    print(f"Error processing message: {e}")
+                except Exception:
+                    logger.exception("Error processing message")
                     # エラーが発生したメッセージは再処理されるようにACKしない
                     continue
 
@@ -78,12 +82,12 @@ class PubSubSubscriber:
                         "ack_ids": ack_ids,
                     }
                 )
-                print(f"Acknowledged {len(ack_ids)} messages")
+                logger.info("Acknowledged %d messages", len(ack_ids))
 
         except TimeoutError:
-            print("No messages received within timeout period")
-        except Exception as e:
-            print(f"Error pulling messages: {e}")
+            logger.info("No messages received within timeout period")
+        except Exception:
+            logger.exception("Error pulling messages")
             raise
 
     def listen_streaming(
@@ -102,16 +106,16 @@ class PubSubSubscriber:
                 message_data = json.loads(message.data.decode("utf-8"))
                 callback(message_data)
                 message.ack()
-            except Exception as e:
-                print(f"Error processing message: {e}")
+            except Exception:
+                logger.exception("Error processing message")
                 message.nack()
 
         streaming_pull_future = self.subscriber.subscribe(self.subscription_path, callback=message_callback)
 
-        print(f"Listening for messages on {self.subscription_path}...")
+        logger.info("Listening for messages on %s...", self.subscription_path)
 
         try:
             streaming_pull_future.result()
         except KeyboardInterrupt:
             streaming_pull_future.cancel()
-            print("Stopped listening for messages")
+            logger.info("Stopped listening for messages")

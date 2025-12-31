@@ -12,6 +12,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from botocore.exceptions import ClientError
 
+from ..utils.logger import get_logger
+
+logger = get_logger()
+
 
 class R2Uploader:
     """Cloudflare R2アップローダー"""
@@ -74,10 +78,10 @@ class R2Uploader:
                 Body=json_str.encode("utf-8"),
                 ContentType="application/json",
             )
-            print(f"Uploaded JSON: {key}")
+            logger.info("Uploaded JSON: %s", key)
             return key
-        except ClientError as e:
-            print(f"Error uploading JSON to R2: {e}")
+        except ClientError:
+            logger.exception("Error uploading JSON to R2: %s", key)
             raise
 
     def upload_parquet(
@@ -114,10 +118,10 @@ class R2Uploader:
                 Body=buffer.getvalue(),
                 ContentType="application/octet-stream",
             )
-            print(f"Uploaded Parquet: {key}")
+            logger.info("Uploaded Parquet: %s", key)
             return key
-        except ClientError as e:
-            print(f"Error uploading Parquet to R2: {e}")
+        except ClientError:
+            logger.exception("Error uploading Parquet to R2: %s", key)
             raise
 
     def append_to_json_array(

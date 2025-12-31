@@ -12,6 +12,9 @@ from google import genai
 from PIL import Image
 
 from ..auth import get_oauth_credentials
+from ..utils.logger import get_logger
+
+logger = get_logger()
 
 
 class CharacterRecognizer:
@@ -161,8 +164,8 @@ class CharacterRecognizer:
             try:
                 result = self.recognize_from_frame(frame)
                 results.append(result)
-            except Exception as e:
-                print(f"Error recognizing frame {i}: {e}")
+            except Exception:
+                logger.exception("Error recognizing frame %d", i)
                 results.append(({}, {}))
 
         return results

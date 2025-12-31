@@ -18,8 +18,12 @@ from src.character import CharacterRecognizer
 from src.detection import MatchDetection, TemplateMatcher
 from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
+from src.utils.logger import setup_logger, get_logger
 from src.video import VideoDownloader
 from src.youtube import YouTubeChapterUpdater
+
+# ロガー初期化
+logger = setup_logger()
 
 
 class SF6ChapterProcessor:
@@ -67,34 +71,34 @@ class SF6ChapterProcessor:
         """
         video_id = message_data.get("videoId")
         if not video_id:
-            print("Error: videoId not found in message")
+            logger.error("videoId not found in message")
             return
 
-        print(f"\n{'=' * 60}")
-        print(f"Processing video: {video_id}")
-        print(f"Title: {message_data.get('title', 'N/A')}")
-        print(f"{'=' * 60}\n")
+        logger.info("=" * 60)
+        logger.info("Processing video: %s", video_id)
+        logger.info("Title: %s", message_data.get('title', 'N/A'))
+        logger.info("=" * 60)
 
         try:
             # 1. 動画ダウンロード
-            print("[1/6] Downloading video...")
+            logger.info("[1/6] Downloading video...")
             video_path = self.downloader.download(video_id)
-            print(f"Downloaded: {video_path}")
+            logger.info("Downloaded: %s", video_path)
 
             # 2. テンプレートマッチングで対戦シーンを検出
-            print("[2/6] Detecting match scenes...")
+            logger.info("[2/6] Detecting match scenes...")
             detections = self.matcher.detect_matches(
                 video_path=video_path,
                 crop_region=self.crop_region,
             )
-            print(f"Found {len(detections)} matches")
+            logger.info("Found %d matches", len(detections))
 
             if not detections:
-                print("No matches found, skipping video")
+                logger.info("No matches found, skipping video")
                 return
 
             # 3. Gemini APIでキャラクター認識
-            print("[3/6] Recognizing characters...")
+            logger.info("[3/6] Recognizing characters...")
             matches: list[dict[str, Any]] = []
             chapters: list[dict[str, Any]] = []
 
@@ -132,18 +136,18 @@ class SF6ChapterProcessor:
                     }
                     chapters.append(chapter)
 
-                    print(f"  {chapter['title']} at {detection.timestamp:.1f}s")
+                    logger.info("  %s at %.1fs", chapter['title'], detection.timestamp)
 
-                except Exception as e:
-                    print(f"Error recognizing characters for match {i}: {e}")
+                except Exception:
+                    logger.exception("Error recognizing characters for match %d", i)
                     continue
 
             # 4. YouTube チャプター更新
-            print("[4/6] Updating YouTube chapters...")
+            logger.info("[4/6] Updating YouTube chapters...")
             self.youtube_updater.update_video_description(video_id, chapters)
 
             # 5. JSONデータをR2にアップロード
-            print("[5/6] Uploading JSON data to R2...")
+            logger.info("[5/6] Uploading JSON data to R2...")
             video_data = {
                 "videoId": video_id,
                 "title": message_data.get("title", ""),
@@ -166,24 +170,23 @@ class SF6ChapterProcessor:
                 self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
 
             # 6. Parquetファイルを更新
-            print("[6/6] Updating Parquet files...")
+            logger.info("[6/6] Updating Parquet files...")
             self.r2_uploader.update_parquet_table([video_data], "videos.parquet")
             self.r2_uploader.update_parquet_table(matches, "matches.parquet")
 
-            print(f"\n✅ Successfully processed video: {video_id}")
-            print(f"   - Detected {len(matches)} matches")
-            print(f"   - Created {len(chapters)} chapters")
-            print("   - Uploaded to R2")
+            logger.info("")
+            logger.info("✅ Successfully processed video: %s", video_id)
+            logger.info("   - Detected %d matches", len(matches))
+            logger.info("   - Created %d chapters", len(chapters))
+            logger.info("   - Uploaded to R2")
 
-        except Exception as e:
-            print(f"\n❌ Error processing video {video_id}: {e}")
-            import traceback
-
-            traceback.print_exc()
+        except Exception:
+            logger.error("")
+            logger.exception("❌ Error processing video %s", video_id)
 
     def run_once(self) -> None:
         """1回だけPub/SubからPullして処理"""
-        print("Pulling messages from Pub/Sub...")
+        logger.info("Pulling messages from Pub/Sub...")
         self.subscriber.pull_messages(
             callback=self.process_video,
             max_messages=10,
@@ -192,22 +195,22 @@ class SF6ChapterProcessor:
 
     def run_forever(self) -> None:
         """常駐モードで実行"""
-        print("Starting streaming mode...")
+        logger.info("Starting streaming mode...")
         self.subscriber.listen_streaming(callback=self.process_video)
 
 
 def test_download(video_id: str) -> str:
     """動画ダウンロードのテスト（既存ファイルがあれば再利用）"""
-    print(f"[TEST] Downloading video: {video_id}")
+    logger.info("[TEST] Downloading video: %s", video_id)
     downloader = VideoDownloader(download_dir="./download")
     video_path = downloader.download(video_id, skip_if_exists=True)
-    print(f"✅ Downloaded: {video_path}")
+    logger.info("✅ Downloaded: %s", video_path)
     return video_path
 
 
 def test_detection(video_path: str) -> list[MatchDetection]:
     """対戦シーン検出のテスト"""
-    print(f"[TEST] Detecting matches in: {video_path}")
+    logger.info("[TEST] Detecting matches in: %s", video_path)
     template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
 
     # Round 1表示領域（画面中央上部）
@@ -229,25 +232,25 @@ def test_detection(video_path: str) -> list[MatchDetection]:
     )
     crop_region = (339, 886, 1748, 980)
     detections = matcher.detect_matches(video_path=video_path, crop_region=crop_region)
-    print(f"✅ Found {len(detections)} matches")
+    logger.info("✅ Found %d matches", len(detections))
     for i, det in enumerate(detections, 1):
-        print(f"   {i}. {det.timestamp:.1f}s (confidence: {det.confidence:.3f})")
+        logger.info("   %d. %.1fs (confidence: %.3f)", i, det.timestamp, det.confidence)
     return detections
 
 
 def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, str], dict[str, str]]]:
     """キャラクター認識のテスト"""
-    print(f"[TEST] Recognizing characters from {len(detections)} frames")
+    logger.info("[TEST] Recognizing characters from %d frames", len(detections))
     project_root = Path(__file__).parent.parent.parent
     recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
 
     results = []
     for i, detection in enumerate(detections, 1):
-        print(f"   Processing match {i}/{len(detections)}...")
+        logger.info("   Processing match %d/%d...", i, len(detections))
         normalized, raw = recognizer.recognize_from_frame(detection.frame)
         results.append((normalized, raw))
-        print(f"   ✅ {normalized.get('1p')} VS {normalized.get('2p')}")
-        print(f"      (raw: {raw.get('1p')} vs {raw.get('2p')})")
+        logger.info("   ✅ %s VS %s", normalized.get('1p'), normalized.get('2p'))
+        logger.info("      (raw: %s vs %s)", raw.get('1p'), raw.get('2p'))
 
     return results
 
@@ -284,7 +287,7 @@ def save_chapters_to_file(
     with open(chapter_file, "w", encoding="utf-8") as f:
         json.dump({"videoId": video_id, "chapters": chapters}, f, ensure_ascii=False, indent=2)
 
-    print(f"✅ Saved chapters to: {chapter_file}")
+    logger.info("✅ Saved chapters to: %s", chapter_file)
     return chapter_file
 
 
@@ -307,7 +310,7 @@ def load_chapters_from_file(video_id: str) -> list[dict[str, Any]] | None:
     with open(chapter_file, encoding="utf-8") as f:
         data = json.load(f)
 
-    print(f"✅ Loaded chapters from: {chapter_file}")
+    logger.info("✅ Loaded chapters from: %s", chapter_file)
     return data["chapters"]
 
 
@@ -326,7 +329,7 @@ def test_chapters(
         results: 認識結果リスト（use_saved=Falseの場合は必須）
         use_saved: 保存済みチャプターファイルを使用するか
     """
-    print(f"[TEST] Updating YouTube chapters for video: {video_id}")
+    logger.info("[TEST] Updating YouTube chapters for video: %s", video_id)
 
     if use_saved:
         # 保存済みファイルから読み込み
@@ -350,14 +353,14 @@ def test_chapters(
         # 中間ファイルに保存
         save_chapters_to_file(video_id, detections, results)
 
-    print("Generated chapters:")
+    logger.info("Generated chapters:")
     for ch in chapters:
-        print(f"   {ch['startTime']}s - {ch['title']}")
+        logger.info("   %ds - %s", ch['startTime'], ch['title'])
 
     # 実際に更新
     updater = YouTubeChapterUpdater()
     updater.update_video_description(video_id, chapters)
-    print("✅ Updated YouTube description")
+    logger.info("✅ Updated YouTube description")
 
 
 def main():

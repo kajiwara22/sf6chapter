@@ -8,6 +8,9 @@ from typing import Any
 from googleapiclient.discovery import build
 
 from ..auth import get_oauth_credentials
+from ..utils.logger import get_logger
+
+logger = get_logger()
 
 
 class YouTubeChapterUpdater:
@@ -157,5 +160,5 @@ class YouTubeChapterUpdater:
         )
         request.execute()
 
-        print(f"Updated description for video {video_id}")
-        print(f"Added {len(chapters)} chapters")
+        logger.info("Updated description for video %s", video_id)
+        logger.info("Added %d chapters", len(chapters))
