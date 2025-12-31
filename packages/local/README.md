@@ -125,14 +125,21 @@ uv run python main.py --mode test --test-step recognize --video-path ./download/
 #### 4. YouTubeチャプター更新のみ
 
 ```bash
-# video-idのみ指定（既存ファイル自動検索、なければダウンロード）
+# 通常: 検出・認識を実行してチャプター更新
 uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg
+
+# 保存済みチャプターファイルを使用（Gemini API課金を避ける）
+uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --use-saved-chapters
 ```
 
 **動作**:
-1. 既存ファイルを検索（パターン: `*[video_id].{mp4,webm,mkv}`）
-2. 見つかればそれを使用、なければダウンロード
-3. 対戦シーン検出 → キャラクター認識 → チャプター更新を実行
+1. 通常モード: 既存ファイルを検索 → 検出 → 認識 → チャプター生成 → **中間ファイル保存** → YouTube更新
+2. `--use-saved-chapters`: 保存済み中間ファイル（`chapters/[video_id]_chapters.json`）を読み込んでYouTube更新のみ実行
+
+**中間ファイルの利点**:
+- Gemini APIの課金を避けてチャプターのテスト・調整が可能
+- 認識結果を保存して後から再利用
+- チャプタータイトルの手動編集が可能
 
 #### 5. 全ステップを順次実行
 
@@ -146,8 +153,35 @@ uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
 
 - `--video-id`: YouTube動画ID（推奨）
 - `--video-path`: ダウンロード済みファイルのパス（省略可、上級者向け）
+- `--use-saved-chapters`: 保存済みチャプターファイルを使用（`--test-step chapters`のみ）
 
 **推奨**: 基本的には `--video-id` のみを指定すれば、既存ファイルの再利用とダウンロードを自動判断します。
+
+### チャプター中間ファイル
+
+チャプター情報は `chapters/[video_id]_chapters.json` に自動保存されます。
+
+**ファイル形式**:
+```json
+{
+  "videoId": "YFQU_kkhZtg",
+  "chapters": [
+    {
+      "startTime": 47,
+      "title": "第01戦 Ryu VS Ken",
+      "normalized": {"1p": "Ryu", "2p": "Ken"},
+      "raw": {"1p": "リュウ", "2p": "ケン"}
+    }
+  ]
+}
+```
+
+**使用例**:
+1. 初回実行: `uv run python main.py --mode test --test-step chapters --video-id XXX`
+   - チャプターファイルが自動保存される
+2. タイトル調整: `chapters/XXX_chapters.json` を手動編集
+3. 再実行: `uv run python main.py --mode test --test-step chapters --video-id XXX --use-saved-chapters`
+   - Gemini APIを呼ばずに、編集済みチャプターでYouTube更新
 
 ## モジュール構成
 

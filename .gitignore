@@ -26,6 +26,9 @@ client_secrets.json
 # download
 download/
 
+# chapters (intermediate files)
+chapters/
+
 # mise
 .mise.toml
 

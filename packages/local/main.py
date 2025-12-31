@@ -252,19 +252,103 @@ def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, s
     return results
 
 
-def test_chapters(
+def save_chapters_to_file(
     video_id: str, detections: list[MatchDetection], results: list[tuple[dict[str, str], dict[str, str]]]
-) -> None:
-    """YouTubeチャプター更新のテスト"""
-    print(f"[TEST] Updating YouTube chapters for video: {video_id}")
+) -> str:
+    """
+    チャプターデータを中間ファイルに保存
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト
+        results: 認識結果リスト
+
+    Returns:
+        保存したファイルのパス
+    """
+    import json
 
     chapters = []
-    for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
+    for i, (detection, (normalized, raw)) in enumerate(zip(detections, results, strict=False), 1):
         chapter = {
             "startTime": int(detection.timestamp),
             "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+            "normalized": normalized,
+            "raw": raw,
         }
         chapters.append(chapter)
+
+    chapter_file = f"./chapters/{video_id}_chapters.json"
+    Path(chapter_file).parent.mkdir(parents=True, exist_ok=True)
+
+    with open(chapter_file, "w", encoding="utf-8") as f:
+        json.dump({"videoId": video_id, "chapters": chapters}, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Saved chapters to: {chapter_file}")
+    return chapter_file
+
+
+def load_chapters_from_file(video_id: str) -> list[dict[str, Any]] | None:
+    """
+    中間ファイルからチャプターデータを読み込み
+
+    Args:
+        video_id: YouTube動画ID
+
+    Returns:
+        チャプターリスト（ファイルが存在しない場合はNone）
+    """
+    import json
+
+    chapter_file = f"./chapters/{video_id}_chapters.json"
+    if not Path(chapter_file).exists():
+        return None
+
+    with open(chapter_file, encoding="utf-8") as f:
+        data = json.load(f)
+
+    print(f"✅ Loaded chapters from: {chapter_file}")
+    return data["chapters"]
+
+
+def test_chapters(
+    video_id: str,
+    detections: list[MatchDetection] | None = None,
+    results: list[tuple[dict[str, str], dict[str, str]]] | None = None,
+    use_saved: bool = False,
+) -> None:
+    """
+    YouTubeチャプター更新のテスト
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト（use_saved=Falseの場合は必須）
+        results: 認識結果リスト（use_saved=Falseの場合は必須）
+        use_saved: 保存済みチャプターファイルを使用するか
+    """
+    print(f"[TEST] Updating YouTube chapters for video: {video_id}")
+
+    if use_saved:
+        # 保存済みファイルから読み込み
+        chapters_data = load_chapters_from_file(video_id)
+        if not chapters_data:
+            raise FileNotFoundError(f"Chapter file not found for video: {video_id}")
+        chapters = [{"startTime": ch["startTime"], "title": ch["title"]} for ch in chapters_data]
+    else:
+        # 検出・認識結果から生成
+        if not detections or not results:
+            raise ValueError("detections and results are required when use_saved=False")
+
+        chapters = []
+        for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
+            chapter = {
+                "startTime": int(detection.timestamp),
+                "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+            }
+            chapters.append(chapter)
+
+        # 中間ファイルに保存
+        save_chapters_to_file(video_id, detections, results)
 
     print("Generated chapters:")
     for ch in chapters:
@@ -303,6 +387,11 @@ def main():
     parser.add_argument(
         "--video-path",
         help="Path to downloaded video file (skip download step)",
+    )
+    parser.add_argument(
+        "--use-saved-chapters",
+        action="store_true",
+        help="Use saved chapter file instead of running detection/recognition (only for --test-step chapters)",
     )
 
     args = parser.parse_args()
@@ -343,13 +432,19 @@ def main():
         if args.test_step in ["chapters", "all"]:
             if not args.video_id:
                 parser.error("--video-id is required for chapters test")
-            if not detections or not results:
-                if not video_path:
-                    # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
-                    video_path = test_download(args.video_id)
-                detections = test_detection(video_path)
-                results = test_recognition(detections)
-            test_chapters(args.video_id, detections, results)
+
+            if args.use_saved_chapters:
+                # 保存済みチャプターファイルを使用
+                test_chapters(args.video_id, use_saved=True)
+            else:
+                # 通常の処理（検出・認識を実行）
+                if not detections or not results:
+                    if not video_path:
+                        # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
+                        video_path = test_download(args.video_id)
+                    detections = test_detection(video_path)
+                    results = test_recognition(detections)
+                test_chapters(args.video_id, detections, results)
 
         return
 
