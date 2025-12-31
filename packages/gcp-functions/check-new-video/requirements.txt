@@ -1,3 +1,5 @@
 functions-framework==3.*
 google-cloud-pubsub==2.18.*
 google-api-python-client==2.100.*
+google-cloud-firestore==2.14.*
+google-auth==2.27.*
