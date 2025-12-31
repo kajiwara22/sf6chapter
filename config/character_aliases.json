@@ -1,106 +1,126 @@
 {
   "$schema": "../schema/character_aliases.schema.json",
-  "description": "SF6キャラクター名の正規化マッピング（Gemini API認識結果 → 正規名）",
+  "description": "SF6キャラクター名の正規化マッピング（Gemini API認識結果 → 正規名）日本語表記優先・全て大文字",
   "characters": {
     "Ryu": {
-      "canonical": "Ryu",
-      "aliases": ["ryu", "リュウ", "RYU", "Ryuu"]
+      "canonical": "RYU",
+      "aliases": ["ryu", "リュウ", "RYU", "Ryuu", "Ryu"]
     },
     "Ken": {
-      "canonical": "Ken",
-      "aliases": ["ken", "ケン", "KEN"]
+      "canonical": "KEN",
+      "aliases": ["ken", "ケン", "KEN", "Ken"]
     },
     "Chun-Li": {
-      "canonical": "Chun-Li",
-      "aliases": ["chun-li", "chunli", "chun li", "春麗", "ChunLi", "CHUN-LI"]
+      "canonical": "CHUN-LI",
+      "aliases": ["chun-li", "chunli", "chun li", "春麗", "ChunLi", "CHUN-LI", "Chun-Li"]
     },
     "Guile": {
-      "canonical": "Guile",
-      "aliases": ["guile", "ガイル", "GUILE"]
+      "canonical": "GUILE",
+      "aliases": ["guile", "ガイル", "GUILE", "Guile"]
     },
     "Zangief": {
-      "canonical": "Zangief",
-      "aliases": ["zangief", "ザンギエフ", "ZANGIEF"]
+      "canonical": "ZANGIEF",
+      "aliases": ["zangief", "ザンギエフ", "ZANGIEF", "Zangief"]
     },
     "Dhalsim": {
-      "canonical": "Dhalsim",
-      "aliases": ["dhalsim", "ダルシム", "DHALSIM"]
+      "canonical": "DHALSIM",
+      "aliases": ["dhalsim", "ダルシム", "DHALSIM", "Dhalsim"]
     },
     "E.Honda": {
-      "canonical": "E.Honda",
-      "aliases": ["e.honda", "honda", "本田", "E Honda", "HONDA"]
+      "canonical": "E.HONDA",
+      "aliases": ["e.honda", "honda", "本田", "E Honda", "HONDA", "E.Honda"]
     },
     "Blanka": {
-      "canonical": "Blanka",
-      "aliases": ["blanka", "ブランカ", "BLANKA"]
+      "canonical": "BLANKA",
+      "aliases": ["blanka", "ブランカ", "BLANKA", "Blanka"]
     },
     "JP": {
       "canonical": "JP",
-      "aliases": ["jp", "J.P.", "J.P", "ジェイピー"]
+      "aliases": ["jp", "J.P.", "J.P", "ジェイピー", "JP"]
     },
     "Juri": {
-      "canonical": "Juri",
-      "aliases": ["juri", "ジュリ", "JURI"]
+      "canonical": "JURI",
+      "aliases": ["juri", "ジュリ", "JURI", "Juri"]
     },
     "Kimberly": {
-      "canonical": "Kimberly",
-      "aliases": ["kimberly", "キンバリー", "KIMBERLY"]
+      "canonical": "KIMBERLY",
+      "aliases": ["kimberly", "キンバリー", "KIMBERLY", "Kimberly"]
     },
     "Lily": {
-      "canonical": "Lily",
-      "aliases": ["lily", "リリー", "LILY"]
+      "canonical": "LILY",
+      "aliases": ["lily", "リリー", "LILY", "Lily"]
     },
     "Manon": {
-      "canonical": "Manon",
-      "aliases": ["manon", "マノン", "MANON"]
+      "canonical": "MANON",
+      "aliases": ["manon", "マノン", "MANON", "Manon"]
     },
     "Marisa": {
-      "canonical": "Marisa",
-      "aliases": ["marisa", "マリーザ", "MARISA"]
+      "canonical": "MARISA",
+      "aliases": ["marisa", "マリーザ", "MARISA", "Marisa"]
     },
     "Dee Jay": {
-      "canonical": "Dee Jay",
-      "aliases": ["dee jay", "deejay", "ディージェイ", "DeeJay", "DEE JAY"]
+      "canonical": "DEE JAY",
+      "aliases": ["dee jay", "deejay", "ディージェイ", "DeeJay", "DEE JAY", "Dee Jay"]
     },
     "Cammy": {
-      "canonical": "Cammy",
-      "aliases": ["cammy", "キャミィ", "CAMMY"]
+      "canonical": "CAMMY",
+      "aliases": ["cammy", "キャミィ", "CAMMY", "Cammy"]
     },
     "Luke": {
-      "canonical": "Luke",
-      "aliases": ["luke", "ルーク", "LUKE"]
+      "canonical": "LUKE",
+      "aliases": ["luke", "ルーク", "LUKE", "Luke"]
     },
     "Jamie": {
-      "canonical": "Jamie",
-      "aliases": ["jamie", "ジェイミー", "JAMIE"]
+      "canonical": "JAMIE",
+      "aliases": ["jamie", "ジェイミー", "JAMIE", "Jamie"]
     },
     "A.K.I.": {
       "canonical": "A.K.I.",
-      "aliases": ["aki", "a.k.i", "A.K.I", "アキ", "AKI"]
+      "aliases": ["aki", "a.k.i", "A.K.I", "アキ", "AKI", "A.K.I."]
     },
     "Ed": {
-      "canonical": "Ed",
-      "aliases": ["ed", "エド", "ED"]
+      "canonical": "ED",
+      "aliases": ["ed", "エド", "ED", "Ed"]
     },
     "Rashid": {
-      "canonical": "Rashid",
-      "aliases": ["rashid", "ラシード", "RASHID"]
+      "canonical": "RASHID",
+      "aliases": ["rashid", "ラシード", "RASHID", "Rashid"]
     },
     "Akuma": {
-      "canonical": "Akuma",
-      "aliases": ["akuma", "豪鬼", "AKUMA", "Gouki"]
+      "canonical": "GOUKI",
+      "aliases": ["akuma", "豪鬼", "AKUMA", "Gouki", "Akuma", "GOUKI"]
     },
     "M.Bison": {
-      "canonical": "M.Bison",
-      "aliases": ["m.bison", "bison", "ベガ", "M Bison", "BISON", "Vega"]
+      "canonical": "VEGA",
+      "aliases": ["m.bison", "bison", "ベガ", "M Bison", "BISON", "Vega", "M.Bison", "VEGA"]
     },
     "Terry": {
-      "canonical": "Terry",
-      "aliases": ["terry", "テリー", "TERRY", "Terry Bogard"]
+      "canonical": "TERRY",
+      "aliases": ["terry", "テリー", "TERRY", "Terry Bogard", "Terry"]
     },
     "Mai": {
-      "canonical": "Mai",
-      "aliases": ["mai", "マイ", "MAI", "Mai Shiranui", "不知火舞"]
+      "canonical": "MAI",
+      "aliases": ["mai", "マイ", "MAI", "Mai Shiranui", "不知火舞", "Mai"]
+    },
+    "Sagat": {
+      "canonical": "SAGAT",
+      "aliases": ["sagat", "サガット", "SAGAT", "Sagat"]
+    },
+    "Alex": {
+      "canonical": "ALEX",
+      "aliases": ["alex", "アレックス", "ALEX", "Alex"]
+    },
+    "C.Viper": {
+      "canonical": "C.VIPER",
+      "aliases": ["c.viper", "viper", "cviper", "ヴァイパー", "バイパー", "C Viper", "C.Viper", "VIPER", "C.VIPER"]
+    },
+    "Ingrid": {
+      "canonical": "INGRID",
+      "aliases": ["ingrid", "イングリット", "INGRID", "Ingrid"]
+    },
+    "Elena": {
+      "canonical": "ELENA",
+      "aliases": ["elena", "エレナ", "ELENA", "Elena"]
     }
   }
 }
