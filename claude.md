@@ -59,16 +59,16 @@ sf6-chapter/
 
 - [x] アーキテクチャ設計完了
 - [x] ADR作成（001〜004）
-- [ ] スキーマ定義 (`schema/`)
-- [*] ローカル処理実装 (`packages/local/`)
-- [ ] GCP Functions実装 (`packages/gcp-functions/`)
+- [x] スキーマ定義 (`schema/`)
+- [x] ローカル処理実装 (`packages/local/`)
+- [x] GCP Functions実装 (`packages/gcp-functions/`)
 - [ ] Webフロントエンド実装 (`packages/web/`)
 
 ## 次のタスク
 
-1. **スキーマ定義**: `schema/video.schema.json`, `schema/match.schema.json` を作成
-2. **各パッケージの初期化**: `pyproject.toml`, `package.json`, `wrangler.toml`
-3. **既存コードの移行**: https://github.com/kajiwara22/sf6chapter から `packages/local/` へ
+1. **Web Pages Functions実装**: R2からParquetデータ取得API、DuckDB-WASMクエリ
+2. **Webフロントエンド実装**: 検索UI、データ表示、Cloudflare Access連携
+3. **統合テストとデプロイ**: エンドツーエンドテスト、本番デプロイ
 
 ## 重要な設計判断
 
