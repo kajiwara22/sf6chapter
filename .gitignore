@@ -45,9 +45,6 @@ token.pickle
 # temp Output
 packages/local/*/*.json
 
-# uv
-uv.lock
-
 # pytest
 .coverage
 htmlcov/
