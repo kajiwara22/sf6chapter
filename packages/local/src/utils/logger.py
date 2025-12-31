@@ -1,12 +1,11 @@
 """ログ設定モジュール
 
-標準出力と日時ごとのログファイルに同時出力する。
+標準出力と起動時刻ベースのログファイルに同時出力する。
 """
 
 import logging
 from pathlib import Path
 from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
 
 
 def setup_logger(name: str = "sf6-chapter", log_dir: str = "logs") -> logging.Logger:
@@ -42,19 +41,14 @@ def setup_logger(name: str = "sf6-chapter", log_dir: str = "logs") -> logging.Lo
     log_path = Path(log_dir)
     log_path.mkdir(parents=True, exist_ok=True)
 
-    # ファイルハンドラ（日次ローテーション）
-    log_file = log_path / f"{name}.log"
-    file_handler = TimedRotatingFileHandler(
-        log_file,
-        when="midnight",  # 深夜0時にローテーション
-        interval=1,
-        backupCount=30,  # 30日分保持
-        encoding="utf-8"
-    )
+    # 起動時刻をファイル名に含める
+    startup_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_path / f"{name}_{startup_time}.log"
+
+    # ファイルハンドラ
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
-    # ローテーション時のファイル名に日付を付与
-    file_handler.suffix = "%Y%m%d"
     logger.addHandler(file_handler)
 
     return logger
