@@ -3,3 +3,4 @@ google-cloud-pubsub==2.18.*
 google-api-python-client==2.100.*
 google-cloud-firestore==2.14.*
 google-auth==2.27.*
+google-cloud-secret-manager==2.16.*

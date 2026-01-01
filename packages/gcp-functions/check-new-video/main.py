@@ -25,7 +25,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
 import functions_framework
-from google.cloud import pubsub_v1, firestore
+from google.cloud import pubsub_v1, firestore, secretmanager
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -50,6 +51,8 @@ FIRESTORE_COLLECTION = "processed_videos"
 # グローバルクライアント（再利用のため）
 _firestore_client: Optional[firestore.Client] = None
 _pubsub_publisher: Optional[pubsub_v1.PublisherClient] = None
+_secret_manager_client: Optional[secretmanager.SecretManagerServiceClient] = None
+_oauth_credentials: Optional[Credentials] = None
 
 
 def get_firestore_client() -> firestore.Client:
@@ -66,6 +69,62 @@ def get_pubsub_publisher() -> pubsub_v1.PublisherClient:
     if _pubsub_publisher is None:
         _pubsub_publisher = pubsub_v1.PublisherClient()
     return _pubsub_publisher
+
+
+def get_secret_manager_client() -> secretmanager.SecretManagerServiceClient:
+    """Secret Managerクライアントを取得（シングルトン）"""
+    global _secret_manager_client
+    if _secret_manager_client is None:
+        _secret_manager_client = secretmanager.SecretManagerServiceClient()
+    return _secret_manager_client
+
+
+def get_secret(secret_name: str) -> str:
+    """Secret Managerからシークレットを取得"""
+    try:
+        client = get_secret_manager_client()
+        name = f"projects/{PROJECT_ID}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(request={"name": name})
+        secret_value = response.payload.data.decode("UTF-8")
+        logger.info(f"Successfully retrieved secret: {secret_name}")
+        return secret_value
+    except Exception as e:
+        logger.error(f"Failed to retrieve secret {secret_name}: {e}")
+        raise
+
+
+def get_oauth_credentials() -> Credentials:
+    """OAuth2認証情報を取得（Secret Managerから）"""
+    global _oauth_credentials
+
+    if _oauth_credentials is not None:
+        logger.info("Using cached OAuth2 credentials")
+        return _oauth_credentials
+
+    try:
+        # Secret Managerからクレデンシャルを取得
+        client_id = get_secret("youtube-client-id")
+        client_secret = get_secret("youtube-client-secret")
+        refresh_token = get_secret("youtube-refresh-token")
+
+        # OAuth2認証情報を構築
+        credentials = Credentials(
+            token=None,  # Access tokenは自動取得される
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=["https://www.googleapis.com/auth/youtube.force-ssl"]
+        )
+
+        # キャッシュに保存
+        _oauth_credentials = credentials
+        logger.info("OAuth2 credentials initialized successfully")
+        return credentials
+
+    except Exception as e:
+        logger.error(f"Failed to initialize OAuth2 credentials: {e}")
+        raise
 
 
 def is_video_processed(video_id: str) -> bool:
@@ -197,15 +256,12 @@ def check_new_video(request):
         logger.error("GCP_PROJECT_ID environment variable is not set")
         return {"status": "error", "message": "Missing GCP_PROJECT_ID"}, 500
 
-    # YouTube APIクライアントを構築（ADC使用）
+    # YouTube APIクライアントを構築（OAuth2使用）
     try:
-        # Application Default Credentials (サービスアカウント) を使用
-        from google.auth import default
-        from google.auth.transport.requests import Request
-
-        credentials, _ = default(scopes=["https://www.googleapis.com/auth/youtube.readonly"])
+        # Secret ManagerからOAuth2認証情報を取得
+        credentials = get_oauth_credentials()
         youtube = build("youtube", "v3", credentials=credentials)
-        logger.info("YouTube API client initialized with service account")
+        logger.info("YouTube API client initialized with OAuth2")
     except Exception as e:
         logger.error(f"Failed to build YouTube API client: {e}")
         return {"status": "error", "message": f"YouTube API error: {str(e)}"}, 500

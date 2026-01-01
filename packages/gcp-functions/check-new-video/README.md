@@ -44,7 +44,7 @@ check-new-video (Cloud Function)
 
 **Note**:
 - `forMine=True`を使用するため、`TARGET_CHANNEL_IDS`は不要
-- YouTube APIはサービスアカウント（ADC）を使用するため、APIキーは不要
+- YouTube APIはOAuth2ユーザー認証を使用（詳細は [SETUP_OAUTH2.md](./SETUP_OAUTH2.md)）
 
 ## デプロイ
 
@@ -58,16 +58,25 @@ check-new-video (Cloud Function)
   - Pub/Sub API
   - Firestore API
   - YouTube Data API v3
+  - Secret Manager API
+- **OAuth2認証のセットアップが完了していること**（[SETUP_OAUTH2.md](./SETUP_OAUTH2.md)参照）
 
 ### 認証と権限設定
 
-#### Application Default Credentials (ADC)
+#### OAuth2ユーザー認証（YouTube API用）
 
-Cloud Functionsは自動的にサービスアカウントを使用します（OAuth2は不要）。
+**重要**: `forMine=True`を使用するため、YouTube APIはOAuth2ユーザー認証が必須です。
+
+詳細な手順は [SETUP_OAUTH2.md](./SETUP_OAUTH2.md) を参照してください。
+
+**概要**:
+1. ローカルPCでOAuth2フローを実行しRefresh Token取得
+2. Secret ManagerにRefresh Token、Client ID、Client Secretを保存
+3. Cloud FunctionがSecret Managerから認証情報を取得
+
+#### サービスアカウント権限（Firestore/Pub/Sub/Secret Manager用）
 
 デフォルトのサービスアカウント: `{PROJECT_ID}@appspot.gserviceaccount.com`
-
-#### 必要な権限
 
 以下の権限をサービスアカウントに付与:
 
@@ -82,8 +91,13 @@ gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
     --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
     --role="roles/pubsub.publisher"
 
-# YouTube Data API読み取り権限（不要な場合もあるが、明示的に付与推奨）
-# Note: YouTube APIはパブリックデータの読み取りのみなので、通常は追加権限不要
+# Secret Manager読み取り権限（OAuth2認証情報取得用）
+for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret; do
+    gcloud secrets add-iam-policy-binding $SECRET_NAME \
+        --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --project=$GCP_PROJECT_ID
+done
 ```
 
 ### 環境変数設定

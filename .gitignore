@@ -39,6 +39,9 @@ chapters/
 # Auth Pickle
 token.pickle
 
+# OAuth2 Refresh Token (機密情報)
+refresh_token.txt
+
 # Log
 *.log
 

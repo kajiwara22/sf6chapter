@@ -1,17 +1,22 @@
-# 4. ローカルPC処理でOAuth2認証を使用
+# ADR-004: OAuth2認証の統一
 
 日付: 2025-12-31
-更新: 2025-12-31（適用範囲を明確化）
+更新: 2026-01-02（Cloud Functionsへの適用拡大）
 
 ## ステータス
 
-採用（ローカルPC処理のみ）
+採用
 
 ## 適用範囲
 
-**このADRは `packages/local/` のローカルPC処理のみに適用される。**
+**このADRは以下の両方に適用される**:
 
-Cloud Functions (`packages/gcp-functions/`) では、Application Default Credentials (ADC) を使用する。
+1. **ローカルPC処理** (`packages/local/`): ユーザー認証が必要なすべてのAPI
+2. **Cloud Functions** (`packages/gcp-functions/check-new-video/`): YouTube API `forMine=True`使用のため
+
+**適用方法の違い**:
+- **ローカルPC**: `token.pickle`にトークンを保存
+- **Cloud Functions**: Secret ManagerにRefresh Tokenを保存
 
 ## コンテキスト
 
@@ -70,9 +75,13 @@ SCOPES = [
 
 ## Cloud Functionsでの認証
 
-Cloud Functions では OAuth2 を使用**せず**、Application Default Credentials (ADC) を使用する。
+### 2026-01-02更新: YouTube APIでOAuth2ユーザー認証を使用
 
-### 認証方式
+**背景**: YouTube API `forMine=True`パラメータはOAuth2ユーザー認証が必須であり、サービスアカウント（ADC）では使用できない。
+
+詳細は [ADR-008: Cloud FunctionsでのOAuth2ユーザー認証実装](./008-oauth2-user-authentication-in-cloud-functions.md) を参照。
+
+### Firestore/Pub/SubではADCを使用
 
 ```python
 # Cloud Functionsでは自動的にサービスアカウントを使用
@@ -83,25 +92,37 @@ db = firestore.Client(project=PROJECT_ID)
 publisher = pubsub_v1.PublisherClient()
 ```
 
+### YouTube APIではOAuth2を使用
+
+```python
+from google.cloud import secretmanager
+from google.oauth2.credentials import Credentials
+
+# Secret ManagerからRefresh Tokenを取得
+client_id = get_secret("youtube-client-id")
+client_secret = get_secret("youtube-client-secret")
+refresh_token = get_secret("youtube-refresh-token")
+
+# OAuth2認証情報を構築
+credentials = Credentials(
+    token=None,
+    refresh_token=refresh_token,
+    token_uri="https://oauth2.googleapis.com/token",
+    client_id=client_id,
+    client_secret=client_secret,
+    scopes=["https://www.googleapis.com/auth/youtube.force-ssl"]
+)
+
+youtube = build("youtube", "v3", credentials=credentials)
+```
+
 ### サービスアカウント権限
 
 Cloud Functionsのデフォルトサービスアカウント (`{project}@appspot.gserviceaccount.com`) に以下の権限が必要:
 
 - `roles/datastore.user` - Firestore読み書き
 - `roles/pubsub.publisher` - Pub/Sub発行
-
-### YouTube API
-
-Cloud Functionsでも**サービスアカウント（ADC）**を使用:
-
-```python
-from google.auth import default
-
-credentials, _ = default(scopes=["https://www.googleapis.com/auth/youtube.readonly"])
-youtube = build("youtube", "v3", credentials=credentials)
-```
-
-**理由**: APIキーは追跡・管理が困難なため、すべての認証をサービスアカウントに統一する。
+- `roles/secretmanager.secretAccessor` - Secret Manager読み取り（OAuth2認証情報取得用）
 
 ## 関連
 
