@@ -10,7 +10,6 @@ import pytest
 
 # 環境変数をモック
 os.environ["GCP_PROJECT_ID"] = "test-project"
-os.environ["TARGET_CHANNEL_IDS"] = "UCtest1,UCtest2"
 os.environ["PUBSUB_TOPIC"] = "test-topic"
 
 import main

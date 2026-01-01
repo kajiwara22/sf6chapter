@@ -1,22 +1,33 @@
 # Cloud Function: check-new-video
 
-Cloud Schedulerから15分毎に実行され、対象チャンネルの新着動画をPub/Subに発行するCloud Function。
+Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Subに発行するCloud Function。
 
 ## 機能
 
-1. **新着動画チェック**: YouTube APIで対象チャンネルの新着動画を取得
-2. **重複防止**: Firestoreで処理済み動画を管理し、重複処理を防止
-3. **Pub/Sub発行**: 未処理動画のみをPub/Subトピックに発行
-4. **処理履歴**: Firestoreに処理履歴を記録
+1. **新着動画チェック**: YouTube APIで自分の新着動画を取得（`forMine=True`）
+2. **日時フィルタ**: 公開日時でフィルタリング（2.5時間以内の動画のみ）
+3. **重複防止**: Firestoreで処理済み動画を管理し、重複処理を防止
+4. **Pub/Sub発行**: 未処理動画のみをPub/Subトピックに発行
+5. **処理履歴**: Firestoreに処理履歴を記録
+
+## 設計根拠
+
+詳細は [ADR-007: Cloud Schedulerの実行間隔最適化](../../../docs/adr/007-cloud-scheduler-interval-optimization.md) を参照。
+
+- **配信頻度**: 1日1回〜数回（30分〜1時間/本）
+- **実行間隔**: 2時間（1日12回実行）
+- **API効率**: YouTube API quota 75%削減（1,200 units/日、無料枠の12%）
+- **信頼性**: 2.5時間フィルタで30分のバッファを確保
 
 ## アーキテクチャ
 
 ```
-Cloud Scheduler (15分毎)
+Cloud Scheduler (2時間毎)
     ↓
 check-new-video (Cloud Function)
-    ↓ YouTube API
-    ├─ 新着動画取得
+    ↓ YouTube API (forMine=True)
+    ├─ 自分の動画取得（最大5件）
+    ├─ 日時フィルタ（2.5時間以内）
     ↓ Firestore
     ├─ 重複チェック
     ├─ 処理履歴記録
@@ -26,13 +37,14 @@ check-new-video (Cloud Function)
 
 ## 環境変数
 
-| 変数名 | 必須 | 説明 | 例 |
-|--------|------|------|-----|
-| `GCP_PROJECT_ID` | Yes | GCPプロジェクトID | `sf6-chapter-12345` |
-| `TARGET_CHANNEL_IDS` | Yes | 監視対象のチャンネルID（カンマ区切り） | `UCxxx,UCyyy` |
-| `PUBSUB_TOPIC` | No | Pub/Subトピック名 | `sf6-video-process` (デフォルト) |
+| 変数名 | 必須 | 説明 | デフォルト値 |
+|--------|------|------|-------------|
+| `GCP_PROJECT_ID` | Yes | GCPプロジェクトID | - |
+| `PUBSUB_TOPIC` | No | Pub/Subトピック名 | `sf6-video-process` |
 
-**Note**: YouTube APIもサービスアカウント（ADC）を使用するため、APIキーは不要です。
+**Note**:
+- `forMine=True`を使用するため、`TARGET_CHANNEL_IDS`は不要
+- YouTube APIはサービスアカウント（ADC）を使用するため、APIキーは不要
 
 ## デプロイ
 
@@ -78,7 +90,7 @@ gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
 
 ```bash
 export GCP_PROJECT_ID="your-project-id"
-export TARGET_CHANNEL_IDS="UCxxx,UCyyy,UCzzz"
+# TARGET_CHANNEL_IDSは不要（forMine=Trueを使用）
 ```
 
 ### デプロイ実行
@@ -147,7 +159,7 @@ curl http://localhost:8080
 
 ```bash
 export GCP_PROJECT_ID="your-project-id"
-export TARGET_CHANNEL_IDS="UCxxx,UCyyy"
+# TARGET_CHANNEL_IDSは不要（forMine=Trueを使用）
 ```
 
 ### デプロイ後のテスト
@@ -191,14 +203,19 @@ curl <FUNCTION_URL>
 ## Cloud Scheduler設定
 
 ```bash
-# Schedulerジョブ作成
+# Schedulerジョブ作成（2時間毎、偶数時に実行: 0時、2時、4時...）
 gcloud scheduler jobs create http check-new-video-schedule \
     --location=asia-northeast1 \
-    --schedule="*/15 * * * *" \
+    --schedule="0 */2 * * *" \
     --uri="<FUNCTION_URL>" \
     --http-method=GET \
+    --time-zone="Asia/Tokyo" \
     --project=$GCP_PROJECT_ID
 ```
+
+**設計根拠**: [ADR-007](../../../docs/adr/007-cloud-scheduler-interval-optimization.md)参照
+- 配信頻度（1日1-数回）に最適化
+- YouTube API quota 75%削減（1,200 units/日）
 
 ## モニタリング
 
@@ -227,8 +244,9 @@ gcloud functions logs read check-new-video \
 ### エラー: "YouTube API error"
 
 - YouTube Data API v3が有効化されているか確認
-- APIキーが正しいか確認
+- サービスアカウントに適切な権限があるか確認
 - API利用制限（10,000 units/日）に達していないか確認
+  - 2時間間隔実行: 1,200 units/日（無料枠の12%）
 
 ### 重複したメッセージが発行される
 
@@ -239,8 +257,19 @@ gcloud functions logs read check-new-video \
 
 **無料枠内での運用想定**:
 
-- Cloud Functions: 200万invocations/月（15分毎 = 2,880回/月）
-- Firestore: 50,000 reads/日, 20,000 writes/日（実使用: <1,000回/日）
-- Pub/Sub: 10 GiB/月（メッセージサイズ: 数百バイト程度）
+- **Cloud Functions**: 200万invocations/月（2時間毎 = 360回/月） → **無料枠の0.018%**
+- **YouTube API**: 10,000 units/日（実使用: 1,200 units/日） → **無料枠の12%**
+- **Firestore**: 50,000 reads/日, 20,000 writes/日（実使用: <100回/日） → **無料枠の0.2%**
+- **Pub/Sub**: 10 GiB/月（メッセージサイズ: 数百バイト程度） → **無料枠の0.001%**
 
 → **すべて無料枠内で運用可能**
+
+### 従来構成（15分間隔）との比較
+
+| 項目 | 15分間隔 | 2時間間隔（現在） | 削減率 |
+|------|---------|-----------------|--------|
+| Cloud Functions実行回数 | 2,880回/月 | 360回/月 | **87.5%削減** |
+| YouTube API quota | 4,800 units/日 | 1,200 units/日 | **75%削減** |
+| Firestore read/write | <800回/日 | <100回/日 | **87.5%削減** |
+
+詳細は [ADR-007](../../../docs/adr/007-cloud-scheduler-interval-optimization.md) を参照。
