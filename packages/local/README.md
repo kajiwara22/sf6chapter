@@ -39,23 +39,80 @@ Google Cloud Consoleで以下のAPIを有効化し、OAuth2クライアントシ
    - `client_secrets.json`: プロジェクトルートに配置
    - `token.pickle`: 初回実行時に自動生成（YouTube API と Vertex AI で共通）
 
-### 3. 環境変数の設定
+### 3. Cloudflare R2認証の設定
 
-`.env` ファイルを作成：
+R2バケット専用のAPIトークンを作成し、S3互換アクセスキーに変換します。
+
+**参考ドキュメント**:
+- [CloudflareのR2バケットに特化したAPIトークンをつくる](https://zenn.dev/hikky_co_ltd/articles/2f97318b5406bf)
+- [Cloudflare公式: Get S3 API credentials from an API token](https://developers.cloudflare.com/r2/api/s3/tokens/)
+
+#### 手順1: Account API Tokenの作成
+- Cloudflare Dashboard → API Tokens → Create Token
+- 権限: `Account.Account Settings:Read`
+
+#### 手順2: Bucket-Specific Tokenの生成
+- Account API Tokenを使用してバケット専用トークンを生成
+- リソースパス: `com.cloudflare.edge.r2.bucket.{account_id}_default_{bucket_name}`
+- 権限: `Workers R2 Storage Bucket Item Read/Write`
+- 生成されたトークンには以下の2つの値がある：
+  - **Token ID**: そのまま `R2_ACCESS_KEY_ID` として使用
+  - **Token Value**: SHA-256ハッシュ化して `R2_SECRET_ACCESS_KEY` として使用
+
+#### 手順3: Token ValueのSHA-256ハッシュ化
+
+**ヘルパースクリプトを使用**（推奨）:
+
+```bash
+# Bash/Zshの場合
+cd packages/local
+./scripts/r2_hash_token.sh
+
+# Pythonの場合
+cd packages/local
+uv run python scripts/r2_hash_token.py
+```
+
+スクリプトを実行すると、Token Valueを入力するプロンプトが表示され、SHA-256ハッシュ化された値が出力されます。
+
+**手動でハッシュ化する場合**:
+
+```bash
+# macOS/Linux
+echo -n "your-token-value" | shasum -a 256 | awk '{print $1}'
+
+# Python
+python -c "import hashlib; print(hashlib.sha256('your-token-value'.encode()).hexdigest())"
+```
+
+#### 手順4: 環境変数の設定
+
+`.env` ファイルを作成（`.env.example` を参考）：
 
 ```bash
 # Google Cloud
-GCP_PROJECT_ID=your-project-id
-PUBSUB_SUBSCRIPTION=sf6-video-process-sub
+GOOGLE_CLOUD_PROJECT=your-project-id
+PUBSUB_PROJECT_ID=your-project-id
+PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
-# Cloudflare R2
-CLOUDFLARE_ACCOUNT_ID=your-account-id
-R2_ACCESS_KEY_ID=your-access-key-id
-R2_SECRET_ACCESS_KEY=your-secret-access-key
+# YouTube
+YOUTUBE_CHANNEL_ID=your-channel-id
+
+# Gemini API
+GEMINI_PROJECT_ID=your-project-id
+GEMINI_LOCATION=us-central1
+GEMINI_MODEL=gemini-2.0-flash-exp
+
+# Cloudflare R2（バケット専用APIトークン）
+R2_ACCESS_KEY_ID=your-token-id                              # Token ID（そのまま）
+R2_SECRET_ACCESS_KEY=your-token-value-sha256-hash-lowercase # Token ValueのSHA-256ハッシュ（小文字）
+R2_ENDPOINT_URL=your-account-id.r2.cloudflarestorage.com    # {account_id}.r2.cloudflarestorage.com
+R2_BUCKET_NAME=sf6-chapter-data                             # バケット名
 
 # Optional
-TEMPLATE_PATH=./template/round1.png
-DOWNLOAD_DIR=./download
+DOWNLOAD_DIR=./downloads
+OUTPUT_DIR=./output
+LOG_LEVEL=INFO
 ```
 
 **注**: Gemini APIはVertex AI経由でOAuth2認証を使用するため、`GEMINI_API_KEY`は不要です。
@@ -246,8 +303,53 @@ R2アップロード (JSON + Parquet)
 
 ### R2アップロードエラー
 
-- 認証情報を確認
-- バケット名が正しいか確認
+**症状**: `ValueError: R2 credentials must be set`
+
+**解決方法**:
+1. `.env` ファイルで以下の環境変数が設定されているか確認：
+   - `R2_ACCESS_KEY_ID`: バケット専用APIトークンの**Token ID**（そのまま）
+   - `R2_SECRET_ACCESS_KEY`: **Token Value**のSHA-256ハッシュ（小文字）
+   - `R2_ENDPOINT_URL`: `{account_id}.r2.cloudflarestorage.com`
+   - `R2_BUCKET_NAME`: バケット名（デフォルト: `sf6-chapter-data`）
+2. ハッシュ化スクリプトで正しい値を生成：
+   ```bash
+   ./scripts/r2_hash_token.sh
+   # または
+   uv run python scripts/r2_hash_token.py
+   ```
+
+**症状**: `botocore.exceptions.ClientError: Access Denied`
+
+**解決方法**:
+1. トークンの権限を確認（`Workers R2 Storage Bucket Item Read/Write`が必要）
+2. `R2_SECRET_ACCESS_KEY`が**Token Value**（生の値ではない）のSHA-256ハッシュ（小文字）になっているか確認
+3. エンドポイントURLが正しいか確認（`https://`プレフィックスは不要、自動で追加される）
+4. バケット名が正しいか確認
+
+**トークンのテスト方法**:
+```bash
+# boto3で接続テスト
+cd packages/local
+uv run python -c "
+import boto3
+import os
+
+s3 = boto3.client(
+    's3',
+    endpoint_url=f'https://{os.getenv(\"R2_ENDPOINT_URL\")}',
+    aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY'),
+    region_name='auto'
+)
+print('Connection successful!')
+print(s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME')))
+"
+```
+
+**注**:
+- 環境変数は `.mise.toml` で管理されているため、`dotenv` は不要です
+- バケット専用トークンでは `list_buckets()` は権限不足でエラーになります
+- `list_objects_v2()` でバケット内のオブジェクト一覧を取得して接続を確認してください
 
 ## 認証方式の変更履歴
 

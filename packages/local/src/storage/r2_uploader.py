@@ -18,40 +18,43 @@ logger = get_logger()
 
 
 class R2Uploader:
-    """Cloudflare R2アップローダー"""
+    """Cloudflare R2アップローダー（S3互換API）"""
 
     def __init__(
         self,
-        account_id: str | None = None,
         access_key_id: str | None = None,
         secret_access_key: str | None = None,
-        bucket_name: str = "sf6-chapter-data",
+        endpoint_url: str | None = None,
+        bucket_name: str | None = None,
     ):
         """
         Args:
-            account_id: Cloudflare アカウントID
-            access_key_id: R2 アクセスキーID
-            secret_access_key: R2 シークレットアクセスキー
+            access_key_id: R2 アクセスキーID（バケット専用APIトークンのID）
+            secret_access_key: R2 シークレットアクセスキー（トークンのSHA-256ハッシュ）
+            endpoint_url: R2 エンドポイントURL（例: {account_id}.r2.cloudflarestorage.com）
             bucket_name: バケット名
         """
-        self.account_id = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID")
         self.access_key_id = access_key_id or os.environ.get("R2_ACCESS_KEY_ID")
         self.secret_access_key = secret_access_key or os.environ.get("R2_SECRET_ACCESS_KEY")
-        self.bucket_name = bucket_name
+        endpoint = endpoint_url or os.environ.get("R2_ENDPOINT_URL")
+        self.bucket_name = bucket_name or os.environ.get("R2_BUCKET_NAME", "sf6-chapter-data")
 
-        if not all([self.account_id, self.access_key_id, self.secret_access_key]):
-            raise ValueError("R2 credentials must be set")
+        if not all([self.access_key_id, self.secret_access_key, endpoint]):
+            raise ValueError(
+                "R2 credentials must be set: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT_URL"
+            )
 
-        # R2エンドポイント
-        endpoint_url = f"https://{self.account_id}.r2.cloudflarestorage.com"
+        # エンドポイントURLの正規化（https://プレフィックスを追加）
+        if not endpoint.startswith("http"):
+            endpoint = f"https://{endpoint}"
 
         # S3互換クライアント
         self.s3_client = boto3.client(
             "s3",
-            endpoint_url=endpoint_url,
+            endpoint_url=endpoint,
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
-            region_name="auto",
+            region_name="auto",  # R2では "auto" を使用
         )
 
     def upload_json(
