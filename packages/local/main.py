@@ -364,7 +364,7 @@ def test_chapters(
     detections: list[MatchDetection] | None = None,
     results: list[tuple[dict[str, str], dict[str, str]]] | None = None,
     use_saved: bool = False,
-) -> None:
+) -> list[dict[str, Any]]:
     """
     YouTubeチャプター更新のテスト
 
@@ -373,6 +373,9 @@ def test_chapters(
         detections: 検出結果リスト（use_saved=Falseの場合は必須）
         results: 認識結果リスト（use_saved=Falseの場合は必須）
         use_saved: 保存済みチャプターファイルを使用するか
+
+    Returns:
+        生成されたチャプターリスト
     """
     logger.info("[TEST] Updating YouTube chapters for video: %s", video_id)
 
@@ -407,6 +410,156 @@ def test_chapters(
     updater.update_video_description(video_id, chapters)
     logger.info("✅ Updated YouTube description")
 
+    return chapters
+
+
+def test_r2_upload(
+    video_id: str,
+    detections: list[MatchDetection] | None = None,
+    results: list[tuple[dict[str, str], dict[str, str]]] | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    R2アップロードとParquet更新のテスト
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト（保存済みチャプターがない場合は必須）
+        results: 認識結果リスト（保存済みチャプターがない場合は必須）
+
+    Returns:
+        (video_data, matches) のタプル
+    """
+    logger.info("[TEST] Testing R2 upload and Parquet update for video: %s", video_id)
+
+    # ENABLE_R2環境変数をチェック
+    enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
+
+    if not enable_r2:
+        logger.warning("⚠️  R2 upload is disabled (ENABLE_R2=false)")
+        logger.info("   Set ENABLE_R2=true to test R2 upload")
+        return {}, []
+
+    # R2Uploaderを初期化
+    r2_uploader = R2Uploader()
+
+    # 保存済みチャプターファイルがあれば読み込む
+    saved_chapters = load_chapters_from_file(video_id)
+
+    if saved_chapters:
+        logger.info("✅ Using saved chapter data from file")
+        # 保存済みデータから生成
+        chapters = []
+        matches = []
+
+        for chapter_data in saved_chapters:
+            # チャプターデータ
+            match_id = f"{video_id}_{chapter_data['startTime']}"
+            chapter = {
+                "startTime": chapter_data["startTime"],
+                "title": chapter_data["title"],
+                "matchId": match_id,
+            }
+            chapters.append(chapter)
+
+            # 対戦データ
+            normalized = chapter_data.get("normalized", {})
+            raw = chapter_data.get("raw", {})
+            match_data = {
+                "id": match_id,
+                "videoId": video_id,
+                "startTime": chapter_data["startTime"],
+                "player1": {
+                    "character": normalized.get("1p", "Unknown"),
+                    "characterRaw": raw.get("1p", ""),
+                    "side": "left",
+                },
+                "player2": {
+                    "character": normalized.get("2p", "Unknown"),
+                    "characterRaw": raw.get("2p", ""),
+                    "side": "right",
+                },
+                "detectedAt": datetime.utcnow().isoformat() + "Z",
+                "confidence": 0.0,  # 保存データには含まれない
+                "templateMatchScore": 0.0,
+                "frameTimestamp": 0,
+            }
+            matches.append(match_data)
+
+    else:
+        # 保存データがない場合は、detectionsとresultsから生成
+        logger.info("No saved chapter data found, generating from detections and results")
+
+        if not detections or not results:
+            raise ValueError("detections and results are required when no saved chapter data exists")
+
+        # チャプターデータを生成
+        chapters = []
+        for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
+            chapter = {
+                "startTime": int(detection.timestamp),
+                "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+                "matchId": f"{video_id}_{int(detection.timestamp)}",
+            }
+            chapters.append(chapter)
+
+        # 対戦データを生成
+        matches = []
+        for _i, (detection, (normalized, raw)) in enumerate(zip(detections, results, strict=False), 1):
+            match_id = f"{video_id}_{int(detection.timestamp)}"
+            match_data = {
+                "id": match_id,
+                "videoId": video_id,
+                "startTime": int(detection.timestamp),
+                "player1": {
+                    "character": normalized.get("1p", "Unknown"),
+                    "characterRaw": raw.get("1p", ""),
+                    "side": "left",
+                },
+                "player2": {
+                    "character": normalized.get("2p", "Unknown"),
+                    "characterRaw": raw.get("2p", ""),
+                    "side": "right",
+                },
+                "detectedAt": datetime.utcnow().isoformat() + "Z",
+                "confidence": detection.confidence,
+                "templateMatchScore": detection.confidence,
+                "frameTimestamp": detection.frame_number,
+            }
+            matches.append(match_data)
+
+    # 動画メタデータを生成
+    video_data = {
+        "videoId": video_id,
+        "title": f"Test Video {video_id}",  # テストなのでダミータイトル
+        "channelId": "test_channel",
+        "channelTitle": "Test Channel",
+        "publishedAt": datetime.utcnow().isoformat() + "Z",
+        "processedAt": datetime.utcnow().isoformat() + "Z",
+        "chapters": chapters,
+        "detectionStats": {
+            "totalFrames": 0,
+            "matchedFrames": len(matches),  # matchesの数を使用（detectionsはNoneの可能性がある）
+        },
+    }
+
+    # 5. JSONデータをR2にアップロード
+    logger.info("[5/6] Uploading JSON data to R2...")
+    r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
+
+    for match in matches:
+        r2_uploader.upload_json(match, f"matches/{match['id']}.json")
+
+    # 6. Parquetファイルを更新
+    logger.info("[6/6] Updating Parquet files...")
+    r2_uploader.update_parquet_table([video_data], "videos.parquet")
+    r2_uploader.update_parquet_table(matches, "matches.parquet")
+
+    logger.info("✅ R2 upload and Parquet update completed")
+    logger.info("   - Uploaded %d matches", len(matches))
+    logger.info("   - Updated Parquet tables")
+
+    return video_data, matches
+
 
 def main():
     """エントリーポイント"""
@@ -425,7 +578,7 @@ def main():
     # テストオプション
     parser.add_argument(
         "--test-step",
-        choices=["download", "detect", "recognize", "chapters", "all"],
+        choices=["download", "detect", "recognize", "chapters", "r2", "all"],
         help="Test specific processing step (requires --mode test)",
     )
     parser.add_argument(
@@ -493,6 +646,29 @@ def main():
                     detections = test_detection(video_path)
                     results = test_recognition(detections)
                 test_chapters(args.video_id, detections, results)
+
+        if args.test_step in ["r2", "all"]:
+            if not args.video_id:
+                parser.error("--video-id is required for R2 test")
+
+            # 保存済みチャプターファイルの確認
+            saved_chapters = load_chapters_from_file(args.video_id)
+
+            if saved_chapters:
+                # 保存済みデータがあれば、それを使用（検出・認識をスキップ）
+                logger.info("Using saved chapter data for R2 upload test")
+                test_r2_upload(args.video_id)
+            else:
+                # 保存データがない場合は、検出・認識を実行
+                logger.info("No saved chapter data found, running detection and recognition")
+                if not detections or not results:
+                    if not video_path:
+                        # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
+                        video_path = test_download(args.video_id)
+                    detections = test_detection(video_path)
+                    results = test_recognition(detections)
+
+                test_r2_upload(args.video_id, detections, results)
 
         return
 

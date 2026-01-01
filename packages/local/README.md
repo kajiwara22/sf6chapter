@@ -198,13 +198,38 @@ uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --
 - 認識結果を保存して後から再利用
 - チャプタータイトルの手動編集が可能
 
-#### 5. 全ステップを順次実行
+#### 5. R2アップロードとParquet更新のみ
 
 ```bash
-uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
+# R2アップロードを有効化
+ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id YFQU_kkhZtg
 ```
 
-**動作**: ダウンロード → 検出 → 認識 → チャプター更新を一括実行。既存ファイルがあれば再利用。
+**動作**:
+- 保存済みチャプターファイル（`chapters/[video_id]_chapters.json`）があれば、それを使用してR2アップロード・Parquet更新を実行
+- 保存済みファイルがない場合は、自動的に検出・認識を実行してからアップロード
+- `ENABLE_R2=false` の場合は警告を表示してスキップ
+
+**用途**:
+- R2アップロードのみをテストしたい場合
+- チャプターデータは確定済みで、R2への再アップロードのみ必要な場合
+- Gemini API課金を避けてR2処理をテストしたい場合
+
+#### 6. 全ステップを順次実行
+
+```bash
+# R2アップロード無効（デフォルト）
+uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
+
+# R2アップロード有効
+ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
+```
+
+**動作**: ダウンロード → 検出 → 認識 → チャプター更新 → **R2アップロード（有効な場合）** を一括実行。既存ファイルがあれば再利用。
+
+**`ENABLE_R2` 環境変数**:
+- `true`/`1`/`yes`: R2アップロードとParquet更新を実行
+- `false`/`0`/`no`（デフォルト）: R2処理をスキップし、ローカルの `./output/` に保存
 
 ### オプションパラメータ
 
@@ -234,11 +259,21 @@ uv run python main.py --mode test --test-step all --video-id YFQU_kkhZtg
 ```
 
 **使用例**:
+
+**パターン1: YouTubeチャプターの調整**
 1. 初回実行: `uv run python main.py --mode test --test-step chapters --video-id XXX`
    - チャプターファイルが自動保存される
 2. タイトル調整: `chapters/XXX_chapters.json` を手動編集
 3. 再実行: `uv run python main.py --mode test --test-step chapters --video-id XXX --use-saved-chapters`
    - Gemini APIを呼ばずに、編集済みチャプターでYouTube更新
+
+**パターン2: R2アップロードのテスト**
+1. 初回実行: `ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id XXX`
+   - チャプターファイルが自動保存され、R2にもアップロード
+2. 再テスト: `ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id XXX`
+   - **保存済みチャプターファイルを自動的に再利用**
+   - 検出・認識をスキップし、R2アップロードのみ実行
+   - Gemini API課金を避けてR2処理のみテスト可能
 
 ## モジュール構成
 
@@ -269,10 +304,18 @@ Pub/Sub受信
     ↓
 キャラクター認識 (Gemini API)
     ↓
+チャプターデータ保存 (./chapters/*.json) ← 中間ファイル（テスト時再利用可能）
+    ↓
 YouTubeチャプター更新 (YouTube Data API)
     ↓
-R2アップロード (JSON + Parquet)
+R2アップロード（ENABLE_R2=trueの場合）
+    ├→ JSONファイル: videos/*.json, matches/*.json
+    └→ Parquetファイル: videos.parquet, matches.parquet
 ```
+
+**注**:
+- `ENABLE_R2=false`（デフォルト）の場合、R2処理はスキップされ、ローカルの `./output/` ディレクトリにJSONファイルが保存されます
+- テストモード（`--mode test`）では、チャプターデータが `./chapters/` に保存され、後続のテストで再利用可能
 
 ## トラブルシューティング
 
