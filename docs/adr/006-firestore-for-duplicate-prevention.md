@@ -146,16 +146,38 @@ def mark_video_as_processing(video_id: str, video_data: dict) -> bool:
 
 ### ローカル処理側
 
+**Phase 1実装（2025-01-01）**: Firestoreと統合し、Pub/Sub再配信による重複処理を防止
+
 ```python
-def update_video_status(video_id: str, status: str):
-    """処理状態を更新"""
-    db = firestore.Client()
-    doc_ref = db.collection("processed_videos").document(video_id)
-    doc_ref.update({
-        "status": status,
-        "updatedAt": firestore.SERVER_TIMESTAMP
-    })
+from src.firestore import FirestoreClient
+
+class SF6ChapterProcessor:
+    def __init__(self):
+        self.firestore = FirestoreClient()
+
+    def process_video(self, message_data: dict) -> None:
+        video_id = message_data.get("videoId")
+
+        # 0. Firestoreで処理済みかチェック
+        if self.firestore.is_completed(video_id):
+            logger.info("Video already completed, skipping")
+            return
+
+        # 処理開始をFirestoreに記録
+        self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
+
+        try:
+            # ... 動画処理 ...
+
+            # 処理完了をFirestoreに記録
+            self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
+
+        except Exception as e:
+            # 処理失敗をFirestoreに記録
+            self.firestore.update_status(video_id, FirestoreClient.STATUS_FAILED, error_message=str(e))
 ```
+
+これにより、Pub/Subメッセージが再配信されても、既に完了した動画は再処理されない。
 
 ## 監視とメンテナンス
 
@@ -175,4 +197,6 @@ def update_video_status(video_id: str, status: str):
 
 - [ADR-001: クラウドサービス選定](001-cloud-service-selection.md) - GCP選定理由
 - [ADR-004: OAuth2認証](004-oauth2-authentication-for-all-gcp-apis.md) - 認証方式
-- `packages/gcp-functions/check-new-video/main.py` - 実装コード
+- `packages/gcp-functions/check-new-video/main.py` - Cloud Functions実装
+- `packages/local/src/firestore/client.py` - ローカル処理のFirestoreクライアント
+- `packages/local/main.py` - ローカル処理のメインスクリプト

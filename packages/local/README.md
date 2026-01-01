@@ -5,11 +5,12 @@
 ## 機能
 
 1. **Pub/Sub受信**: Google Cloud Pub/Subから新着動画情報を受信
-2. **動画ダウンロード**: yt-dlpを使用してYouTube動画をダウンロード
-3. **対戦シーン検出**: OpenCVのテンプレートマッチングで「ROUND 1」画面を検出
-4. **キャラクター認識**: Gemini APIでキャラクター名を認識・正規化
-5. **チャプター生成**: YouTube Data APIで動画の説明文にチャプターを追加
-6. **データアップロード**: Cloudflare R2にJSON/Parquetファイルをアップロード
+2. **重複処理防止**: Firestoreで処理済み動画を追跡し、再処理を防止
+3. **動画ダウンロード**: yt-dlpを使用してYouTube動画をダウンロード
+4. **対戦シーン検出**: OpenCVのテンプレートマッチングで「ROUND 1」画面を検出
+5. **キャラクター認識**: Gemini APIでキャラクター名を認識・正規化
+6. **チャプター生成**: YouTube Data APIで動画の説明文にチャプターを追加
+7. **データアップロード**: Cloudflare R2にJSON/Parquetファイルをアップロード
 
 ## セットアップ
 
@@ -29,6 +30,7 @@ Google Cloud Consoleで以下のAPIを有効化し、OAuth2クライアントシ
 2. **APIを有効化**
    - YouTube Data API v3
    - Vertex AI API
+   - Cloud Firestore API
 
 3. **OAuth2クライアントを作成**
    - 認証情報 → OAuth 2.0 クライアント ID を作成
@@ -37,7 +39,13 @@ Google Cloud Consoleで以下のAPIを有効化し、OAuth2クライアントシ
 
 4. **ファイル配置**
    - `client_secrets.json`: プロジェクトルートに配置
-   - `token.pickle`: 初回実行時に自動生成（YouTube API と Vertex AI で共通）
+   - `token.pickle`: 初回実行時に自動生成（YouTube API、Vertex AI、Firestoreで共通）
+
+5. **Firestoreデータベースの作成**
+   - Google Cloud Console → Firestore → データベースを作成
+   - モード: Nativeモード（推奨）
+   - ロケーション: 任意のリージョン（us-central1推奨）
+   - OAuth2認証を使用するため、サービスアカウントキーは不要
 
 ### 3. Cloudflare R2認証の設定
 
@@ -131,7 +139,7 @@ LOG_LEVEL=INFO
 
 **認証スコープ**:
 - `https://www.googleapis.com/auth/youtube.force-ssl` - YouTube Data API
-- `https://www.googleapis.com/auth/cloud-platform` - Vertex AI (Gemini API)
+- `https://www.googleapis.com/auth/cloud-platform` - Vertex AI (Gemini API)、Cloud Firestore
 
 ## 実行方法
 
@@ -281,6 +289,8 @@ ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id YFQU
 src/
 ├── pubsub/          # Pub/Sub受信
 │   └── subscriber.py
+├── firestore/       # 処理済み動画の追跡
+│   └── client.py
 ├── video/           # 動画ダウンロード
 │   └── downloader.py
 ├── detection/       # 対戦シーン検出
@@ -298,6 +308,10 @@ src/
 ```
 Pub/Sub受信
     ↓
+Firestoreで処理済みチェック
+    ↓ (未処理の場合)
+Firestoreステータス更新（processing）
+    ↓
 動画ダウンロード (yt-dlp)
     ↓
 テンプレートマッチング (OpenCV)
@@ -311,11 +325,14 @@ YouTubeチャプター更新 (YouTube Data API)
 R2アップロード（ENABLE_R2=trueの場合）
     ├→ JSONファイル: videos/*.json, matches/*.json
     └→ Parquetファイル: videos.parquet, matches.parquet
+    ↓
+Firestoreステータス更新（completed / failed）
 ```
 
 **注**:
 - `ENABLE_R2=false`（デフォルト）の場合、R2処理はスキップされ、ローカルの `./output/` ディレクトリにJSONファイルが保存されます
 - テストモード（`--mode test`）では、チャプターデータが `./chapters/` に保存され、後続のテストで再利用可能
+- Firestoreでの処理済みチェックにより、Pub/Subメッセージが再配信されても重複処理を防止します
 
 ## トラブルシューティング
 
@@ -399,6 +416,7 @@ print(s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME')))
 ### v2.0以降（推奨）
 - **YouTube API**: OAuth2認証
 - **Gemini API**: Vertex AI経由でOAuth2認証（共通トークン）
+- **Firestore**: OAuth2認証（共通トークン）
 - トークンファイル: `token.pickle`（pickle形式）
 - 環境変数 `GEMINI_API_KEY` は不要
 - 環境変数 `GCP_PROJECT_ID` が必須

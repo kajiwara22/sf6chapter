@@ -16,6 +16,7 @@ sys.path.insert(0, str(project_root))
 
 from src.character import CharacterRecognizer
 from src.detection import MatchDetection, TemplateMatcher
+from src.firestore import FirestoreClient
 from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
 from src.utils.logger import setup_logger
@@ -47,6 +48,7 @@ class SF6ChapterProcessor:
 
         # モジュール初期化
         self.subscriber = PubSubSubscriber()
+        self.firestore = FirestoreClient()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
         # Round 1表示領域（画面中央上部）
         self.round1_search_region = (575, 333, 1500, 800)
@@ -83,6 +85,15 @@ class SF6ChapterProcessor:
         logger.info("Processing video: %s", video_id)
         logger.info("Title: %s", message_data.get("title", "N/A"))
         logger.info("=" * 60)
+
+        # 0. Firestoreで処理済みかチェック
+        if self.firestore.is_completed(video_id):
+            logger.info("Video already completed, skipping")
+            logger.info("=" * 60)
+            return
+
+        # 処理開始をFirestoreに記録
+        self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
 
         try:
             # 1. 動画ダウンロード
@@ -216,6 +227,9 @@ class SF6ChapterProcessor:
                     json.dump(matches, f, ensure_ascii=False, indent=2)
                 logger.info("   Saved matches data: %s", matches_json_path)
 
+            # 処理完了をFirestoreに記録
+            self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
+
             logger.info("")
             logger.info("✅ Successfully processed video: %s", video_id)
             logger.info("   - Detected %d matches", len(matches))
@@ -225,7 +239,9 @@ class SF6ChapterProcessor:
             else:
                 logger.info("   - Saved locally to ./output/")
 
-        except Exception:
+        except Exception as e:
+            # 処理失敗をFirestoreに記録
+            self.firestore.update_status(video_id, FirestoreClient.STATUS_FAILED, error_message=str(e))
             logger.error("")
             logger.exception("❌ Error processing video %s", video_id)
 
