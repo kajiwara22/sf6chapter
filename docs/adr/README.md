@@ -12,6 +12,7 @@
 | [004](./004-oauth2-authentication-for-all-gcp-apis.md) | ローカルPC処理でOAuth2認証を使用 | 採用 | 2024-12-31 |
 | [005](./005-r2-bucket-specific-api-token.md) | R2バケット専用APIトークンとSHA-256認証 | 採用 | 2025-01-01 |
 | [006](./006-firestore-for-duplicate-prevention.md) | Firestoreによる処理済み動画の追跡 | 採用 | 2024-12-31 |
+| [007](./007-cloud-scheduler-interval-optimization.md) | Cloud Schedulerの実行間隔最適化 | 採用 | 2026-01-02 |
 
 ## ADRのフォーマット
 

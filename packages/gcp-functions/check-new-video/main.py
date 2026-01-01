@@ -1,12 +1,21 @@
 """
 Cloud Function: 新着動画チェック
-Cloud Schedulerから15分毎に実行され、対象チャンネルの新着動画をPub/Subに発行
+Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Subに発行
 
 処理フロー:
-1. YouTube APIで対象チャンネルの新着動画を取得
-2. Firestoreで重複チェック（処理済み動画は除外）
-3. 未処理動画をPub/Subに発行
-4. Firestoreに処理履歴を保存
+1. YouTube APIでforMine=Trueで自分の新着動画を取得（最大5件）
+2. 公開日時と現在日時を比較してフィルタ（2.5時間以内）
+3. Firestoreで重複チェック（処理済み動画は除外）
+4. 未処理動画をPub/Subに発行
+5. Firestoreに処理履歴を保存
+
+設計根拠（ADR-001より）:
+- 配信頻度: 1日1回〜数回（30分〜1時間/本）
+- 2時間間隔 + 2.5時間フィルタ = 30分のバッファで取りこぼし防止
+- YouTube API quotaの節約（1日12回の実行）
+
+注意:
+- forMine=TrueではpublishedAfterパラメータは使用できない
 """
 
 import os
@@ -27,7 +36,13 @@ logger = logging.getLogger(__name__)
 # 環境変数
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 PUBSUB_TOPIC = os.environ.get("PUBSUB_TOPIC", "sf6-video-process")
-TARGET_CHANNEL_IDS = os.environ.get("TARGET_CHANNEL_IDS", "").split(",")
+
+# forMine=Trueを使用するためTARGET_CHANNEL_IDSは不要
+# スケジュール間隔（分）と許容範囲（分）
+# 配信頻度: 1日1回〜数回（30分〜1時間/本）を想定
+SCHEDULE_INTERVAL_MINUTES = 120  # Cloud Schedulerの実行間隔（2時間毎）
+ACCEPTABLE_AGE_MINUTES = 150     # 取得対象とする動画の最大経過時間（2.5時間、余裕を持たせる）
+MAX_RESULTS = 5                  # 取得する動画の最大件数（2時間で2-3本程度を想定）
 
 # Firestore設定
 FIRESTORE_COLLECTION = "processed_videos"
@@ -96,38 +111,54 @@ def mark_video_as_processing(video_id: str, video_data: Dict[str, Any]) -> bool:
         return False
 
 
-def get_recent_videos(youtube, channel_id: str, hours: int = 1) -> List[Dict[str, Any]]:
-    """指定チャンネルの最近の動画を取得"""
-    try:
-        published_after = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+def get_my_recent_videos(youtube, max_age_minutes: int = ACCEPTABLE_AGE_MINUTES) -> List[Dict[str, Any]]:
+    """
+    forMine=Trueで自分の動画を取得し、公開日時でフィルタ
 
+    注意: forMine=TrueではpublishedAfterパラメータが使えないため、
+    取得後に手動でフィルタリングを行う
+    """
+    try:
         request = youtube.search().list(
             part="id,snippet",
-            channelId=channel_id,
-            publishedAfter=published_after,
+            forMine=True,
             type="video",
             order="date",
-            maxResults=10
+            maxResults=MAX_RESULTS  # 2時間で2-3本程度を想定
         )
         response = request.execute()
+
+        now = datetime.now(timezone.utc)
+        cutoff_time = now - timedelta(minutes=max_age_minutes)
 
         videos = []
         for item in response.get("items", []):
             if item["id"]["kind"] == "youtube#video":
-                videos.append({
-                    "videoId": item["id"]["videoId"],
-                    "title": item["snippet"]["title"],
-                    "channelId": channel_id,
-                    "channelTitle": item["snippet"]["channelTitle"],
-                    "publishedAt": item["snippet"]["publishedAt"],
-                })
+                # 公開日時をパース
+                published_at_str = item["snippet"]["publishedAt"]
+                published_at = datetime.fromisoformat(published_at_str.replace("Z", "+00:00"))
 
+                # 指定時間内の動画のみ追加
+                if published_at >= cutoff_time:
+                    videos.append({
+                        "videoId": item["id"]["videoId"],
+                        "title": item["snippet"]["title"],
+                        "channelId": item["snippet"]["channelId"],
+                        "channelTitle": item["snippet"]["channelTitle"],
+                        "publishedAt": published_at_str,
+                    })
+                    logger.info(f"Found recent video: {item['id']['videoId']} published at {published_at_str}")
+                else:
+                    logger.debug(f"Skipping old video: {item['id']['videoId']} published at {published_at_str}")
+
+        logger.info(f"Found {len(videos)} videos within {max_age_minutes} minutes")
         return videos
+
     except HttpError as e:
-        logger.error(f"YouTube API error for channel {channel_id}: {e}")
+        logger.error(f"YouTube API error: {e}")
         return []
     except Exception as e:
-        logger.error(f"Unexpected error getting videos for channel {channel_id}: {e}")
+        logger.error(f"Unexpected error getting videos: {e}")
         return []
 
 
@@ -155,10 +186,11 @@ def check_new_video(request):
     HTTPトリガーのエントリポイント
 
     処理フロー:
-    1. 各チャンネルから新着動画を取得
-    2. 重複チェック（Firestore）
-    3. 未処理動画のみPub/Subに発行
-    4. Firestoreに処理履歴を記録
+    1. forMine=Trueで自分の新着動画を取得
+    2. 公開日時でフィルタ（ACCEPTABLE_AGE_MINUTES以内）
+    3. 重複チェック（Firestore）
+    4. 未処理動画のみPub/Subに発行
+    5. Firestoreに処理履歴を記録
     """
     # 環境変数チェック
     if not PROJECT_ID:
@@ -180,43 +212,40 @@ def check_new_video(request):
 
     # 統計情報
     stats = {
-        "checkedChannels": 0,
         "foundVideos": 0,
+        "filteredVideos": 0,
         "skippedVideos": 0,
         "publishedVideos": 0,
         "errors": 0,
     }
 
-    for channel_id in TARGET_CHANNEL_IDS:
-        if not channel_id.strip():
+    logger.info(f"Checking for videos published within {ACCEPTABLE_AGE_MINUTES} minutes")
+
+    # 自分の動画を取得（日時フィルタ済み）
+    videos = get_my_recent_videos(youtube, max_age_minutes=ACCEPTABLE_AGE_MINUTES)
+    stats["foundVideos"] = len(videos)
+
+    for video in videos:
+        video_id = video["videoId"]
+        stats["filteredVideos"] += 1
+
+        # 重複チェック
+        if is_video_processed(video_id):
+            logger.info(f"Video {video_id} already processed, skipping")
+            stats["skippedVideos"] += 1
             continue
 
-        stats["checkedChannels"] += 1
-        logger.info(f"Checking channel: {channel_id.strip()}")
+        # Firestoreに記録（トランザクション的に処理）
+        if not mark_video_as_processing(video_id, video):
+            logger.warning(f"Failed to mark video {video_id} as processing, skipping")
+            stats["skippedVideos"] += 1
+            continue
 
-        videos = get_recent_videos(youtube, channel_id.strip(), hours=1)
-        stats["foundVideos"] += len(videos)
-
-        for video in videos:
-            video_id = video["videoId"]
-
-            # 重複チェック
-            if is_video_processed(video_id):
-                logger.info(f"Video {video_id} already processed, skipping")
-                stats["skippedVideos"] += 1
-                continue
-
-            # Firestoreに記録（トランザクション的に処理）
-            if not mark_video_as_processing(video_id, video):
-                logger.warning(f"Failed to mark video {video_id} as processing, skipping")
-                stats["skippedVideos"] += 1
-                continue
-
-            # Pub/Subに発行
-            if publish_to_pubsub(video):
-                stats["publishedVideos"] += 1
-            else:
-                stats["errors"] += 1
+        # Pub/Subに発行
+        if publish_to_pubsub(video):
+            stats["publishedVideos"] += 1
+        else:
+            stats["errors"] += 1
 
     logger.info(f"Check completed: {stats}")
 
