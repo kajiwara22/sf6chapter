@@ -131,8 +131,8 @@ AWS経験があるため構築は容易だが、以下の理由で不採用：
 ### 選択肢B: Google Cloud完結構成
 
 ```
-Cloud Scheduler → Cloud Functions → Pub/Sub → ローカルPC
-                                                 ↓
+Cloud Scheduler (2時間毎) → Cloud Functions → Pub/Sub → ローカルPC
+                                                           ↓
                               Cloud Storage → Firebase Hosting → Firebase Auth → ブラウザ
 ```
 
@@ -157,8 +157,8 @@ Workers Cron → Workers → Queues → ローカルPC
 ### 選択肢D: Google Cloud + Cloudflare ハイブリッド構成（採用）
 
 ```
-Cloud Scheduler → Cloud Functions → Pub/Sub → ローカルPC
-                                                 ↓
+Cloud Scheduler (2時間毎) → Cloud Functions → Pub/Sub → ローカルPC
+                                                           ↓
                                     R2 → Pages Functions → Access → ブラウザ
 ```
 

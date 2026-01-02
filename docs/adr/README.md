@@ -9,9 +9,9 @@
 | [001](./001-cloud-service-selection.md) | クラウドサービス選定 | 採用 | 2024-12-28 |
 | [002](./002-data-storage-search.md) | データストレージ・検索方式 | 採用 | 2024-12-28 |
 | [003](./003-repository-structure.md) | リポジトリ構成 | 採用 | 2024-12-28 |
-| [004](./004-oauth2-authentication-for-all-gcp-apis.md) | ローカルPC処理でOAuth2認証を使用 | 採用 | 2024-12-31 |
-| [005](./005-r2-bucket-specific-api-token.md) | R2バケット専用APIトークンとSHA-256認証 | 採用 | 2025-01-01 |
-| [006](./006-firestore-for-duplicate-prevention.md) | Firestoreによる処理済み動画の追跡 | 採用 | 2024-12-31 |
+| [004](./004-oauth2-authentication-for-all-gcp-apis.md) | ローカルPC処理でOAuth2認証を使用 | 採用 | 2025-12-31 |
+| [005](./005-r2-bucket-specific-api-token.md) | R2バケット専用APIトークンとSHA-256認証 | 採用 | 2026-01-01 |
+| [006](./006-firestore-for-duplicate-prevention.md) | Firestoreによる処理済み動画の追跡 | 採用 | 2025-12-31 |
 | [007](./007-cloud-scheduler-interval-optimization.md) | Cloud Schedulerの実行間隔最適化 | 採用 | 2026-01-02 |
 | [008](./008-oauth2-user-authentication-in-cloud-functions.md) | Cloud FunctionsでのOAuth2ユーザー認証実装 | 採用 | 2026-01-02 |
 

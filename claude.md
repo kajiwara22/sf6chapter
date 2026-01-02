@@ -10,8 +10,8 @@ SF6（ストリートファイター6）のYouTube配信動画から対戦シー
 
 ```
 [Google Cloud]
-Cloud Scheduler (15分毎)
-    → Cloud Functions (新動画検知)
+Cloud Scheduler (2時間毎)
+    → Cloud Functions (新動画検知、OAuth2認証、Firestore重複防止)
     → Cloud Pub/Sub (メッセージキュー、7日間保持)
 
 [ローカルPC]
@@ -58,10 +58,13 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜004）
+- [x] ADR作成（001〜008）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
 - [x] GCP Functions実装 (`packages/gcp-functions/`)
+- [x] Firestore統合による重複防止
+- [x] OAuth2認証実装（ローカル＋Cloud Functions）
+- [x] Cloud Scheduler 2時間間隔最適化
 - [ ] Webフロントエンド実装 (`packages/web/`)
 
 ## 次のタスク
@@ -71,6 +74,12 @@ sf6-chapter/
 3. **統合テストとデプロイ**: エンドツーエンドテスト、本番デプロイ
 
 ## 重要な設計判断
+
+### 処理フロー
+
+- **Cloud Scheduler**: 2時間毎に実行（API quota効率化）
+- **Firestore**: 処理済み動画の追跡、重複防止
+- **Pub/Sub**: 7日間保持、ローカルPC停止中も検知漏れなし
 
 ### データ構造
 
@@ -94,10 +103,14 @@ sf6-chapter/
 - トークンは `token.pickle` に保存（pickle形式、パスは引数で変更可能）
 - クライアントシークレットは `client_secrets.json` から読み込み（パスは引数で変更可能）
 
-#### Cloudflare
+#### Cloudflare R2
 
+- **ローカルPC処理**: R2バケット専用APIトークンをSHA-256ハッシュ化してS3互換アクセス
+- **Pages Functions**: R2 Bindingsで安全にアクセス
 - Cloudflare Accessで自分のメールアドレスのみ許可
-- R2への直接アクセスは不可
+- R2への直接公開アクセスは不可
+
+**詳細**: [ADR-005](docs/adr/005-r2-bucket-specific-api-token.md)
 
 ## 関連リソース
 
@@ -124,5 +137,9 @@ sf6-chapter/
 - [002: データ保存・検索基盤](docs/adr/002-data-storage-search.md)
 - [003: リポジトリ構成](docs/adr/003-repository-structure.md)
 - [004: OAuth2認証の統一](docs/adr/004-oauth2-authentication-for-all-gcp-apis.md)
+- [005: R2バケット専用APIトークン](docs/adr/005-r2-bucket-specific-api-token.md)
+- [006: Firestoreによる重複防止](docs/adr/006-firestore-for-duplicate-prevention.md)
+- [007: Cloud Scheduler実行間隔最適化](docs/adr/007-cloud-scheduler-interval-optimization.md)
+- [008: Cloud FunctionsでのOAuth2ユーザー認証](docs/adr/008-oauth2-user-authentication-in-cloud-functions.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
