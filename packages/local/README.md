@@ -20,6 +20,66 @@
 uv sync
 ```
 
+### 1.5. yt-dlp用JavaScriptランタイムのセットアップ（推奨）
+
+YouTube動画のダウンロードには、yt-dlpがJavaScriptチャレンジを解決するための外部JSランタイムが必要です。
+
+#### オプション1: Denoを使用（推奨）
+
+Denoはyt-dlpでデフォルトで有効化されており、設定ファイルでパスを明示することで確実に動作します。
+
+**インストール**:
+
+```bash
+# Homebrewの場合
+brew install deno
+
+# mise経由の場合（このプロジェクトで使用）
+mise use deno@latest
+```
+
+**yt-dlp設定ファイルの作成**:
+
+mise経由でインストールした場合、yt-dlpがDenoを自動検出できない可能性があるため、設定ファイルでパスを明示します：
+
+```bash
+mkdir -p ~/.config/yt-dlp
+echo "--js-runtimes deno:$(mise where deno)/bin/deno" > ~/.config/yt-dlp/config
+```
+
+インストール後、yt-dlpは設定ファイルを読み込んでDenoを使用します。
+
+#### オプション2: 既存のNode.jsまたはBunを使用
+
+既にNode.jsまたはBunがインストールされている場合、それらを使用できます。
+
+**Node.js使用時**（最低バージョン: 20.0.0）:
+
+yt-dlp設定ファイル（`~/.config/yt-dlp/config`）に以下を追加：
+
+```
+--js-runtimes node
+```
+
+**Bun使用時**（最低バージョン: 1.0.31）:
+
+```
+--js-runtimes bun
+```
+
+#### EJSスクリプトの自動インストール
+
+`yt-dlp[default]`をインストールすると、EJSスクリプトパッケージ（`yt-dlp-ejs`）が自動的に含まれます。
+
+**確認方法**:
+
+```bash
+uv run python -c "import yt_dlp; print(yt_dlp.version.__version__)"
+```
+
+**参考**:
+- [yt-dlp Wiki: EJS Setup Guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
+
 ### 2. OAuth2認証の設定
 
 Google Cloud Consoleで以下のAPIを有効化し、OAuth2クライアントシークレットを取得：

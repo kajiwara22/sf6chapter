@@ -64,9 +64,12 @@ class VideoDownloader:
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # 動画情報取得
-            info = ydl.extract_info(url, download=False)
-            if not info:
+            info_raw = ydl.extract_info(url, download=False)
+            if not info_raw:
                 raise ValueError(f"Failed to get video info: {video_id}")
+
+            # JSON直列化可能な形式に変換（yt-dlp推奨）
+            info = ydl.sanitize_info(info_raw)
 
             # ダウンロード
             ydl.download([url])
@@ -128,9 +131,12 @@ class VideoDownloader:
             ydl_opts["cookiefile"] = self.cookie_path
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
+            info_raw = ydl.extract_info(url, download=False)
+            if not info_raw:
                 raise ValueError(f"Failed to get video info: {video_id}")
+
+            # JSON直列化可能な形式に変換（yt-dlp推奨）
+            info = ydl.sanitize_info(info_raw)
 
             return {
                 "videoId": video_id,
