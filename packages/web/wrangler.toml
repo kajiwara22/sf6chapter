@@ -1,17 +1,25 @@
-name = "sf6-chapter-web"
-compatibility_date = "2024-01-01"
-pages_build_output_dir = "dist"
+# SF6 Chapter - Cloudflare Pages設定
+name = "sf6-chapter"
+compatibility_date = "2026-01-03"
+pages_build_output_dir = "./dist"
 
-# R2 Bucket binding
+compatibility_flags = [
+  "nodejs_compat"
+]
+
+# 環境変数
+[vars]
+ENVIRONMENT = "production"
+# R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY は
+# Cloudflare Dashboardのシークレットとして設定してください
+
+# R2バケット
 [[r2_buckets]]
 binding = "SF6_DATA"
 bucket_name = "sf6-chapter-data"
-preview_bucket_name = "sf6-chapter-data-dev"
+preview_bucket_name = "sf6-chapter-data"
 
-# Environment variables (実際の値は wrangler secret で設定)
-[vars]
-ENVIRONMENT = "production"
+# 開発環境用設定
+[env.dev]
+vars = { ENVIRONMENT = "development" }
 
-# Development環境設定
-[env.preview]
-vars = { ENVIRONMENT = "preview" }
