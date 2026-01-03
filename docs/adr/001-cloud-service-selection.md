@@ -166,6 +166,29 @@ Cloud Scheduler (2時間毎) → Cloud Functions → Pub/Sub → ローカルPC
 - **Google Cloud**: YouTube/Gemini APIとの親和性、Pub/Subの信頼性
 - **Cloudflare**: R2の無料エグレス、Accessの簡便さ、Pagesの開発体験
 
+#### Cloudflare PagesとWorkersの選択
+
+**採用: Cloudflare Pages + Pages Functions**
+
+Cloudflare側のWebアプリケーション構築において、Pages FunctionsとWorkersの2つの選択肢があった：
+
+| 観点 | Pages Functions（採用） | Workers |
+|------|------------------------|---------|
+| 静的アセット配信 | ◎ 自動最適化 | ○ Static Assets設定必要 |
+| CI/CD | ◎ Git連携自動 | △ 手動設定 |
+| プレビュー環境 | ◎ PR毎に自動生成 | △ 手動設定 |
+| 開発体験 | ◎ Vite統合簡単 | ○ |
+| 将来性 | △ Workersが推奨 | ◎ 公式推奨プラットフォーム |
+| マイグレーションコスト | - | ○ 低（同一ランタイム） |
+
+**決定理由**:
+- 現時点（2026年1月）では Pages Functions が最も開発体験が良い
+- Workers への移行コストは低い（同一ランタイム、Honoコード流用可能）
+- Git連携とプレビュー環境の自動化が強力
+- 将来的にWorkersへ移行する可能性を考慮し、Pages固有機能への依存を最小化
+
+詳細は[ADR-009: Cloudflare PagesからWorkersへの段階的移行戦略](009-cloudflare-pages-to-workers-migration-strategy.md)を参照。
+
 ---
 
 ## 参考資料
