@@ -25,18 +25,21 @@ Python常駐スクリプト
 
 [Cloudflare]
 R2 (ストレージ、非公開)
-    → Pages Functions経由でアクセス
+    → Pages Functions (Hono) - APIエンドポイント
     → DuckDB-WASMでParquetをクエリ
-    → Pages (静的サイト)
+    → Pages (静的サイト) - フロントエンド
     → Access (認証)
 ```
+
+**注**: Cloudflare部分は現在Pages Functionsを使用していますが、将来的にWorkersへの移行可能性があります。詳細は[ADR-009](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)を参照。
 
 ## 技術選定の理由
 
 詳細は `docs/adr/` を参照。
 
 - **Google Cloud**: YouTube/Gemini APIとの親和性、Pub/Subの信頼性
-- **Cloudflare**: R2の無料エグレス、Accessの簡便な認証、Pagesの開発体験
+- **Cloudflare Pages**: R2の無料エグレス、Accessの簡便な認証、Git連携CI/CD、自動プレビュー環境
+- **Hono**: 軽量なWebフレームワーク、Pages/Workers両対応、TypeScript完全サポート
 - **Parquet + DuckDB-WASM**: 高速検索、柔軟なSQLクエリ、R2非公開との両立
 - **ローカルPC処理**: コスト$0、重い処理をクラウドに依存しない
 
@@ -58,20 +61,24 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜008）
+- [x] ADR作成（001〜010）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
 - [x] GCP Functions実装 (`packages/gcp-functions/`)
 - [x] Firestore統合による重複防止
 - [x] OAuth2認証実装（ローカル＋Cloud Functions）
 - [x] Cloud Scheduler 2時間間隔最適化
-- [ ] Webフロントエンド実装 (`packages/web/`)
+- [x] Webフロントエンド基本実装 (`packages/web/`)
+- [x] Pages Functions APIエンドポイント実装（Presigned URL方式）
+- [ ] R2へのテストデータアップロード
+- [ ] ローカルでの統合テスト
+- [ ] Cloudflare Pagesデプロイ
 
 ## 次のタスク
 
-1. **Web Pages Functions実装**: R2からParquetデータ取得API、DuckDB-WASMクエリ
-2. **Webフロントエンド実装**: 検索UI、データ表示、Cloudflare Access連携
-3. **統合テストとデプロイ**: エンドツーエンドテスト、本番デプロイ
+1. **R2テストデータ準備**: ローカル処理でサンプルParquetを生成しR2にアップロード
+2. **ローカル統合テスト**: Pages Functions + フロントエンドの動作確認
+3. **Cloudflare Pagesデプロイ**: 本番環境へのデプロイとCloudflare Access設定
 
 ## 重要な設計判断
 
@@ -85,7 +92,8 @@ sf6-chapter/
 
 - JSONファイルを累積保存（生データ保全）
 - Parquetファイルを都度更新（検索用）
-- R2は完全非公開、Pages Functions経由でのみアクセス
+- R2は完全非公開、Presigned URL経由でParquetをフロントエンドに配信
+- Presigned URL有効期限: 1時間（詳細: [ADR-010](docs/adr/010-parquet-presigned-url.md)）
 
 ### キャラクター名
 
@@ -119,10 +127,11 @@ sf6-chapter/
 
 ## 開発時の注意
 
-- Python: uvを使用 (`uv sync`, `uv run`)
-- Node: pnpm使用
-- Cloudflare: wrangler CLI使用
-- GCP: gcloud CLI使用
+- **Python**: uvを使用 (`uv sync`, `uv run`)
+- **Node.js**: pnpm使用
+- **Cloudflare**: wrangler CLI使用、Pages Functionsで実装
+- **GCP**: gcloud CLI使用
+- **設計方針**: Cloudflare Workersへの将来的な移行を想定し、Pages固有機能への依存を最小化（詳細: [ADR-009](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)）
 
 ## ドキュメント管理
 
@@ -141,5 +150,7 @@ sf6-chapter/
 - [006: Firestoreによる重複防止](docs/adr/006-firestore-for-duplicate-prevention.md)
 - [007: Cloud Scheduler実行間隔最適化](docs/adr/007-cloud-scheduler-interval-optimization.md)
 - [008: Cloud FunctionsでのOAuth2ユーザー認証](docs/adr/008-oauth2-user-authentication-in-cloud-functions.md)
+- [009: Cloudflare PagesからWorkersへの段階的移行戦略](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)
+- [010: Parquetデータ取得方式（Presigned URL）](docs/adr/010-parquet-presigned-url.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
