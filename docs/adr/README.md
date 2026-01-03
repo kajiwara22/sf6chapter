@@ -14,6 +14,8 @@
 | [006](./006-firestore-for-duplicate-prevention.md) | Firestoreによる処理済み動画の追跡 | 採用 | 2025-12-31 |
 | [007](./007-cloud-scheduler-interval-optimization.md) | Cloud Schedulerの実行間隔最適化 | 採用 | 2026-01-02 |
 | [008](./008-oauth2-user-authentication-in-cloud-functions.md) | Cloud FunctionsでのOAuth2ユーザー認証実装 | 採用 | 2026-01-02 |
+| [009](./009-cloudflare-pages-to-workers-migration-strategy.md) | Cloudflare PagesからWorkersへの段階的移行戦略 | 採用 | 2026-01-04 |
+| [010](./010-parquet-presigned-url.md) | Parquetデータ取得方式 - Presigned URL | 採用 | 2026-01-03 |
 
 ## ADRのフォーマット
 
