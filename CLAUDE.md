@@ -95,6 +95,17 @@ sf6-chapter/
 - R2は完全非公開、Presigned URL経由でParquetをフロントエンドに配信
 - Presigned URL有効期限: 1時間（詳細: [ADR-010](docs/adr/010-parquet-presigned-url.md)）
 
+### 中間ファイル保存（人間確認用）
+
+- **目的**: 自動検出・認識の誤検知を人間が確認・修正できるようにする
+- **保存先**: `./intermediate/{video_id}/` （環境変数 `INTERMEDIATE_DIR` で変更可能）
+- **保存内容**:
+  - `detection_summary.json` - 検出サマリー（タイムスタンプ、信頼度など）
+  - `frame_XXX_YYYs.png` - 検出フレーム画像（視覚的確認用）
+  - `video_data.json` / `matches.json` / `chapters.json` - 最終結果データ
+- **対象モード**: すべての実行モード（常駐/ワンショット/テスト）
+- **詳細**: [ADR-011](docs/adr/011-intermediate-file-preservation.md)
+
 ### キャラクター名
 
 - Gemini APIの認識結果にブレがあるため正規化テーブルを用意

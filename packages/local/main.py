@@ -37,6 +37,10 @@ class SF6ChapterProcessor:
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
         self.crop_region = (339, 886, 1748, 980)  # キャラクター名表示領域
 
+        # 中間ファイル保存ディレクトリ
+        self.intermediate_dir = Path(os.environ.get("INTERMEDIATE_DIR", "./intermediate"))
+        self.intermediate_dir.mkdir(parents=True, exist_ok=True)
+
         # R2アップロードを有効にするかどうか（環境変数で制御）
         self.enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
 
@@ -95,6 +99,10 @@ class SF6ChapterProcessor:
         # 処理開始をFirestoreに記録
         self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
 
+        # 中間ファイル保存用ディレクトリを作成
+        video_intermediate_dir = self.intermediate_dir / video_id
+        video_intermediate_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             # 1. 動画ダウンロード
             logger.info("[1/6] Downloading video...")
@@ -109,6 +117,9 @@ class SF6ChapterProcessor:
             )
             logger.info("Found %d matches", len(detections))
 
+            # 検出結果を中間ファイルに保存
+            self._save_detection_summary(video_id, video_intermediate_dir, detections)
+
             if not detections:
                 logger.info("No matches found, skipping video")
                 return
@@ -120,6 +131,10 @@ class SF6ChapterProcessor:
 
             for i, detection in enumerate(detections, 1):
                 try:
+                    # フレーム画像を保存
+                    frame_path = video_intermediate_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
+                    self.matcher.save_detection_frame(detection, str(frame_path))
+
                     normalized, raw = self.recognizer.recognize_from_frame(detection.frame)
 
                     match_id = f"{video_id}_{int(detection.timestamp)}"
@@ -141,6 +156,7 @@ class SF6ChapterProcessor:
                         "confidence": detection.confidence,
                         "templateMatchScore": detection.confidence,
                         "frameTimestamp": detection.frame_number,
+                        "savedFramePath": str(frame_path),  # 保存したフレーム画像のパス
                     }
                     matches.append(match_data)
 
@@ -227,6 +243,9 @@ class SF6ChapterProcessor:
                     json.dump(matches, f, ensure_ascii=False, indent=2)
                 logger.info("   Saved matches data: %s", matches_json_path)
 
+            # 最終結果を中間ファイルとして保存
+            self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters)
+
             # 処理完了をFirestoreに記録
             self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
 
@@ -234,6 +253,7 @@ class SF6ChapterProcessor:
             logger.info("✅ Successfully processed video: %s", video_id)
             logger.info("   - Detected %d matches", len(matches))
             logger.info("   - Created %d chapters", len(chapters))
+            logger.info("   - Intermediate files saved to: %s", video_intermediate_dir)
             if self.enable_r2:
                 logger.info("   - Uploaded to R2")
             else:
@@ -258,6 +278,88 @@ class SF6ChapterProcessor:
         """常駐モードで実行"""
         logger.info("Starting streaming mode...")
         self.subscriber.listen_streaming(callback=self.process_video)
+
+    def _save_detection_summary(
+        self, video_id: str, output_dir: Path, detections: list[MatchDetection]
+    ) -> None:
+        """
+        検出結果のサマリーを保存
+
+        Args:
+            video_id: YouTube動画ID
+            output_dir: 出力ディレクトリ
+            detections: 検出結果リスト
+        """
+        import json
+
+        summary = {
+            "videoId": video_id,
+            "detectedAt": datetime.utcnow().isoformat() + "Z",
+            "totalDetections": len(detections),
+            "detections": [
+                {
+                    "index": i,
+                    "timestamp": det.timestamp,
+                    "frameNumber": det.frame_number,
+                    "confidence": det.confidence,
+                }
+                for i, det in enumerate(detections, 1)
+            ],
+        }
+
+        summary_path = output_dir / "detection_summary.json"
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+
+        logger.info("   Saved detection summary: %s", summary_path)
+
+    def _save_final_results(
+        self,
+        video_id: str,
+        output_dir: Path,
+        video_data: dict[str, Any],
+        matches: list[dict[str, Any]],
+        chapters: list[dict[str, Any]],
+    ) -> None:
+        """
+        最終結果を中間ファイルとして保存
+
+        Args:
+            video_id: YouTube動画ID
+            output_dir: 出力ディレクトリ
+            video_data: 動画メタデータ
+            matches: 対戦データリスト
+            chapters: チャプターリスト
+        """
+        import json
+
+        # 動画データ
+        video_path = output_dir / "video_data.json"
+        with open(video_path, "w", encoding="utf-8") as f:
+            json.dump(video_data, f, ensure_ascii=False, indent=2)
+
+        # 対戦データ
+        matches_path = output_dir / "matches.json"
+        with open(matches_path, "w", encoding="utf-8") as f:
+            json.dump(matches, f, ensure_ascii=False, indent=2)
+
+        # チャプターデータ
+        chapters_path = output_dir / "chapters.json"
+        with open(chapters_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "videoId": video_id,
+                    "chapters": chapters,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        logger.info("   Saved final results:")
+        logger.info("     - %s", video_path)
+        logger.info("     - %s", matches_path)
+        logger.info("     - %s", chapters_path)
 
 
 def test_download(video_id: str) -> str:
