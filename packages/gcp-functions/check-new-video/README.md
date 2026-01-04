@@ -76,29 +76,43 @@ check-new-video (Cloud Function)
 
 #### サービスアカウント権限（Firestore/Pub/Sub/Secret Manager用）
 
-デフォルトのサービスアカウント: `{PROJECT_ID}@appspot.gserviceaccount.com`
+**専用サービスアカウント**: `check-new-video-sa@{PROJECT_ID}.iam.gserviceaccount.com`
 
-以下の権限をサービスアカウントに付与:
+このCloud Function専用のサービスアカウントを作成し、以下の権限を付与します（[ADR-012](../../../docs/adr/012-check-new-video-dedicated-service-account.md)参照）:
 
 ```bash
+# サービスアカウント名
+SERVICE_ACCOUNT_NAME="check-new-video-sa"
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+
+# サービスアカウント作成（初回のみ）
+gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
+    --display-name="Service account for check-new-video Cloud Function" \
+    --project=$GCP_PROJECT_ID
+
 # Firestore読み書き権限
 gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
-    --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/datastore.user"
 
 # Pub/Sub発行権限
 gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
-    --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
+    --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/pubsub.publisher"
 
 # Secret Manager読み取り権限（OAuth2認証情報取得用）
 for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret; do
     gcloud secrets add-iam-policy-binding $SECRET_NAME \
-        --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
+        --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
         --role="roles/secretmanager.secretAccessor" \
         --project=$GCP_PROJECT_ID
 done
 ```
+
+**セキュリティ上の利点**:
+- 最小権限の原則に基づき、必要な権限のみを付与
+- Cloud Function専用アカウントで責任範囲が明確
+- IAM監査ログでの追跡が容易
 
 ### 環境変数設定
 

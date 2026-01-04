@@ -61,7 +61,7 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜010）
+- [x] ADR作成（001〜012）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
 - [x] GCP Functions実装 (`packages/gcp-functions/`)
@@ -163,5 +163,7 @@ sf6-chapter/
 - [008: Cloud FunctionsでのOAuth2ユーザー認証](docs/adr/008-oauth2-user-authentication-in-cloud-functions.md)
 - [009: Cloudflare PagesからWorkersへの段階的移行戦略](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)
 - [010: Parquetデータ取得方式（Presigned URL）](docs/adr/010-parquet-presigned-url.md)
+- [011: 中間ファイル保存による人間確認フロー](docs/adr/011-intermediate-file-preservation.md)
+- [012: check-new-video Cloud Function専用サービスアカウントの採用](docs/adr/012-check-new-video-dedicated-service-account.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。

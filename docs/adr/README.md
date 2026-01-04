@@ -16,6 +16,8 @@
 | [008](./008-oauth2-user-authentication-in-cloud-functions.md) | Cloud FunctionsでのOAuth2ユーザー認証実装 | 採用 | 2026-01-02 |
 | [009](./009-cloudflare-pages-to-workers-migration-strategy.md) | Cloudflare PagesからWorkersへの段階的移行戦略 | 採用 | 2026-01-04 |
 | [010](./010-parquet-presigned-url.md) | Parquetデータ取得方式 - Presigned URL | 採用 | 2026-01-03 |
+| [011](./011-intermediate-file-preservation.md) | 中間ファイル保存による人間確認フロー | 採用 | 2026-01-03 |
+| [012](./012-check-new-video-dedicated-service-account.md) | check-new-video Cloud Function専用サービスアカウントの採用 | 採用 | 2026-01-04 |
 
 ## ADRのフォーマット
 

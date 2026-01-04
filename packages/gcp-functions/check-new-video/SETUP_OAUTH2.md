@@ -84,11 +84,17 @@ echo -n "$CLIENT_SECRET" | gcloud secrets create youtube-client-secret \
 
 ### 3. Cloud Functionに権限を付与
 
-Cloud FunctionsのサービスアカウントにSecret Managerへのアクセス権限を付与します。
+Cloud Functionsの専用サービスアカウントにSecret Managerへのアクセス権限を付与します。
 
 ```bash
-# サービスアカウントのメールアドレス
-SERVICE_ACCOUNT="${GCP_PROJECT_ID}@appspot.gserviceaccount.com"
+# サービスアカウント名（ADR-012で定義）
+SERVICE_ACCOUNT_NAME="check-new-video-sa"
+SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+
+# サービスアカウント作成（初回のみ）
+gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
+    --display-name="Service account for check-new-video Cloud Function" \
+    --project=$GCP_PROJECT_ID
 
 # 各シークレットへのアクセス権限を付与
 for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret; do
@@ -99,6 +105,8 @@ for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret
     echo "✓ ${SECRET_NAME}へのアクセス権限を付与しました"
 done
 ```
+
+**Note**: サービスアカウント `check-new-video-sa` の採用理由は [ADR-012](../../../docs/adr/012-check-new-video-dedicated-service-account.md) を参照してください。
 
 ### 4. 動作確認
 
