@@ -61,6 +61,48 @@ check-new-video (Cloud Function)
   - Secret Manager API
 - **OAuth2認証のセットアップが完了していること**（[SETUP_OAUTH2.md](./SETUP_OAUTH2.md)参照）
 
+### Firestoreセットアップ
+
+#### 1. Firestoreデータベース作成
+
+```bash
+# Firestore Native modeでデータベース作成
+gcloud firestore databases create \
+    --location=asia-northeast1 \
+    --project=$GCP_PROJECT_ID
+```
+
+**Note**:
+- **モード**: Native mode（リアルタイム同期とより柔軟なクエリをサポート）
+- **リージョン**: `asia-northeast1`（Cloud Functionと同一リージョン推奨）
+- ⚠️ 一度作成したデータベースのリージョンは変更不可
+
+#### 2. セキュリティルール設定
+
+Firestore Console（`https://console.firebase.google.com/project/<PROJECT_ID>/firestore/rules`）で以下のルールを設定:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /processed_videos/{videoId} {
+      // サービスアカウントからのアクセスのみ許可
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+#### 3. コレクション初期化
+
+コレクション `processed_videos` は初回実行時に自動作成されます。手動作成は不要です。
+
+#### 4. インデックス確認
+
+通常、単純なクエリ（ドキュメントID検索）のみ使用するため、複合インデックスは不要です。
+
+Cloud Functionの初回実行後、ログで複合インデックスの作成要求が表示された場合は、表示されたURLから自動作成してください。
+
 ### 認証と権限設定
 
 #### OAuth2ユーザー認証（YouTube API用）
@@ -192,16 +234,35 @@ export GCP_PROJECT_ID="your-project-id"
 
 ### デプロイ後のテスト
 
-```bash
-# Function URLを取得
-gcloud functions describe check-new-video \
-    --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID \
-    --format="value(serviceConfig.uri)"
+#### 1. Function URLの取得
 
-# HTTPリクエスト送信
-curl <FUNCTION_URL>
+```bash
+# Function URLを取得（Gen2関数用）
+FUNCTION_URL=$(gcloud functions describe check-new-video \
+    --region=asia-northeast1 \
+    --gen2 \
+    --project=$GCP_PROJECT_ID \
+    --format="value(serviceConfig.uri)")
+
+echo "Function URL: $FUNCTION_URL"
 ```
+
+**Note**: Gen2関数では`--gen2`フラグが必要です。URLは`https://check-new-video-xxxxx-an.a.run.app`の形式になります。
+
+#### 2. 手動実行テスト
+
+```bash
+# HTTPリクエスト送信（詳細出力）
+curl -v $FUNCTION_URL
+
+# 期待されるレスポンス（新着動画がない場合）
+# {"stats":{"errors":0,"filteredVideos":0,"foundVideos":0,"publishedVideos":0,"skippedVideos":0},"status":"success"}
+```
+
+**正常なレスポンス**:
+- `status: "success"`: 関数が正常に実行された
+- `foundVideos: 0`: 2.5時間以内に新着動画がない（正常）
+- `publishedVideos: 0`: Pub/Subに発行した動画数
 
 ## Firestoreデータ構造
 
@@ -230,14 +291,49 @@ curl <FUNCTION_URL>
 
 ## Cloud Scheduler設定
 
+### 1. Function URLの取得
+
+Cloud Schedulerの設定前に、Function URLを取得します：
+
+```bash
+# Function URLを取得して環境変数に保存
+FUNCTION_URL=$(gcloud functions describe check-new-video \
+    --region=asia-northeast1 \
+    --gen2 \
+    --project=$GCP_PROJECT_ID \
+    --format="value(serviceConfig.uri)")
+
+echo "Function URL: $FUNCTION_URL"
+```
+
+### 2. Schedulerジョブの作成
+
 ```bash
 # Schedulerジョブ作成（2時間毎、偶数時に実行: 0時、2時、4時...）
 gcloud scheduler jobs create http check-new-video-schedule \
     --location=asia-northeast1 \
     --schedule="0 */2 * * *" \
-    --uri="<FUNCTION_URL>" \
+    --uri="$FUNCTION_URL" \
     --http-method=GET \
     --time-zone="Asia/Tokyo" \
+    --project=$GCP_PROJECT_ID
+```
+
+**Note**:
+- `$FUNCTION_URL`は上記で取得した値を使用
+- `--gen2`フラグでFunction URLを取得することが重要（Gen2関数の場合）
+
+### 3. Schedulerジョブの確認
+
+```bash
+# ジョブの詳細確認
+gcloud scheduler jobs describe check-new-video-schedule \
+    --location=asia-northeast1 \
+    --project=$GCP_PROJECT_ID
+
+# 手動実行テスト
+gcloud scheduler jobs run check-new-video-schedule \
+    --location=asia-northeast1 \
     --project=$GCP_PROJECT_ID
 ```
 
