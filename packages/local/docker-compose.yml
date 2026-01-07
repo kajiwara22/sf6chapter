@@ -1,0 +1,56 @@
+services:
+  sf6-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sf6-chapter-processor
+
+    # ボリュームマウント
+    volumes:
+      # 認証ファイル（読み取り専用）
+      - ./client_secrets.json:/app/client_secrets.json:ro
+      # 認証トークン（読み書き可能、初回認証時に更新される）
+      - ./token.pickle:/app/token.pickle
+      # テンプレート画像（読み取り専用）
+      - ./template:/app/template:ro
+      # データディレクトリ（永続化）
+      - sf6-downloads:/app/downloads
+      - sf6-output:/app/output
+      - sf6-intermediate:/app/intermediate
+      - sf6-chapters:/app/chapters
+
+    # 環境変数（.envファイルから読み込み）
+    env_file:
+      - .env
+
+    # 再起動ポリシー（手動停止以外は自動再起動）
+    restart: unless-stopped
+
+    # ヘルスチェック（Pythonプロセスの存在確認）
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "python"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # リソース制限（オプション、必要に応じてコメント解除）
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 1G
+
+# 名前付きボリューム（データ永続化）
+volumes:
+  sf6-downloads:
+    name: sf6-chapter-downloads
+  sf6-output:
+    name: sf6-chapter-output
+  sf6-intermediate:
+    name: sf6-chapter-intermediate
+  sf6-chapters:
+    name: sf6-chapter-chapters

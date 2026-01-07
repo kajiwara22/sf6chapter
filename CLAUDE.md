@@ -61,9 +61,10 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜012）
+- [x] ADR作成（001〜013）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
+- [x] ローカル処理のDocker化（ADR-013）
 - [x] GCP Functions実装 (`packages/gcp-functions/`)
 - [x] Firestore統合による重複防止
 - [x] OAuth2認証実装（ローカル＋Cloud Functions）
@@ -139,10 +140,32 @@ sf6-chapter/
 ## 開発時の注意
 
 - **Python**: uvを使用 (`uv sync`, `uv run`)
+- **Docker**: ローカル処理のDocker化対応（詳細: [ADR-013](docs/adr/013-local-package-dockerization.md)）
 - **Node.js**: pnpm使用
 - **Cloudflare**: wrangler CLI使用、Pages Functionsで実装
 - **GCP**: gcloud CLI使用
 - **設計方針**: Cloudflare Workersへの将来的な移行を想定し、Pages固有機能への依存を最小化（詳細: [ADR-009](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)）
+
+## ローカル処理のデプロイ方法
+
+`packages/local/`は開発PC・常駐PCのどちらでも動作可能です。
+
+### 開発PC（uvを使用）
+
+```bash
+cd packages/local
+uv sync
+uv run python main.py --mode daemon
+```
+
+### 常駐PC（Dockerを使用、推奨）
+
+```bash
+cd packages/local
+docker compose up -d
+```
+
+**詳細**: [DEPLOYMENT.md](packages/local/DEPLOYMENT.md)を参照
 
 ## ドキュメント管理
 
@@ -165,5 +188,6 @@ sf6-chapter/
 - [010: Parquetデータ取得方式（Presigned URL）](docs/adr/010-parquet-presigned-url.md)
 - [011: 中間ファイル保存による人間確認フロー](docs/adr/011-intermediate-file-preservation.md)
 - [012: check-new-video Cloud Function専用サービスアカウントの採用](docs/adr/012-check-new-video-dedicated-service-account.md)
+- [013: ローカル処理パッケージのDocker化](docs/adr/013-local-package-dockerization.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。

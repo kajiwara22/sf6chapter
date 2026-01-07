@@ -1,0 +1,54 @@
+# Git関連
+.git
+.gitignore
+
+# Python関連
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 仮想環境（uvの依存関係はDockerfile内でインストールするため除外）
+.venv/
+venv/
+ENV/
+env/
+.uv/
+
+# データディレクトリ（volumesでマウントするため除外）
+downloads/
+output/
+intermediate/
+chapters/
+
+# 認証ファイル（volumesでマウントするため除外）
+*.pickle
+client_secrets.json
+token.pickle
+
+# 環境変数ファイル（volumesでマウントするため除外）
+.env
+.env.local
+
+# エディタ・IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ログファイル
+*.log
+
+# その他
+README.md
+scripts/
+notebooks/
