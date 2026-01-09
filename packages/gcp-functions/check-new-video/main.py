@@ -21,40 +21,24 @@ Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Sub
 import json
 import logging
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import functions_framework
+import google.cloud.logging
 from google.cloud import firestore, pubsub_v1, secretmanager
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# ロギング設定（Cloud Functions Gen2 / Cloud Run用）
-# 標準出力に構造化ログを出力
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s: %(message)s',
-    stream=sys.stdout
-)
+# ロギング設定（Cloud Logging統合）
+# Cloud Loggingクライアントをセットアップ
+logging_client = google.cloud.logging.Client()
+logging_client.setup_logging()
+
+# 標準的なPythonロギングを使用（Cloud Loggingに自動統合される）
 logger = logging.getLogger(__name__)
-
-# Cloud Loggingに確実にログを送信するため、標準出力も使用
-def log_info(message):
-    """INFOレベルのログを出力"""
-    logger.info(message)
-    print(f"INFO: {message}", flush=True)
-
-def log_error(message):
-    """ERRORレベルのログを出力"""
-    logger.error(message)
-    print(f"ERROR: {message}", file=sys.stderr, flush=True)
-
-def log_warning(message):
-    """WARNINGレベルのログを出力"""
-    logger.warning(message)
-    print(f"WARNING: {message}", flush=True)
+logger.setLevel(logging.INFO)
 
 # 環境変数
 PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
@@ -108,10 +92,10 @@ def get_secret(secret_name: str) -> str:
         name = f"projects/{PROJECT_ID}/secrets/{secret_name}/versions/latest"
         response = client.access_secret_version(request={"name": name})
         secret_value = response.payload.data.decode("UTF-8")
-        log_info(f"Successfully retrieved secret: {secret_name}")
+        logger.info(f"Successfully retrieved secret: {secret_name}")
         return secret_value
     except Exception as e:
-        log_error(f"Failed to retrieve secret {secret_name}: {e}")
+        logger.error(f"Failed to retrieve secret {secret_name}: {e}")
         raise
 
 
@@ -120,7 +104,7 @@ def get_oauth_credentials() -> Credentials:
     global _oauth_credentials
 
     if _oauth_credentials is not None:
-        log_info("Using cached OAuth2 credentials")
+        logger.info("Using cached OAuth2 credentials")
         return _oauth_credentials
 
     try:
@@ -141,11 +125,11 @@ def get_oauth_credentials() -> Credentials:
 
         # キャッシュに保存
         _oauth_credentials = credentials
-        log_info("OAuth2 credentials initialized successfully")
+        logger.info("OAuth2 credentials initialized successfully")
         return credentials
 
     except Exception as e:
-        log_error(f"Failed to initialize OAuth2 credentials: {e}")
+        logger.error(f"Failed to initialize OAuth2 credentials: {e}")
         raise
 
 
@@ -157,7 +141,7 @@ def is_video_processed(video_id: str) -> bool:
         doc = doc_ref.get()
         return doc.exists
     except Exception as e:
-        log_error(f"Firestore check error for {video_id}: {e}")
+        logger.error(f"Firestore check error for {video_id}: {e}")
         # エラー時は未処理として扱う（重複処理のリスクを取る）
         return False
 
@@ -170,7 +154,7 @@ def mark_video_as_processing(video_id: str, video_data: Dict[str, Any]) -> bool:
 
         # ドキュメントが既に存在する場合は処理しない
         if doc_ref.get().exists:
-            log_info(f"Video {video_id} already exists in Firestore, skipping")
+            logger.info(f"Video {video_id} already exists in Firestore, skipping")
             return False
 
         # 新規ドキュメントとして作成
@@ -184,10 +168,10 @@ def mark_video_as_processing(video_id: str, video_data: Dict[str, Any]) -> bool:
             "queuedAt": firestore.SERVER_TIMESTAMP,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         })
-        log_info(f"Video {video_id} marked as queued in Firestore")
+        logger.info(f"Video {video_id} marked as queued in Firestore")
         return True
     except Exception as e:
-        log_error(f"Firestore write error for {video_id}: {e}")
+        logger.error(f"Firestore write error for {video_id}: {e}")
         # エラー時は処理を継続しない（重複発行を避ける）
         return False
 
@@ -228,18 +212,18 @@ def get_my_recent_videos(youtube, max_age_minutes: int = ACCEPTABLE_AGE_MINUTES)
                         "channelTitle": item["snippet"]["channelTitle"],
                         "publishedAt": published_at_str,
                     })
-                    log_info(f"Found recent video: {item['id']['videoId']} published at {published_at_str}")
+                    logger.info(f"Found recent video: {item['id']['videoId']} published at {published_at_str}")
                 else:
                     logger.debug(f"Skipping old video: {item['id']['videoId']} published at {published_at_str}")
 
-        log_info(f"Found {len(videos)} videos within {max_age_minutes} minutes")
+        logger.info(f"Found {len(videos)} videos within {max_age_minutes} minutes")
         return videos
 
     except HttpError as e:
-        log_error(f"YouTube API error: {e}")
+        logger.error(f"YouTube API error: {e}")
         return []
     except Exception as e:
-        log_error(f"Unexpected error getting videos: {e}")
+        logger.error(f"Unexpected error getting videos: {e}")
         return []
 
 
@@ -254,10 +238,10 @@ def publish_to_pubsub(video_data: Dict[str, Any]) -> bool:
 
         future = publisher.publish(topic_path, message_bytes)
         message_id = future.result(timeout=10.0)
-        log_info(f"Published message {message_id} for video {video_data['videoId']}")
+        logger.info(f"Published message {message_id} for video {video_data['videoId']}")
         return True
     except Exception as e:
-        log_error(f"Error publishing video {video_data['videoId']}: {e}")
+        logger.error(f"Error publishing video {video_data['videoId']}: {e}")
         return False
 
 
@@ -275,7 +259,7 @@ def check_new_video(request):
     """
     # 環境変数チェック
     if not PROJECT_ID:
-        log_error("GCP_PROJECT_ID environment variable is not set")
+        logger.error("GCP_PROJECT_ID environment variable is not set")
         return {"status": "error", "message": "Missing GCP_PROJECT_ID"}, 500
 
     # YouTube APIクライアントを構築（OAuth2使用）
@@ -283,9 +267,9 @@ def check_new_video(request):
         # Secret ManagerからOAuth2認証情報を取得
         credentials = get_oauth_credentials()
         youtube = build("youtube", "v3", credentials=credentials)
-        log_info("YouTube API client initialized with OAuth2")
+        logger.info("YouTube API client initialized with OAuth2")
     except Exception as e:
-        log_error(f"Failed to build YouTube API client: {e}")
+        logger.error(f"Failed to build YouTube API client: {e}")
         return {"status": "error", "message": f"YouTube API error: {str(e)}"}, 500
 
     # 統計情報
@@ -297,7 +281,7 @@ def check_new_video(request):
         "errors": 0,
     }
 
-    log_info(f"Checking for videos published within {ACCEPTABLE_AGE_MINUTES} minutes")
+    logger.info(f"Checking for videos published within {ACCEPTABLE_AGE_MINUTES} minutes")
 
     # 自分の動画を取得（日時フィルタ済み）
     videos = get_my_recent_videos(youtube, max_age_minutes=ACCEPTABLE_AGE_MINUTES)
@@ -309,13 +293,13 @@ def check_new_video(request):
 
         # 重複チェック
         if is_video_processed(video_id):
-            log_info(f"Video {video_id} already processed, skipping")
+            logger.info(f"Video {video_id} already processed, skipping")
             stats["skippedVideos"] += 1
             continue
 
         # Firestoreに記録（トランザクション的に処理）
         if not mark_video_as_processing(video_id, video):
-            log_warning(f"Failed to mark video {video_id} as processing, skipping")
+            logger.warning(f"Failed to mark video {video_id} as processing, skipping")
             stats["skippedVideos"] += 1
             continue
 
@@ -325,7 +309,7 @@ def check_new_video(request):
         else:
             stats["errors"] += 1
 
-    log_info(f"Check completed: {stats}")
+    logger.info(f"Check completed: {stats}")
 
     return {
         "status": "success",
