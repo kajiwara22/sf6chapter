@@ -189,5 +189,6 @@ docker compose up -d
 - [011: 中間ファイル保存による人間確認フロー](docs/adr/011-intermediate-file-preservation.md)
 - [012: check-new-video Cloud Function専用サービスアカウントの採用](docs/adr/012-check-new-video-dedicated-service-account.md)
 - [013: ローカル処理パッケージのDocker化](docs/adr/013-local-package-dockerization.md)
+- [014: Cloud FunctionのOIDC認証による保護](docs/adr/014-cloud-function-oidc-authentication.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。

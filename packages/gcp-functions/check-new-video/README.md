@@ -105,6 +105,10 @@ Cloud Functionの初回実行後、ログで複合インデックスの作成要
 
 ### 認証と権限設定
 
+**重要なドキュメント**:
+- **[SETUP_OAUTH2.md](./SETUP_OAUTH2.md)**: YouTube API用OAuth2認証のセットアップ
+- **[SETUP_SECURITY.md](./SETUP_SECURITY.md)**: Cloud Function OIDC認証のセットアップ（必読）
+
 #### OAuth2ユーザー認証（YouTube API用）
 
 **重要**: `forMine=True`を使用するため、YouTube APIはOAuth2ユーザー認証が必須です。
@@ -116,11 +120,15 @@ Cloud Functionの初回実行後、ログで複合インデックスの作成要
 2. Secret ManagerにRefresh Token、Client ID、Client Secretを保存
 3. Cloud FunctionがSecret Managerから認証情報を取得
 
-#### サービスアカウント権限（Firestore/Pub/Sub/Secret Manager用）
+#### サービスアカウント権限
 
-**専用サービスアカウント**: `check-new-video-sa@{PROJECT_ID}.iam.gserviceaccount.com`
+このCloud Functionでは2つのサービスアカウントを使用します：
 
-このCloud Function専用のサービスアカウントを作成し、以下の権限を付与します（[ADR-012](../../../docs/adr/012-check-new-video-dedicated-service-account.md)参照）:
+##### 1. Cloud Function実行用サービスアカウント（ADR-012）
+
+**サービスアカウント**: `check-new-video-sa@{PROJECT_ID}.iam.gserviceaccount.com`
+
+Cloud Functionが各種GCPサービスにアクセスするための権限を持ちます。
 
 ```bash
 # サービスアカウント名
@@ -151,8 +159,25 @@ for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret
 done
 ```
 
+##### 2. Cloud Scheduler用サービスアカウント（ADR-014）
+
+**サービスアカウント**: `cloud-scheduler-invoker@{PROJECT_ID}.iam.gserviceaccount.com`
+
+Cloud SchedulerがCloud Functionを呼び出すための認証に使用します。
+
+```bash
+# Cloud Scheduler用サービスアカウント作成
+SCHEDULER_SA_NAME="cloud-scheduler-invoker"
+SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+
+gcloud iam service-accounts create $SCHEDULER_SA_NAME \
+    --display-name="Cloud Scheduler invoker for Cloud Functions" \
+    --project=$GCP_PROJECT_ID
+```
+
 **セキュリティ上の利点**:
 - 最小権限の原則に基づき、必要な権限のみを付与
+- 実行権限と呼び出し権限を分離
 - Cloud Function専用アカウントで責任範囲が明確
 - IAM監査ログでの追跡が容易
 
@@ -168,6 +193,20 @@ export GCP_PROJECT_ID="your-project-id"
 ```bash
 ./deploy.sh
 ```
+
+### デプロイ後の権限設定
+
+Cloud Functionをデプロイした後、Cloud Scheduler用サービスアカウントに呼び出し権限を付与します：
+
+```bash
+# Cloud Functionの呼び出し権限を付与
+gcloud functions add-invoker-policy-binding check-new-video \
+    --region=asia-northeast1 \
+    --member="serviceAccount:cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+    --project=$GCP_PROJECT_ID
+```
+
+**重要**: この権限設定により、Cloud Schedulerからのみ実行可能になります（[ADR-014](../../../docs/adr/014-cloud-function-oidc-authentication.md)参照）。
 
 ## テスト
 
@@ -251,18 +290,33 @@ echo "Function URL: $FUNCTION_URL"
 
 #### 2. 手動実行テスト
 
+**認証付きリクエスト**（OIDC認証が有効なため）:
+
 ```bash
-# HTTPリクエスト送信（詳細出力）
-curl -v $FUNCTION_URL
+# 認証トークンを取得してリクエスト送信
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" $FUNCTION_URL
 
 # 期待されるレスポンス（新着動画がない場合）
 # {"stats":{"errors":0,"filteredVideos":0,"foundVideos":0,"publishedVideos":0,"skippedVideos":0},"status":"success"}
+```
+
+**認証エラーの場合**:
+```json
+{
+  "error": {
+    "code": 403,
+    "message": "Forbidden",
+    "status": "PERMISSION_DENIED"
+  }
+}
 ```
 
 **正常なレスポンス**:
 - `status: "success"`: 関数が正常に実行された
 - `foundVideos: 0`: 2.5時間以内に新着動画がない（正常）
 - `publishedVideos: 0`: Pub/Subに発行した動画数
+
+**Note**: 認証なしでアクセスした場合、403 Forbiddenエラーが返されます（セキュリティ強化、[ADR-014](../../../docs/adr/014-cloud-function-oidc-authentication.md)参照）。
 
 ## Firestoreデータ構造
 
@@ -308,6 +362,8 @@ echo "Function URL: $FUNCTION_URL"
 
 ### 2. Schedulerジョブの作成
 
+**OIDC認証を使用してCloud Functionを呼び出します**（[ADR-014](../../../docs/adr/014-cloud-function-oidc-authentication.md)参照）:
+
 ```bash
 # Schedulerジョブ作成（2時間毎、偶数時に実行: 0時、2時、4時...）
 gcloud scheduler jobs create http check-new-video-schedule \
@@ -316,8 +372,15 @@ gcloud scheduler jobs create http check-new-video-schedule \
     --uri="$FUNCTION_URL" \
     --http-method=GET \
     --time-zone="Asia/Tokyo" \
+    --oidc-service-account-email="cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+    --oidc-token-audience="$FUNCTION_URL" \
     --project=$GCP_PROJECT_ID
 ```
+
+**重要なパラメータ**:
+- `--oidc-service-account-email`: Cloud Scheduler用サービスアカウント
+- `--oidc-token-audience`: トークンの検証対象（Function URL）
+- OIDC認証により、Cloud Schedulerからのリクエストのみ許可されます
 
 **Note**:
 - `$FUNCTION_URL`は上記で取得した値を使用
