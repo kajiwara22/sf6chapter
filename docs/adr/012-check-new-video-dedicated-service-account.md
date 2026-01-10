@@ -6,7 +6,7 @@
 
 ## コンテキスト
 
-Cloud Functions `check-new-video`のデプロイにおいて、当初はデフォルトのApp Engineサービスアカウント（`${GCP_PROJECT_ID}@appspot.gserviceaccount.com`）を使用していました。
+Cloud Functions `check-new-video`のデプロイにおいて、当初はデフォルトのApp Engineサービスアカウント（`${GOOGLE_CLOUD_PROJECT}@appspot.gserviceaccount.com`）を使用していました。
 
 しかし、この命名規則には以下の問題がありました：
 
@@ -22,7 +22,7 @@ Cloud Function `check-new-video`に専用サービスアカウント **`check-ne
 ### サービスアカウント名
 
 - **名前**: `check-new-video-sa`
-- **フルメールアドレス**: `check-new-video-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com`
+- **フルメールアドレス**: `check-new-video-sa@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com`
 - **表示名**: "Service account for check-new-video Cloud Function"
 
 ### 必要な権限
@@ -113,18 +113,18 @@ Cloud Function `check-new-video`に専用サービスアカウント **`check-ne
 ```bash
 # サービスアカウント作成（初回のみ）
 SERVICE_ACCOUNT_NAME="check-new-video-sa"
-SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
 gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
     --display-name="Service account for check-new-video Cloud Function" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 権限付与
-gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/datastore.user"
 
-gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/pubsub.publisher"
 
@@ -132,7 +132,7 @@ for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret
     gcloud secrets add-iam-policy-binding $SECRET_NAME \
         --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
         --role="roles/secretmanager.secretAccessor" \
-        --project=$GCP_PROJECT_ID
+        --project=$GOOGLE_CLOUD_PROJECT
 done
 
 # Cloud Functionデプロイ
@@ -145,8 +145,8 @@ gcloud functions deploy check-new-video \
     --trigger-http \
     --allow-unauthenticated \
     --service-account=${SERVICE_ACCOUNT_EMAIL} \
-    --set-env-vars="GCP_PROJECT_ID=${GCP_PROJECT_ID},PUBSUB_TOPIC=sf6-video-process" \
-    --project=$GCP_PROJECT_ID
+    --set-env-vars="GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT},PUBSUB_TOPIC=sf6-video-process" \
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 ## 関連するADR

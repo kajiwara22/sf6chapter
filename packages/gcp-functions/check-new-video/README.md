@@ -39,7 +39,7 @@ check-new-video (Cloud Function)
 
 | 変数名 | 必須 | 説明 | デフォルト値 |
 |--------|------|------|-------------|
-| `GCP_PROJECT_ID` | Yes | GCPプロジェクトID | - |
+| `GOOGLE_CLOUD_PROJECT` | Yes | GCPプロジェクトID | - |
 | `PUBSUB_TOPIC` | No | Pub/Subトピック名 | `sf6-video-process` |
 
 **Note**:
@@ -69,7 +69,7 @@ check-new-video (Cloud Function)
 # Firestore Native modeでデータベース作成
 gcloud firestore databases create \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **Note**:
@@ -133,20 +133,20 @@ Cloud Functionが各種GCPサービスにアクセスするための権限を持
 ```bash
 # サービスアカウント名
 SERVICE_ACCOUNT_NAME="check-new-video-sa"
-SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
 # サービスアカウント作成（初回のみ）
 gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
     --display-name="Service account for check-new-video Cloud Function" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # Firestore読み書き権限
-gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/datastore.user"
 
 # Pub/Sub発行権限
-gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
     --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
     --role="roles/pubsub.publisher"
 
@@ -155,7 +155,7 @@ for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret
     gcloud secrets add-iam-policy-binding $SECRET_NAME \
         --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
         --role="roles/secretmanager.secretAccessor" \
-        --project=$GCP_PROJECT_ID
+        --project=$GOOGLE_CLOUD_PROJECT
 done
 ```
 
@@ -168,11 +168,11 @@ Cloud SchedulerがCloud Functionを呼び出すための認証に使用します
 ```bash
 # Cloud Scheduler用サービスアカウント作成
 SCHEDULER_SA_NAME="cloud-scheduler-invoker"
-SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
 gcloud iam service-accounts create $SCHEDULER_SA_NAME \
     --display-name="Cloud Scheduler invoker for Cloud Functions" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **セキュリティ上の利点**:
@@ -184,7 +184,7 @@ gcloud iam service-accounts create $SCHEDULER_SA_NAME \
 ### 環境変数設定
 
 ```bash
-export GCP_PROJECT_ID="your-project-id"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
 # TARGET_CHANNEL_IDSは不要（forMine=Trueを使用）
 ```
 
@@ -202,8 +202,8 @@ Cloud Functionをデプロイした後、Cloud Scheduler用サービスアカウ
 # Cloud Functionの呼び出し権限を付与
 gcloud functions add-invoker-policy-binding check-new-video \
     --region=asia-northeast1 \
-    --member="serviceAccount:cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-    --project=$GCP_PROJECT_ID
+    --member="serviceAccount:cloud-scheduler-invoker@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com" \
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **重要**: この権限設定により、Cloud Schedulerからのみ実行可能になります（[ADR-014](../../../docs/adr/014-cloud-function-oidc-authentication.md)参照）。
@@ -267,7 +267,7 @@ curl http://localhost:8080
 **Note**: ローカル実行時は環境変数の設定が必要です:
 
 ```bash
-export GCP_PROJECT_ID="your-project-id"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
 # TARGET_CHANNEL_IDSは不要（forMine=Trueを使用）
 ```
 
@@ -280,7 +280,7 @@ export GCP_PROJECT_ID="your-project-id"
 FUNCTION_URL=$(gcloud functions describe check-new-video \
     --region=asia-northeast1 \
     --gen2 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --format="value(serviceConfig.uri)")
 
 echo "Function URL: $FUNCTION_URL"
@@ -354,7 +354,7 @@ Cloud Schedulerの設定前に、Function URLを取得します：
 FUNCTION_URL=$(gcloud functions describe check-new-video \
     --region=asia-northeast1 \
     --gen2 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --format="value(serviceConfig.uri)")
 
 echo "Function URL: $FUNCTION_URL"
@@ -372,9 +372,9 @@ gcloud scheduler jobs create http check-new-video-schedule \
     --uri="$FUNCTION_URL" \
     --http-method=GET \
     --time-zone="Asia/Tokyo" \
-    --oidc-service-account-email="cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+    --oidc-service-account-email="cloud-scheduler-invoker@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com" \
     --oidc-token-audience="$FUNCTION_URL" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **重要なパラメータ**:
@@ -392,12 +392,12 @@ gcloud scheduler jobs create http check-new-video-schedule \
 # ジョブの詳細確認
 gcloud scheduler jobs describe check-new-video-schedule \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 手動実行テスト
 gcloud scheduler jobs run check-new-video-schedule \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **設計根拠**: [ADR-007](../../../docs/adr/007-cloud-scheduler-interval-optimization.md)参照
@@ -411,7 +411,7 @@ gcloud scheduler jobs run check-new-video-schedule \
 ```bash
 gcloud functions logs read check-new-video \
     --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --limit=50
 ```
 
@@ -424,7 +424,7 @@ gcloud functions logs read check-new-video \
 
 ## トラブルシューティング
 
-### エラー: "Missing GCP_PROJECT_ID"
+### エラー: "Missing GOOGLE_CLOUD_PROJECT"
 
 環境変数が設定されていません。デプロイ時に`--set-env-vars`で設定してください。
 

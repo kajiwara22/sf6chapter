@@ -46,7 +46,7 @@ gcloud iam service-accounts create cloud-scheduler-invoker \
 # Cloud Functions起動権限を付与
 gcloud functions add-invoker-policy-binding check-new-video \
     --region=asia-northeast1 \
-    --member="serviceAccount:cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+    --member="serviceAccount:cloud-scheduler-invoker@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 ```
 
 **必要な権限**: `roles/cloudfunctions.invoker`（Cloud Function実行権限のみ）
@@ -65,7 +65,7 @@ gcloud functions deploy check-new-video \
 ```bash
 # OIDC認証を使用
 gcloud scheduler jobs create http check-new-video-schedule \
-    --oidc-service-account-email="cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+    --oidc-service-account-email="cloud-scheduler-invoker@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com" \
     --oidc-token-audience="$FUNCTION_URL" \
     ...
 ```

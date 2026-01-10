@@ -29,20 +29,20 @@ Cloud SchedulerからCloud Functionを安全に呼び出すため、OIDC（OpenI
 
 ```bash
 # プロジェクトID設定
-export GCP_PROJECT_ID="your-project-id"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
 
 # サービスアカウント名
 SCHEDULER_SA_NAME="cloud-scheduler-invoker"
-SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+SCHEDULER_SA_EMAIL="${SCHEDULER_SA_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
 # サービスアカウント作成
 gcloud iam service-accounts create $SCHEDULER_SA_NAME \
     --display-name="Cloud Scheduler invoker for Cloud Functions" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 作成確認
 gcloud iam service-accounts describe $SCHEDULER_SA_EMAIL \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **期待される出力**:
@@ -71,12 +71,12 @@ cd packages/gcp-functions/check-new-video
 gcloud functions add-invoker-policy-binding check-new-video \
     --region=asia-northeast1 \
     --member="serviceAccount:${SCHEDULER_SA_EMAIL}" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 権限確認
 gcloud functions get-iam-policy check-new-video \
     --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **期待される出力**:
@@ -96,7 +96,7 @@ Cloud Schedulerの設定に必要なFunction URLを取得します：
 FUNCTION_URL=$(gcloud functions describe check-new-video \
     --region=asia-northeast1 \
     --gen2 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --format="value(serviceConfig.uri)")
 
 echo "Function URL: $FUNCTION_URL"
@@ -119,12 +119,12 @@ gcloud scheduler jobs create http check-new-video-schedule \
     --time-zone="Asia/Tokyo" \
     --oidc-service-account-email="$SCHEDULER_SA_EMAIL" \
     --oidc-token-audience="$FUNCTION_URL" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # ジョブ確認
 gcloud scheduler jobs describe check-new-video-schedule \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 **重要なパラメータ**:
@@ -194,12 +194,12 @@ curl -v $FUNCTION_URL
 # Cloud Schedulerジョブを手動実行
 gcloud scheduler jobs run check-new-video-schedule \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 実行ログを確認（1分程度待ってから）
 gcloud functions logs read check-new-video \
     --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --limit=20
 ```
 
@@ -225,8 +225,8 @@ INFO     Check completed: {'foundVideos': 0, 'filteredVideos': 0, ...}
 # 権限を再付与
 gcloud functions add-invoker-policy-binding check-new-video \
     --region=asia-northeast1 \
-    --member="serviceAccount:cloud-scheduler-invoker@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-    --project=$GCP_PROJECT_ID
+    --member="serviceAccount:cloud-scheduler-invoker@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com" \
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 ### エラー: "Service account does not exist"
@@ -238,7 +238,7 @@ gcloud functions add-invoker-policy-binding check-new-video \
 # サービスアカウントを作成
 gcloud iam service-accounts create cloud-scheduler-invoker \
     --display-name="Cloud Scheduler invoker for Cloud Functions" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 ### Cloud Schedulerから403エラー
@@ -250,7 +250,7 @@ gcloud iam service-accounts create cloud-scheduler-invoker \
 # Cloud Schedulerジョブを削除
 gcloud scheduler jobs delete check-new-video-schedule \
     --location=asia-northeast1 \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 正しいパラメータで再作成（上記の手順5を参照）
 ```

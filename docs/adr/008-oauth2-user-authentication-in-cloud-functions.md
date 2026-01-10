@@ -194,9 +194,9 @@ google-cloud-secret-manager==2.16.*
 ```bash
 for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret; do
     gcloud secrets add-iam-policy-binding $SECRET_NAME \
-        --member="serviceAccount:${GCP_PROJECT_ID}@appspot.gserviceaccount.com" \
+        --member="serviceAccount:${GOOGLE_CLOUD_PROJECT}@appspot.gserviceaccount.com" \
         --role="roles/secretmanager.secretAccessor" \
-        --project=$GCP_PROJECT_ID
+        --project=$GOOGLE_CLOUD_PROJECT
 done
 ```
 

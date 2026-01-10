@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 # 環境変数
-PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
+PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
 PUBSUB_TOPIC = os.environ.get("PUBSUB_TOPIC", "sf6-video-process")
 
 # forMine=Trueを使用するためTARGET_CHANNEL_IDSは不要
@@ -259,8 +259,8 @@ def check_new_video(request):
     """
     # 環境変数チェック
     if not PROJECT_ID:
-        logger.error("GCP_PROJECT_ID environment variable is not set")
-        return {"status": "error", "message": "Missing GCP_PROJECT_ID"}, 500
+        logger.error("GOOGLE_CLOUD_PROJECT environment variable is not set")
+        return {"status": "error", "message": "Missing GOOGLE_CLOUD_PROJECT"}, 500
 
     # YouTube APIクライアントを構築（OAuth2使用）
     try:

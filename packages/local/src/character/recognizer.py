@@ -37,16 +37,16 @@ class CharacterRecognizer:
             aliases_path: キャラクター名正規化マッピングファイルのパス
             client_secrets_file: OAuth2クライアントシークレットファイルのパス
             token_file: 認証トークン保存ファイルのパス（pickle形式）
-            project_id: Google Cloud プロジェクトID（省略時は環境変数GCP_PROJECT_IDを使用）
+            project_id: Google Cloud プロジェクトID（省略時は環境変数GOOGLE_CLOUD_PROJECTを使用）
             location: Vertex AIのロケーション（デフォルト: us-central1）
             use_oauth: OAuth2認証を使用するか（Falseの場合はAPI Keyを使用）
             api_key: Gemini API Key（use_oauth=Falseの場合に使用、省略時は環境変数GEMINI_API_KEYを使用）
         """
         if use_oauth:
             # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
-            project_id = project_id or os.environ.get("GCP_PROJECT_ID")
+            project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
             if not project_id:
-                raise ValueError("GCP_PROJECT_ID must be set when use_oauth=True")
+                raise ValueError("GOOGLE_CLOUD_PROJECT must be set when use_oauth=True")
 
             creds = get_oauth_credentials(
                 client_secrets_file=client_secrets_file,

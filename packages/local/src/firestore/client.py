@@ -34,9 +34,9 @@ class FirestoreClient:
         Args:
             project_id: GCPプロジェクトID（環境変数から取得可能）
         """
-        self.project_id = project_id or os.environ.get("GCP_PROJECT_ID")
+        self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not self.project_id:
-            raise ValueError("GCP_PROJECT_ID must be set")
+            raise ValueError("GOOGLE_CLOUD_PROJECT must be set")
 
         # OAuth2認証情報を取得
         credentials = get_oauth_credentials()

@@ -25,11 +25,13 @@ class PubSubSubscriber:
         project_id: str | None = None,
         subscription_id: str | None = None,
     ):
-        self.project_id = project_id or os.environ.get("GCP_PROJECT_ID")
+        self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.subscription_id = subscription_id or os.environ.get("PUBSUB_SUBSCRIPTION", "sf6-video-process-sub")
 
         if not self.project_id:
-            raise ValueError("GCP_PROJECT_ID must be set")
+            msg = "project_id must be provided or GOOGLE_CLOUD_PROJECT must be set"
+            logger.error(msg)
+            raise ValueError("GOOGLE_CLOUD_PROJECT must be set")
 
         # OAuth2認証情報を取得
         credentials = get_oauth_credentials()

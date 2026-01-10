@@ -122,8 +122,6 @@ PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
 # Gemini API
 GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-GEMINI_MODEL=gemini-2.0-flash-exp
 
 # Cloudflare R2 設定
 R2_ACCESS_KEY_ID=your-token-id

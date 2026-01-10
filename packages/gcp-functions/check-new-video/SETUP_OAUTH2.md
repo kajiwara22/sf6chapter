@@ -50,17 +50,17 @@ print('Refresh Tokenをrefresh_token.txtに保存しました')
 
 ```bash
 # 環境変数設定
-export GCP_PROJECT_ID="your-project-id"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
 
 # Secret Managerにシークレット作成
 gcloud secrets create youtube-refresh-token \
     --data-file=refresh_token.txt \
     --replication-policy="automatic" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 作成確認
 gcloud secrets versions list youtube-refresh-token \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 #### 2.2 OAuth2 Client IDとClient Secretを保存
@@ -74,12 +74,12 @@ CLIENT_SECRET=$(cat client_secrets.json | jq -r '.installed.client_secret')
 echo -n "$CLIENT_ID" | gcloud secrets create youtube-client-id \
     --data-file=- \
     --replication-policy="automatic" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 echo -n "$CLIENT_SECRET" | gcloud secrets create youtube-client-secret \
     --data-file=- \
     --replication-policy="automatic" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 ### 3. Cloud Functionに権限を付与
@@ -89,19 +89,19 @@ Cloud Functionsの専用サービスアカウントにSecret Managerへのアク
 ```bash
 # サービスアカウント名（ADR-012で定義）
 SERVICE_ACCOUNT_NAME="check-new-video-sa"
-SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+SERVICE_ACCOUNT="${SERVICE_ACCOUNT_NAME}@${GOOGLE_CLOUD_PROJECT}.iam.gserviceaccount.com"
 
 # サービスアカウント作成（初回のみ）
 gcloud iam service-accounts create $SERVICE_ACCOUNT_NAME \
     --display-name="Service account for check-new-video Cloud Function" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # 各シークレットへのアクセス権限を付与
 for SECRET_NAME in youtube-refresh-token youtube-client-id youtube-client-secret; do
     gcloud secrets add-iam-policy-binding $SECRET_NAME \
         --member="serviceAccount:${SERVICE_ACCOUNT}" \
         --role="roles/secretmanager.secretAccessor" \
-        --project=$GCP_PROJECT_ID
+        --project=$GOOGLE_CLOUD_PROJECT
     echo "✓ ${SECRET_NAME}へのアクセス権限を付与しました"
 done
 ```
@@ -116,7 +116,7 @@ done
 # Cloud Functionsと同じサービスアカウントを使用してテスト
 gcloud secrets versions access latest \
     --secret="youtube-refresh-token" \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 期待される出力: Refresh Tokenの文字列が表示される
@@ -134,7 +134,7 @@ cd packages/gcp-functions/check-new-video
 # Function URLを取得
 FUNCTION_URL=$(gcloud functions describe check-new-video \
     --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --format="value(serviceConfig.uri)")
 
 # HTTPリクエスト送信
@@ -143,7 +143,7 @@ curl $FUNCTION_URL
 # ログ確認
 gcloud functions logs read check-new-video \
     --region=asia-northeast1 \
-    --project=$GCP_PROJECT_ID \
+    --project=$GOOGLE_CLOUD_PROJECT \
     --limit=50
 ```
 
@@ -176,7 +176,7 @@ echo "✓ refresh_token.txtを削除しました"
 **対処**:
 ```bash
 # シークレット一覧を確認
-gcloud secrets list --project=$GCP_PROJECT_ID
+gcloud secrets list --project=$GOOGLE_CLOUD_PROJECT
 
 # youtube-refresh-token, youtube-client-id, youtube-client-secretがあることを確認
 ```
@@ -189,7 +189,7 @@ gcloud secrets list --project=$GCP_PROJECT_ID
 ```bash
 # IAMポリシーを確認
 gcloud secrets get-iam-policy youtube-refresh-token \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 
 # サービスアカウントがroles/secretmanager.secretAccessorを持っているか確認
 ```
@@ -206,7 +206,7 @@ gcloud secrets get-iam-policy youtube-refresh-token \
 # 新しいRefresh Tokenでシークレットを更新
 gcloud secrets versions add youtube-refresh-token \
     --data-file=refresh_token.txt \
-    --project=$GCP_PROJECT_ID
+    --project=$GOOGLE_CLOUD_PROJECT
 ```
 
 ### Refresh Tokenの有効期限

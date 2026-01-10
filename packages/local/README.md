@@ -165,8 +165,6 @@ PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
 # Gemini API
 GEMINI_PROJECT_ID=your-project-id
-GEMINI_LOCATION=us-central1
-GEMINI_MODEL=gemini-2.0-flash-exp
 
 # Cloudflare R2（バケット専用APIトークン）
 R2_ACCESS_KEY_ID=your-token-id                              # Token ID（そのまま）
@@ -476,7 +474,7 @@ print(s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME')))
 - **Firestore**: OAuth2認証（共通トークン）
 - トークンファイル: `token.pickle`（pickle形式）
 - 環境変数 `GEMINI_API_KEY` は不要
-- 環境変数 `GCP_PROJECT_ID` が必須
+- 環境変数 `GOOGLE_CLOUD_PROJECT` が必須
 
 ### v1.x（非推奨）
 - **YouTube API**: OAuth2認証

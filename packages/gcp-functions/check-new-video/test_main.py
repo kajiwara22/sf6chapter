@@ -9,7 +9,7 @@ import pytest
 
 
 # 環境変数をモック
-os.environ["GCP_PROJECT_ID"] = "test-project"
+os.environ["GOOGLE_CLOUD_PROJECT"] = "test-project"
 os.environ["PUBSUB_TOPIC"] = "test-topic"
 
 import main
@@ -241,7 +241,7 @@ class TestCheckNewVideoEndpoint:
     def test_check_new_video_missing_env(self):
         """異常系: 環境変数不足"""
         # 一時的に環境変数を削除
-        original_project_id = os.environ.pop("GCP_PROJECT_ID", None)
+        original_project_id = os.environ.pop("GOOGLE_CLOUD_PROJECT", None)
 
         mock_request = Mock()
         response, status_code = main.check_new_video(mock_request)
@@ -251,4 +251,4 @@ class TestCheckNewVideoEndpoint:
 
         # 環境変数を復元
         if original_project_id:
-            os.environ["GCP_PROJECT_ID"] = original_project_id
+            os.environ["GOOGLE_CLOUD_PROJECT"] = original_project_id
