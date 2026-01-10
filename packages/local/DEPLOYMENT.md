@@ -117,11 +117,7 @@ vi .env  # またはお好みのエディタで編集
 ```bash
 # Google Cloud プロジェクト
 GOOGLE_CLOUD_PROJECT=your-project-id
-PUBSUB_PROJECT_ID=your-project-id
 PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
-
-# Gemini API
-GEMINI_PROJECT_ID=your-project-id
 
 # Cloudflare R2 設定
 R2_ACCESS_KEY_ID=your-token-id

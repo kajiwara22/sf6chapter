@@ -167,9 +167,6 @@ pnpm dev
 GOOGLE_CLOUD_PROJECT=your-project-id
 PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
-# Gemini API (Vertex AI経由)
-GEMINI_PROJECT_ID=your-project-id
-
 # Cloudflare R2
 R2_ACCESS_KEY_ID=your-token-id
 R2_SECRET_ACCESS_KEY=your-token-value-sha256-hash
