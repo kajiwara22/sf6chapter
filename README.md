@@ -167,9 +167,6 @@ pnpm dev
 GOOGLE_CLOUD_PROJECT=your-project-id
 PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
-# YouTube
-YOUTUBE_CHANNEL_ID=your-channel-id
-
 # Gemini API (Vertex AI経由)
 GEMINI_PROJECT_ID=your-project-id
 GEMINI_LOCATION=us-central1
