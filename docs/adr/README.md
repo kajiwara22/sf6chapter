@@ -21,6 +21,7 @@
 | [013](./013-local-package-dockerization.md) | ローカル処理パッケージのDocker化 | 採用 | 2026-01-09 |
 | [014](./014-cloud-function-oidc-authentication.md) | Cloud FunctionのOIDC認証による保護 | 採用 | 2026-01-09 |
 | [015](./015-google-cloud-logging-integration.md) | Cloud Functionsでのgoogle-cloud-logging統合 | 採用 | 2026-01-09 |
+| [016](./016-vite-manifest-based-asset-reference.md) | Viteマニフェストベースのアセット参照 | 採用 | 2026-01-10 |
 
 ## ADRのフォーマット
 

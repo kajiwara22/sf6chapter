@@ -19,7 +19,7 @@ binding = "SF6_DATA"
 bucket_name = "sf6-chapter-data"
 preview_bucket_name = "sf6-chapter-data"
 
-# 開発環境用設定
-[env.dev]
-vars = { ENVIRONMENT = "development" }
+# プレビュー環境用設定
+[env.preview]
+vars = { ENVIRONMENT = "preview" }
 

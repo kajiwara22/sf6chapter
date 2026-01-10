@@ -5,15 +5,38 @@
 
 import { Hono } from 'hono';
 import { html } from 'hono/html';
-import type { Env } from '../types';
+// @ts-ignore - manifest.jsonは本番ビルド時に生成される
+import manifest from '../manifest.json';
 
-const pages = new Hono<Env>();
+const pages = new Hono();
 
 /**
  * GET /
  * メインページ
+ *
+ * 開発時: Viteが /src/client/main.ts を自動変換
+ * 本番時: manifest.jsonからビルド済みアセットのパスを取得
  */
 pages.get('/', (c) => {
+  // 開発環境判定
+  // Vite開発サーバー経由の場合は NODE_ENV が設定されていない、または 'development'
+  // Cloudflare Pages本番環境では process が存在しないか、NODE_ENV が 'production'
+  const isDevelopment = typeof process !== 'undefined' &&
+                        (!process.env.NODE_ENV || process.env.NODE_ENV === 'development');
+
+  let scriptSrc = '/src/client/main.ts'; // 開発時のデフォルト
+
+  // 本番環境の場合のみマニフェストを使用
+  if (!isDevelopment) {
+    try {
+      if (manifest && manifest['index.html']) {
+        scriptSrc = '/' + manifest['index.html'].file;
+      }
+    } catch {
+      // マニフェストがない場合は開発用パスをフォールバック
+    }
+  }
+
   return c.html(
     html`<!DOCTYPE html>
     <html lang="ja">
@@ -107,8 +130,8 @@ pages.get('/', (c) => {
           </footer>
         </div>
 
-        <!-- クライアントサイドスクリプト（Viteが開発時は自動変換） -->
-        <script type="module" src="/src/client/main.ts"></script>
+        <!-- クライアントサイドスクリプト -->
+        <script type="module" src="${scriptSrc}"></script>
       </body>
     </html>`
   );

@@ -3,10 +3,15 @@ import devServer from '@hono/vite-dev-server';
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
+/**
+ * サーバーサイド（Pages Functions）のビルド設定
+ */
 export default defineConfig({
   plugins: [
     // Cloudflare Pages用ビルド
-    pages(),
+    pages({
+      entry: 'src/server/index.tsx',
+    }),
     // 開発サーバー
     devServer({
       entry: 'src/server/index.tsx',

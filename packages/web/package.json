@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:client": "vite build --config vite.config.client.ts",
+    "build:copy-manifest": "cp dist/.vite/manifest.json src/server/manifest.json",
+    "build:server": "vite build --config vite.config.ts",
+    "build": "pnpm run build:client && pnpm run build:copy-manifest && pnpm run build:server",
     "preview": "wrangler pages dev dist",
-    "deploy": "pnpm run build && wrangler pages deploy dist",
+    "deploy": "pnpm run build && wrangler pages deploy dist --commit-dirty=true",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

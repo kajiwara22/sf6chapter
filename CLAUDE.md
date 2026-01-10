@@ -61,7 +61,7 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜013）
+- [x] ADR作成（001〜016）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
 - [x] ローカル処理のDocker化（ADR-013）
@@ -71,15 +71,16 @@ sf6-chapter/
 - [x] Cloud Scheduler 2時間間隔最適化
 - [x] Webフロントエンド基本実装 (`packages/web/`)
 - [x] Pages Functions APIエンドポイント実装（Presigned URL方式）
-- [ ] R2へのテストデータアップロード
-- [ ] ローカルでの統合テスト
-- [ ] Cloudflare Pagesデプロイ
+- [x] R2へのテストデータアップロード
+- [x] ローカルでの統合テスト
+- [x] Cloudflare Pagesデプロイ
+- [x] Viteマニフェスト対応（ADR-016）
+- [x] Cloudflare Access設定
 
 ## 次のタスク
 
-1. **R2テストデータ準備**: ローカル処理でサンプルParquetを生成しR2にアップロード
-2. **ローカル統合テスト**: Pages Functions + フロントエンドの動作確認
-3. **Cloudflare Pagesデプロイ**: 本番環境へのデプロイとCloudflare Access設定
+1. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
+2. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
 
 ## 重要な設計判断
 
@@ -191,5 +192,6 @@ docker compose up -d
 - [013: ローカル処理パッケージのDocker化](docs/adr/013-local-package-dockerization.md)
 - [014: Cloud FunctionのOIDC認証による保護](docs/adr/014-cloud-function-oidc-authentication.md)
 - [015: Cloud Functionsでのgoogle-cloud-logging統合](docs/adr/015-google-cloud-logging-integration.md)
+- [016: Viteマニフェストベースのアセット参照](docs/adr/016-vite-manifest-based-asset-reference.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
