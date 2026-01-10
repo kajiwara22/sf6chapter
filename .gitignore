@@ -11,6 +11,9 @@ dist/
 # Cloudflare
 .wrangler/
 
+# Vite build artifacts
+packages/web/src/server/manifest.json
+
 # IDE
 .idea/
 .vscode/
