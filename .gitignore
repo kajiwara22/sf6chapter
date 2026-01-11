@@ -55,3 +55,6 @@ packages/local/*/*.json
 .coverage
 htmlcov/
 .pytest_cache/
+
+# intermediate
+packages/local/intermediate/*
