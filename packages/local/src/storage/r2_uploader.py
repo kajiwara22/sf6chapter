@@ -201,17 +201,21 @@ class R2Uploader:
             else:
                 raise
 
-        # データをマージ
+        # データをマージ（新しいデータを後に配置）
         merged_data = existing_data + new_data
 
-        # 重複削除（指定されたキーベース）
+        # 重複削除（指定されたキーベース、新しいデータを優先）
+        # 逆順でループし、最後に見つかった（最新の）データを保持
         seen = set()
         unique_data = []
-        for item in merged_data:
+        for item in reversed(merged_data):
             key_value = item.get(dedup_key)
             if key_value and key_value not in seen:
                 seen.add(key_value)
                 unique_data.append(item)
+
+        # 元の順序に戻す（逆順でループしたため）
+        unique_data.reverse()
 
         # アップロード
         return self.upload_parquet(unique_data, key, schema)

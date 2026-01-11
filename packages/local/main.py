@@ -365,6 +365,210 @@ class SF6ChapterProcessor:
         logger.info("     - %s", chapters_path)
 
 
+# ====================
+# 中間ファイル管理ヘルパー関数
+# ====================
+
+
+def get_intermediate_dir(video_id: str) -> Path:
+    """
+    動画IDの中間ファイルディレクトリを取得
+
+    Args:
+        video_id: YouTube動画ID
+
+    Returns:
+        中間ファイルディレクトリのPath
+    """
+    base_dir = Path(os.environ.get("INTERMEDIATE_DIR", "./intermediate"))
+    video_dir = base_dir / video_id
+    video_dir.mkdir(parents=True, exist_ok=True)
+    return video_dir
+
+
+def save_detection_results(video_id: str, detections: list[MatchDetection], video_path: str) -> Path:
+    """
+    検出結果を中間ファイルに保存
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト
+        video_path: 処理した動画ファイルのパス
+
+    Returns:
+        保存先ディレクトリのPath
+    """
+    import json
+
+    output_dir = get_intermediate_dir(video_id)
+
+    # 検出サマリーを保存
+    summary = {
+        "videoId": video_id,
+        "videoPath": video_path,
+        "detectedAt": datetime.utcnow().isoformat() + "Z",
+        "totalDetections": len(detections),
+        "detections": [
+            {
+                "index": i,
+                "timestamp": det.timestamp,
+                "frameNumber": det.frame_number,
+                "confidence": det.confidence,
+            }
+            for i, det in enumerate(detections, 1)
+        ],
+    }
+
+    summary_path = output_dir / "detection_summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
+
+    logger.info("✅ Saved detection summary: %s", summary_path)
+
+    # 検出フレーム画像を保存
+    template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
+    reject_templates = [
+        os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
+        os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
+    ]
+    round1_search_region = (575, 333, 1500, 800)
+
+    matcher = TemplateMatcher(
+        template_path=template_path,
+        threshold=0.32,
+        min_interval_sec=2.0,
+        reject_templates=reject_templates,
+        reject_threshold=0.35,
+        search_region=round1_search_region,
+        post_check_frames=10,
+        post_check_reject_limit=2,
+    )
+
+    for i, detection in enumerate(detections, 1):
+        frame_path = output_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
+        matcher.save_detection_frame(detection, str(frame_path))
+
+    logger.info("✅ Saved %d detection frames to: %s", len(detections), output_dir)
+
+    return output_dir
+
+
+def load_detection_results(video_id: str) -> tuple[list[MatchDetection], str] | None:
+    """
+    中間ファイルから検出結果を読み込み
+
+    Args:
+        video_id: YouTube動画ID
+
+    Returns:
+        (検出結果リスト, 動画パス) のタプル、ファイルが存在しない場合はNone
+    """
+    import json
+
+    import cv2
+
+    output_dir = get_intermediate_dir(video_id)
+    summary_path = output_dir / "detection_summary.json"
+
+    if not summary_path.exists():
+        return None
+
+    with open(summary_path, encoding="utf-8") as f:
+        summary = json.load(f)
+
+    detections = []
+    for det_info in summary["detections"]:
+        # フレーム画像を読み込み
+        frame_path = output_dir / f"frame_{det_info['index']:03d}_{int(det_info['timestamp'])}s.png"
+        if not frame_path.exists():
+            logger.warning("Frame image not found: %s", frame_path)
+            continue
+
+        frame = cv2.imread(str(frame_path))
+        if frame is None:
+            logger.warning("Failed to load frame: %s", frame_path)
+            continue
+
+        detection = MatchDetection(
+            frame=frame,
+            timestamp=det_info["timestamp"],
+            frame_number=det_info["frameNumber"],
+            confidence=det_info["confidence"],
+        )
+        detections.append(detection)
+
+    video_path = summary.get("videoPath", "")
+    logger.info("✅ Loaded %d detections from: %s", len(detections), output_dir)
+
+    return detections, video_path
+
+
+def save_recognition_results(
+    video_id: str, detections: list[MatchDetection], results: list[tuple[dict[str, str], dict[str, str]]]
+) -> None:
+    """
+    認識結果を中間ファイルに保存
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト
+        results: 認識結果リスト
+    """
+    import json
+
+    output_dir = get_intermediate_dir(video_id)
+
+    chapters = []
+    for i, (detection, (normalized, raw)) in enumerate(zip(detections, results, strict=False), 1):
+        chapter = {
+            "index": i,
+            "startTime": int(detection.timestamp),
+            "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+            "normalized": normalized,
+            "raw": raw,
+            "confidence": detection.confidence,
+        }
+        chapters.append(chapter)
+
+    chapters_data = {
+        "videoId": video_id,
+        "recognizedAt": datetime.utcnow().isoformat() + "Z",
+        "totalMatches": len(chapters),
+        "chapters": chapters,
+    }
+
+    chapters_path = output_dir / "chapters.json"
+    with open(chapters_path, "w", encoding="utf-8") as f:
+        json.dump(chapters_data, f, ensure_ascii=False, indent=2)
+
+    logger.info("✅ Saved recognition results: %s", chapters_path)
+
+
+def load_recognition_results(video_id: str) -> list[dict[str, Any]] | None:
+    """
+    中間ファイルから認識結果を読み込み
+
+    Args:
+        video_id: YouTube動画ID
+
+    Returns:
+        チャプターリスト、ファイルが存在しない場合はNone
+    """
+    import json
+
+    output_dir = get_intermediate_dir(video_id)
+    chapters_path = output_dir / "chapters.json"
+
+    if not chapters_path.exists():
+        return None
+
+    with open(chapters_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    logger.info("✅ Loaded recognition results from: %s", chapters_path)
+    return data["chapters"]
+
+
 def test_download(video_id: str) -> str:
     """動画ダウンロードのテスト（既存ファイルがあれば再利用）"""
     logger.info("[TEST] Downloading video: %s", video_id)
@@ -374,8 +578,18 @@ def test_download(video_id: str) -> str:
     return video_path
 
 
-def test_detection(video_path: str) -> list[MatchDetection]:
-    """対戦シーン検出のテスト"""
+def test_detection(video_id: str, video_path: str, save_intermediate: bool = True) -> list[MatchDetection]:
+    """
+    対戦シーン検出のテスト
+
+    Args:
+        video_id: YouTube動画ID
+        video_path: 動画ファイルのパス
+        save_intermediate: 中間ファイルに保存するか
+
+    Returns:
+        検出結果リスト
+    """
     logger.info("[TEST] Detecting matches in: %s", video_path)
     template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
 
@@ -401,11 +615,43 @@ def test_detection(video_path: str) -> list[MatchDetection]:
     logger.info("✅ Found %d matches", len(detections))
     for i, det in enumerate(detections, 1):
         logger.info("   %d. %.1fs (confidence: %.3f)", i, det.timestamp, det.confidence)
+
+    # 中間ファイルに保存
+    if save_intermediate and video_id:
+        save_detection_results(video_id, detections, video_path)
+
     return detections
 
 
-def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, str], dict[str, str]]]:
-    """キャラクター認識のテスト"""
+def test_recognition(
+    video_id: str,
+    detections: list[MatchDetection] | None = None,
+    from_intermediate: bool = False,
+    save_intermediate: bool = True,
+) -> list[tuple[dict[str, str], dict[str, str]]]:
+    """
+    キャラクター認識のテスト
+
+    Args:
+        video_id: YouTube動画ID
+        detections: 検出結果リスト（from_intermediate=Falseの場合は必須）
+        from_intermediate: 中間ファイルから検出結果を読み込むか
+        save_intermediate: 中間ファイルに保存するか
+
+    Returns:
+        認識結果リスト
+    """
+    # 中間ファイルから読み込み
+    if from_intermediate:
+        loaded = load_detection_results(video_id)
+        if not loaded:
+            raise FileNotFoundError(f"Detection results not found for video: {video_id}")
+        detections, _ = loaded
+        logger.info("✅ Loaded detections from intermediate files")
+
+    if not detections:
+        raise ValueError("detections is required when from_intermediate=False")
+
     logger.info("[TEST] Recognizing characters from %d frames", len(detections))
     app_root = Path(__file__).parent
     recognizer = CharacterRecognizer(aliases_path=str(app_root / "config" / "character_aliases.json"))
@@ -418,98 +664,43 @@ def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, s
         logger.info("   ✅ %s VS %s", normalized.get("1p"), normalized.get("2p"))
         logger.info("      (raw: %s vs %s)", raw.get("1p"), raw.get("2p"))
 
+    # 中間ファイルに保存
+    if save_intermediate and video_id:
+        save_recognition_results(video_id, detections, results)
+
     return results
-
-
-def save_chapters_to_file(
-    video_id: str, detections: list[MatchDetection], results: list[tuple[dict[str, str], dict[str, str]]]
-) -> str:
-    """
-    チャプターデータを中間ファイルに保存
-
-    Args:
-        video_id: YouTube動画ID
-        detections: 検出結果リスト
-        results: 認識結果リスト
-
-    Returns:
-        保存したファイルのパス
-    """
-    import json
-
-    chapters = []
-    for i, (detection, (normalized, raw)) in enumerate(zip(detections, results, strict=False), 1):
-        chapter = {
-            "startTime": int(detection.timestamp),
-            "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
-            "normalized": normalized,
-            "raw": raw,
-        }
-        chapters.append(chapter)
-
-    chapter_file = f"./chapters/{video_id}_chapters.json"
-    Path(chapter_file).parent.mkdir(parents=True, exist_ok=True)
-
-    with open(chapter_file, "w", encoding="utf-8") as f:
-        json.dump({"videoId": video_id, "chapters": chapters}, f, ensure_ascii=False, indent=2)
-
-    logger.info("✅ Saved chapters to: %s", chapter_file)
-    return chapter_file
-
-
-def load_chapters_from_file(video_id: str) -> list[dict[str, Any]] | None:
-    """
-    中間ファイルからチャプターデータを読み込み
-
-    Args:
-        video_id: YouTube動画ID
-
-    Returns:
-        チャプターリスト（ファイルが存在しない場合はNone）
-    """
-    import json
-
-    chapter_file = f"./chapters/{video_id}_chapters.json"
-    if not Path(chapter_file).exists():
-        return None
-
-    with open(chapter_file, encoding="utf-8") as f:
-        data = json.load(f)
-
-    logger.info("✅ Loaded chapters from: %s", chapter_file)
-    return data["chapters"]
 
 
 def test_chapters(
     video_id: str,
     detections: list[MatchDetection] | None = None,
     results: list[tuple[dict[str, str], dict[str, str]]] | None = None,
-    use_saved: bool = False,
+    from_intermediate: bool = False,
 ) -> list[dict[str, Any]]:
     """
     YouTubeチャプター更新のテスト
 
     Args:
         video_id: YouTube動画ID
-        detections: 検出結果リスト（use_saved=Falseの場合は必須）
-        results: 認識結果リスト（use_saved=Falseの場合は必須）
-        use_saved: 保存済みチャプターファイルを使用するか
+        detections: 検出結果リスト（from_intermediate=Falseの場合は必須）
+        results: 認識結果リスト（from_intermediate=Falseの場合は必須）
+        from_intermediate: 中間ファイルから認識結果を読み込むか
 
     Returns:
         生成されたチャプターリスト
     """
     logger.info("[TEST] Updating YouTube chapters for video: %s", video_id)
 
-    if use_saved:
-        # 保存済みファイルから読み込み
-        chapters_data = load_chapters_from_file(video_id)
+    if from_intermediate:
+        # 中間ファイルから読み込み
+        chapters_data = load_recognition_results(video_id)
         if not chapters_data:
-            raise FileNotFoundError(f"Chapter file not found for video: {video_id}")
+            raise FileNotFoundError(f"Recognition results not found for video: {video_id}")
         chapters = [{"startTime": ch["startTime"], "title": ch["title"]} for ch in chapters_data]
     else:
         # 検出・認識結果から生成
         if not detections or not results:
-            raise ValueError("detections and results are required when use_saved=False")
+            raise ValueError("detections and results are required when from_intermediate=False")
 
         chapters = []
         for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
@@ -519,8 +710,8 @@ def test_chapters(
             }
             chapters.append(chapter)
 
-        # 中間ファイルに保存
-        save_chapters_to_file(video_id, detections, results)
+        # 中間ファイルに保存（まだ保存されていない場合）
+        save_recognition_results(video_id, detections, results)
 
     logger.info("Generated chapters:")
     for ch in chapters:
@@ -538,14 +729,16 @@ def test_r2_upload(
     video_id: str,
     detections: list[MatchDetection] | None = None,
     results: list[tuple[dict[str, str], dict[str, str]]] | None = None,
+    from_intermediate: bool = False,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     R2アップロードとParquet更新のテスト
 
     Args:
         video_id: YouTube動画ID
-        detections: 検出結果リスト（保存済みチャプターがない場合は必須）
-        results: 認識結果リスト（保存済みチャプターがない場合は必須）
+        detections: 検出結果リスト（from_intermediate=Falseの場合は必須）
+        results: 認識結果リスト（from_intermediate=Falseの場合は必須）
+        from_intermediate: 中間ファイルから認識結果を読み込むか
 
     Returns:
         (video_data, matches) のタプル
@@ -563,11 +756,13 @@ def test_r2_upload(
     # R2Uploaderを初期化
     r2_uploader = R2Uploader()
 
-    # 保存済みチャプターファイルがあれば読み込む
-    saved_chapters = load_chapters_from_file(video_id)
+    if from_intermediate:
+        # 中間ファイルから読み込み
+        saved_chapters = load_recognition_results(video_id)
+        if not saved_chapters:
+            raise FileNotFoundError(f"Recognition results not found for video: {video_id}")
 
-    if saved_chapters:
-        logger.info("✅ Using saved chapter data from file")
+        logger.info("✅ Using saved recognition results from intermediate files")
         # 保存済みデータから生成
         chapters = []
         matches = []
@@ -600,18 +795,18 @@ def test_r2_upload(
                     "side": "right",
                 },
                 "detectedAt": datetime.utcnow().isoformat() + "Z",
-                "confidence": 0.0,  # 保存データには含まれない
-                "templateMatchScore": 0.0,
+                "confidence": chapter_data.get("confidence", 0.0),
+                "templateMatchScore": chapter_data.get("confidence", 0.0),
                 "frameTimestamp": 0,
             }
             matches.append(match_data)
 
     else:
-        # 保存データがない場合は、detectionsとresultsから生成
-        logger.info("No saved chapter data found, generating from detections and results")
-
+        # detectionsとresultsから生成
         if not detections or not results:
-            raise ValueError("detections and results are required when no saved chapter data exists")
+            raise ValueError("detections and results are required when from_intermediate=False")
+
+        logger.info("Generating data from detections and results")
 
         # チャプターデータを生成
         chapters = []
@@ -647,6 +842,9 @@ def test_r2_upload(
                 "frameTimestamp": detection.frame_number,
             }
             matches.append(match_data)
+
+        # 中間ファイルに保存（まだ保存されていない場合）
+        save_recognition_results(video_id, detections, results)
 
     # 動画メタデータを生成
     video_data = {
@@ -711,9 +909,9 @@ def main():
         help="Path to downloaded video file (skip download step)",
     )
     parser.add_argument(
-        "--use-saved-chapters",
+        "--from-intermediate",
         action="store_true",
-        help="Use saved chapter file instead of running detection/recognition (only for --test-step chapters)",
+        help="Load detection/recognition results from intermediate files instead of running from scratch",
     )
 
     args = parser.parse_args()
@@ -723,72 +921,59 @@ def main():
         if not args.test_step:
             parser.error("--test-step is required when --mode test")
 
+        if not args.video_id:
+            parser.error("--video-id is required for test mode")
+
         video_path = args.video_path
         detections = None
         results = None
 
         # ステップ実行
         if args.test_step in ["download", "all"]:
-            if not args.video_id:
-                parser.error("--video-id is required for download test")
             video_path = test_download(args.video_id)
 
         if args.test_step in ["detect", "all"]:
             if not video_path:
                 # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
-                if not args.video_id:
-                    parser.error("--video-id or --video-path is required for detection test")
                 video_path = test_download(args.video_id)
-            detections = test_detection(video_path)
+            detections = test_detection(args.video_id, video_path)
 
         if args.test_step in ["recognize", "all"]:
-            if not detections:
-                if not video_path:
-                    # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
-                    if not args.video_id:
-                        parser.error("--video-id or --video-path is required")
-                    video_path = test_download(args.video_id)
-                detections = test_detection(video_path)
-            results = test_recognition(detections)
+            # --from-intermediateが指定されている場合は中間ファイルから読み込み
+            if args.from_intermediate:
+                results = test_recognition(args.video_id, from_intermediate=True)
+            else:
+                # 検出結果がない場合は、detectステップから実行
+                if not detections:
+                    if not video_path:
+                        video_path = test_download(args.video_id)
+                    detections = test_detection(args.video_id, video_path)
+                results = test_recognition(args.video_id, detections=detections)
 
         if args.test_step in ["chapters", "all"]:
-            if not args.video_id:
-                parser.error("--video-id is required for chapters test")
-
-            if args.use_saved_chapters:
-                # 保存済みチャプターファイルを使用
-                test_chapters(args.video_id, use_saved=True)
+            # --from-intermediateが指定されている場合は中間ファイルから読み込み
+            if args.from_intermediate:
+                test_chapters(args.video_id, from_intermediate=True)
             else:
-                # 通常の処理（検出・認識を実行）
+                # 検出・認識結果がない場合は、前ステップから実行
                 if not detections or not results:
                     if not video_path:
-                        # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
                         video_path = test_download(args.video_id)
-                    detections = test_detection(video_path)
-                    results = test_recognition(detections)
+                    detections = test_detection(args.video_id, video_path)
+                    results = test_recognition(args.video_id, detections=detections)
                 test_chapters(args.video_id, detections, results)
 
         if args.test_step in ["r2", "all"]:
-            if not args.video_id:
-                parser.error("--video-id is required for R2 test")
-
-            # 保存済みチャプターファイルの確認
-            saved_chapters = load_chapters_from_file(args.video_id)
-
-            if saved_chapters:
-                # 保存済みデータがあれば、それを使用（検出・認識をスキップ）
-                logger.info("Using saved chapter data for R2 upload test")
-                test_r2_upload(args.video_id)
+            # --from-intermediateが指定されている場合は中間ファイルから読み込み
+            if args.from_intermediate:
+                test_r2_upload(args.video_id, from_intermediate=True)
             else:
-                # 保存データがない場合は、検出・認識を実行
-                logger.info("No saved chapter data found, running detection and recognition")
+                # 検出・認識結果がない場合は、前ステップから実行
                 if not detections or not results:
                     if not video_path:
-                        # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
                         video_path = test_download(args.video_id)
-                    detections = test_detection(video_path)
-                    results = test_recognition(detections)
-
+                    detections = test_detection(args.video_id, video_path)
+                    results = test_recognition(args.video_id, detections=detections)
                 test_r2_upload(args.video_id, detections, results)
 
         return

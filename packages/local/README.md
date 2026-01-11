@@ -244,29 +244,33 @@ uv run python main.py --mode test --test-step recognize --video-path ./download/
 # 通常: 検出・認識を実行してチャプター更新
 uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg
 
-# 保存済みチャプターファイルを使用（Gemini API課金を避ける）
-uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --use-saved-chapters
+# 中間ファイルから認識結果を読み込んでYouTube更新のみ実行（Gemini API課金を避ける）
+uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --from-intermediate
 ```
 
 **動作**:
-1. 通常モード: 既存ファイルを検索 → 検出 → 認識 → チャプター生成 → **中間ファイル保存** → YouTube更新
-2. `--use-saved-chapters`: 保存済み中間ファイル（`chapters/[video_id]_chapters.json`）を読み込んでYouTube更新のみ実行
+1. 通常モード: 既存ファイルを検索 → 検出 → 認識 → **中間ファイル保存** → YouTube更新
+2. `--from-intermediate`: 保存済み中間ファイル（`./intermediate/{video_id}/chapters.json`）を読み込んでYouTube更新のみ実行
 
 **中間ファイルの利点**:
 - Gemini APIの課金を避けてチャプターのテスト・調整が可能
 - 認識結果を保存して後から再利用
 - チャプタータイトルの手動編集が可能
+- 検出フレーム画像も保存され、視覚的な確認が可能
 
 #### 5. R2アップロードとParquet更新のみ
 
 ```bash
-# R2アップロードを有効化
+# 通常: 検出・認識を実行してR2アップロード
 ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id YFQU_kkhZtg
+
+# 中間ファイルから認識結果を読み込んでR2アップロードのみ実行
+ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id YFQU_kkhZtg --from-intermediate
 ```
 
 **動作**:
-- 保存済みチャプターファイル（`chapters/[video_id]_chapters.json`）があれば、それを使用してR2アップロード・Parquet更新を実行
-- 保存済みファイルがない場合は、自動的に検出・認識を実行してからアップロード
+- 通常モード: 検出・認識を実行してからR2アップロード・Parquet更新を実行
+- `--from-intermediate`: 保存済み中間ファイル（`./intermediate/{video_id}/chapters.json`）を使用してR2アップロード・Parquet更新のみ実行
 - `ENABLE_R2=false` の場合は警告を表示してスキップ
 
 **用途**:
@@ -292,47 +296,108 @@ ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id YFQU
 
 ### オプションパラメータ
 
-- `--video-id`: YouTube動画ID（推奨）
+- `--video-id`: YouTube動画ID（テストモードでは必須）
 - `--video-path`: ダウンロード済みファイルのパス（省略可、上級者向け）
-- `--use-saved-chapters`: 保存済みチャプターファイルを使用（`--test-step chapters`のみ）
+- `--from-intermediate`: 中間ファイルから検出・認識結果を読み込む（`--test-step recognize/chapters/r2` で使用可能）
 
 **推奨**: 基本的には `--video-id` のみを指定すれば、既存ファイルの再利用とダウンロードを自動判断します。
 
-### チャプター中間ファイル
+### 中間ファイル管理
 
-チャプター情報は `chapters/[video_id]_chapters.json` に自動保存されます。
+処理結果は `./intermediate/{video_id}/` に自動保存され、後続のテストで再利用可能です。
 
-**ファイル形式**:
+#### 保存される中間ファイル
+
+```
+./intermediate/{video_id}/
+├── detection_summary.json     # 検出サマリー（タイムスタンプ、信頼度）
+├── frame_001_47s.png          # 検出フレーム画像（視覚的確認用）
+├── frame_002_120s.png
+├── ...
+├── chapters.json              # 認識結果（キャラクター名、タイトル）
+├── video_data.json            # 動画メタデータ（最終結果）
+└── matches.json               # 対戦データ（最終結果）
+```
+
+#### `detection_summary.json` フォーマット
+
 ```json
 {
   "videoId": "YFQU_kkhZtg",
-  "chapters": [
+  "videoPath": "./download/20250513[YFQU_kkhZtg].mkv",
+  "detectedAt": "2025-01-11T12:00:00Z",
+  "totalDetections": 5,
+  "detections": [
     {
-      "startTime": 47,
-      "title": "第01戦 Ryu VS Ken",
-      "normalized": {"1p": "Ryu", "2p": "Ken"},
-      "raw": {"1p": "リュウ", "2p": "ケン"}
+      "index": 1,
+      "timestamp": 47.5,
+      "frameNumber": 1425,
+      "confidence": 0.85
     }
   ]
 }
 ```
 
-**使用例**:
+#### `chapters.json` フォーマット
 
-**パターン1: YouTubeチャプターの調整**
-1. 初回実行: `uv run python main.py --mode test --test-step chapters --video-id XXX`
-   - チャプターファイルが自動保存される
-2. タイトル調整: `chapters/XXX_chapters.json` を手動編集
-3. 再実行: `uv run python main.py --mode test --test-step chapters --video-id XXX --use-saved-chapters`
-   - Gemini APIを呼ばずに、編集済みチャプターでYouTube更新
+```json
+{
+  "videoId": "YFQU_kkhZtg",
+  "recognizedAt": "2025-01-11T12:05:00Z",
+  "totalMatches": 5,
+  "chapters": [
+    {
+      "index": 1,
+      "startTime": 47,
+      "title": "第01戦 Ryu VS Ken",
+      "normalized": {"1p": "Ryu", "2p": "Ken"},
+      "raw": {"1p": "リュウ", "2p": "ケン"},
+      "confidence": 0.85
+    }
+  ]
+}
+```
 
-**パターン2: R2アップロードのテスト**
-1. 初回実行: `ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id XXX`
-   - チャプターファイルが自動保存され、R2にもアップロード
-2. 再テスト: `ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id XXX`
-   - **保存済みチャプターファイルを自動的に再利用**
-   - 検出・認識をスキップし、R2アップロードのみ実行
-   - Gemini API課金を避けてR2処理のみテスト可能
+### 中間ファイルの使用例
+
+#### パターン1: 検出結果の再利用（Gemini API課金を避ける）
+
+```bash
+# 1. 検出まで実行（中間ファイル保存）
+uv run python main.py --mode test --test-step detect --video-id XXX
+
+# 2. 保存した検出結果から認識を実行
+uv run python main.py --mode test --test-step recognize --video-id XXX --from-intermediate
+```
+
+**利点**: 検出フレーム画像を確認してから、Gemini APIでの認識を実行できる
+
+#### パターン2: YouTubeチャプターの調整
+
+```bash
+# 1. 認識まで実行（中間ファイル保存）
+uv run python main.py --mode test --test-step recognize --video-id XXX
+
+# 2. chapters.jsonを手動編集（タイトル修正など）
+nano ./intermediate/XXX/chapters.json
+
+# 3. 編集済みチャプターでYouTube更新
+uv run python main.py --mode test --test-step chapters --video-id XXX --from-intermediate
+```
+
+**利点**: Gemini APIを再実行せずに、チャプタータイトルを調整できる
+
+#### パターン3: R2アップロードのテスト
+
+```bash
+# 1. 初回実行（中間ファイル保存、R2アップロード）
+ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id XXX
+
+# 2. 中間ファイルを使ってR2アップロードのみ再実行
+ENABLE_R2=true uv run python main.py --mode test --test-step r2 --video-id XXX --from-intermediate
+```
+
+**利点**: Gemini API課金を避けてR2処理のみテスト可能
 
 ## モジュール構成
 
@@ -367,11 +432,20 @@ Firestoreステータス更新（processing）
     ↓
 テンプレートマッチング (OpenCV)
     ↓
+中間ファイル保存（検出結果）
+    ├→ detection_summary.json
+    └→ frame_*.png
+    ↓
 キャラクター認識 (Gemini API)
     ↓
-チャプターデータ保存 (./chapters/*.json) ← 中間ファイル（テスト時再利用可能）
+中間ファイル保存（認識結果）
+    └→ chapters.json
     ↓
 YouTubeチャプター更新 (YouTube Data API)
+    ↓
+中間ファイル保存（最終結果）
+    ├→ video_data.json
+    └→ matches.json
     ↓
 R2アップロード（ENABLE_R2=trueの場合）
     ├→ JSONファイル: videos/*.json, matches/*.json
@@ -381,8 +455,9 @@ Firestoreステータス更新（completed / failed）
 ```
 
 **注**:
+- すべての処理結果は `./intermediate/{video_id}/` に自動保存され、テストモードで再利用可能
 - `ENABLE_R2=false`（デフォルト）の場合、R2処理はスキップされ、ローカルの `./output/` ディレクトリにJSONファイルが保存されます
-- テストモード（`--mode test`）では、チャプターデータが `./chapters/` に保存され、後続のテストで再利用可能
+- `--from-intermediate` フラグを使用すると、中間ファイルから処理を再開できます
 - Firestoreでの処理済みチェックにより、Pub/Subメッセージが再配信されても重複処理を防止します
 
 ## トラブルシューティング
