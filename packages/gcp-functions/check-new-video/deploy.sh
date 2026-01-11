@@ -40,7 +40,7 @@ gcloud functions deploy $FUNCTION_NAME \
     --timeout=$TIMEOUT \
     --max-instances=$MAX_INSTANCES \
     --service-account=$SERVICE_ACCOUNT_EMAIL \
-    --set-env-vars="GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,PUBSUB_TOPIC=sf6-video-process" \
+    --set-env-vars="GOOGLE_CLOUD_PROJECT=$GOOGLE_CLOUD_PROJECT,PUBSUB_TOPIC=sf6-new-video" \
     --project=$GOOGLE_CLOUD_PROJECT
 
 echo "Deployment complete!"
