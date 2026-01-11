@@ -3,13 +3,14 @@
 FROM python:3.11-slim
 
 # システム依存のインストール
-# - libgl1-mesa-glx, libglib2.0-0: OpenCV依存
-# - curl: Denoインストール用
+# - libgl1, libglib2.0-0: OpenCV依存
+# - curl, unzip: Denoインストール用
 # - ffmpeg: yt-dlp動画処理用
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     curl \
+    unzip \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,7 +25,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
 # Python依存関係ファイルをコピー（レイヤーキャッシュ最適化）
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock README.md main.py ./
 
 # Python依存関係をインストール（本番用、開発依存は除外）
 RUN uv sync --frozen --no-dev
@@ -41,4 +42,4 @@ RUN mkdir -p /root/.config/yt-dlp && \
 ENV PYTHONUNBUFFERED=1
 
 # デフォルトコマンド: 常駐モードで起動
-CMD ["uv", "run", "python", "-m", "src.main", "--mode", "daemon"]
+CMD ["uv", "run", "python", "main.py", "--mode", "daemon"]

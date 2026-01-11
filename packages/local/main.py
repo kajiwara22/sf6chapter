@@ -10,9 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# プロジェクトルートのconfigディレクトリをパスに追加
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
+# アプリケーションルートのconfigディレクトリのパスを取得
+# ローカル実行: packages/local/main.py → packages/local/config
+# Docker実行: /app/main.py → /app/config
+app_root = Path(__file__).parent
+sys.path.insert(0, str(app_root))
 
 from src.character import CharacterRecognizer
 from src.detection import MatchDetection, TemplateMatcher
@@ -32,6 +34,9 @@ class SF6ChapterProcessor:
 
     def __init__(self):
         """初期化"""
+        # アプリケーションルートディレクトリ（ローカル: packages/local/, Docker: /app/）
+        self.app_root = Path(__file__).parent
+
         # 設定
         self.template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
@@ -67,7 +72,7 @@ class SF6ChapterProcessor:
             post_check_frames=10,  # 検出後10フレームをチェック
             post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
         )
-        self.recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
+        self.recognizer = CharacterRecognizer(aliases_path=str(self.app_root / "config" / "character_aliases.json"))
         self.youtube_updater = YouTubeChapterUpdater()
 
         # R2Uploaderはenable_r2がTrueの場合のみ初期化
@@ -279,9 +284,7 @@ class SF6ChapterProcessor:
         logger.info("Starting streaming mode...")
         self.subscriber.listen_streaming(callback=self.process_video)
 
-    def _save_detection_summary(
-        self, video_id: str, output_dir: Path, detections: list[MatchDetection]
-    ) -> None:
+    def _save_detection_summary(self, video_id: str, output_dir: Path, detections: list[MatchDetection]) -> None:
         """
         検出結果のサマリーを保存
 
@@ -404,8 +407,8 @@ def test_detection(video_path: str) -> list[MatchDetection]:
 def test_recognition(detections: list[MatchDetection]) -> list[tuple[dict[str, str], dict[str, str]]]:
     """キャラクター認識のテスト"""
     logger.info("[TEST] Recognizing characters from %d frames", len(detections))
-    project_root = Path(__file__).parent.parent.parent
-    recognizer = CharacterRecognizer(aliases_path=str(project_root / "config" / "character_aliases.json"))
+    app_root = Path(__file__).parent
+    recognizer = CharacterRecognizer(aliases_path=str(app_root / "config" / "character_aliases.json"))
 
     results = []
     for i, detection in enumerate(detections, 1):

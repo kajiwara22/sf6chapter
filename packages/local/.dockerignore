@@ -49,6 +49,5 @@ token.pickle
 *.log
 
 # その他
-README.md
 scripts/
 notebooks/
