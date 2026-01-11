@@ -9,7 +9,7 @@
     "build:server": "vite build --config vite.config.ts",
     "build": "pnpm run build:client && pnpm run build:copy-manifest && pnpm run build:server",
     "preview": "wrangler pages dev dist",
-    "deploy": "pnpm run build && wrangler pages deploy dist --commit-dirty=true",
+    "deploy": "pnpm run build && wrangler pages deploy dist --commit-message=\"Deploy from local\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
