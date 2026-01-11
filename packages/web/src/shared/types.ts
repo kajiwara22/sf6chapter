@@ -19,6 +19,10 @@ export interface Match {
   id: string;
   /** YouTube動画ID */
   videoId: string;
+  /** YouTube動画タイトル */
+  videoTitle: string;
+  /** YouTube動画の公開日時 (ISO8601) */
+  videoPublishedAt: string;
   /** 対戦開始時間（秒） */
   startTime: number;
   /** 対戦終了時間（秒） */

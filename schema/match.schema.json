@@ -4,7 +4,7 @@
   "title": "SF6 Match Data",
   "description": "SF6対戦シーンの詳細情報",
   "type": "object",
-  "required": ["id", "videoId", "startTime", "player1", "player2", "detectedAt"],
+  "required": ["id", "videoId", "videoTitle", "videoPublishedAt", "startTime", "player1", "player2", "detectedAt"],
   "properties": {
     "id": {
       "type": "string",
@@ -15,6 +15,15 @@
       "type": "string",
       "description": "YouTube動画ID",
       "pattern": "^[A-Za-z0-9_-]{11}$"
+    },
+    "videoTitle": {
+      "type": "string",
+      "description": "YouTube動画タイトル"
+    },
+    "videoPublishedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "YouTube動画の公開日時（ISO 8601形式）"
     },
     "startTime": {
       "type": "integer",

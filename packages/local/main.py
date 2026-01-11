@@ -146,6 +146,8 @@ class SF6ChapterProcessor:
                     match_data = {
                         "id": match_id,
                         "videoId": video_id,
+                        "videoTitle": message_data.get("title", ""),
+                        "videoPublishedAt": message_data.get("publishedAt", ""),
                         "startTime": int(detection.timestamp),
                         "player1": {
                             "character": normalized.get("1p", "Unknown"),
@@ -745,6 +747,12 @@ def test_r2_upload(
     """
     logger.info("[TEST] Testing R2 upload and Parquet update for video: %s", video_id)
 
+    # YouTube APIから動画情報を取得
+    logger.info("Fetching video info from YouTube API...")
+    youtube_updater = YouTubeChapterUpdater()
+    video_info = youtube_updater.get_video_info(video_id)
+    logger.info("Got video info: %s", video_info["title"])
+
     # ENABLE_R2環境変数をチェック
     enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
 
@@ -783,6 +791,8 @@ def test_r2_upload(
             match_data = {
                 "id": match_id,
                 "videoId": video_id,
+                "videoTitle": video_info["title"],
+                "videoPublishedAt": video_info["publishedAt"],
                 "startTime": chapter_data["startTime"],
                 "player1": {
                     "character": normalized.get("1p", "Unknown"),
@@ -825,6 +835,8 @@ def test_r2_upload(
             match_data = {
                 "id": match_id,
                 "videoId": video_id,
+                "videoTitle": video_info["title"],
+                "videoPublishedAt": video_info["publishedAt"],
                 "startTime": int(detection.timestamp),
                 "player1": {
                     "character": normalized.get("1p", "Unknown"),
@@ -849,10 +861,10 @@ def test_r2_upload(
     # 動画メタデータを生成
     video_data = {
         "videoId": video_id,
-        "title": f"Test Video {video_id}",  # テストなのでダミータイトル
-        "channelId": "test_channel",
-        "channelTitle": "Test Channel",
-        "publishedAt": datetime.utcnow().isoformat() + "Z",
+        "title": video_info["title"],
+        "channelId": video_info["channelId"],
+        "channelTitle": video_info["channelTitle"],
+        "publishedAt": video_info["publishedAt"],
         "processedAt": datetime.utcnow().isoformat() + "Z",
         "chapters": chapters,
         "detectionStats": {

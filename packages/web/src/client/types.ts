@@ -27,6 +27,8 @@ export const DOM_IDS = {
 export interface MatchRow {
   id: string;
   videoId: string;
+  videoTitle: string;
+  videoPublishedAt: string;
   startTime: bigint | number;
   endTime: bigint | number | null;
   player1_character: string;

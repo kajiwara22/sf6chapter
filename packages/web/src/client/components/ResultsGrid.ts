@@ -41,6 +41,10 @@ function createMatchCard(match: Match): string {
 
   return `
     <article class="match-card">
+      <div class="match-header">
+        <h3 class="video-title">${escapeHtml(match.videoTitle)}</h3>
+        <span class="match-date">${formatDate(match.videoPublishedAt)}</span>
+      </div>
       <div class="match-players">
         <div class="player player-1p">
           <span class="player-character">${escapeHtml(match.player1.character)}</span>
@@ -60,7 +64,6 @@ function createMatchCard(match: Match): string {
           </svg>
           ${formatTime(match.startTime)}
         </span>
-        <span class="match-date">${formatDate(match.detectedAt)}</span>
       </div>
       <a href="${youtubeLink}" target="_blank" rel="noopener" class="match-link">
         <svg class="icon" viewBox="0 0 24 24" fill="currentColor">

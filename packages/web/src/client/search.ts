@@ -120,14 +120,14 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     params.push(filters.character, filters.character);
   }
 
-  // 日付フィルター
+  // 日付フィルター（YouTube公開日ベース）
   if (filters.dateFrom) {
-    conditions.push(`detectedAt >= ?`);
+    conditions.push(`videoPublishedAt >= ?`);
     params.push(filters.dateFrom);
   }
 
   if (filters.dateTo) {
-    conditions.push(`detectedAt <= ?`);
+    conditions.push(`videoPublishedAt <= ?`);
     params.push(filters.dateTo + 'T23:59:59Z');
   }
 
@@ -138,6 +138,8 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     SELECT
       id,
       videoId,
+      videoTitle,
+      videoPublishedAt,
       startTime,
       player1.character as player1_character,
       player1.characterRaw as player1_characterRaw,
@@ -149,7 +151,7 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
       confidence
     FROM matches
     ${whereClause}
-    ORDER BY detectedAt DESC
+    ORDER BY videoPublishedAt DESC, startTime ASC
     LIMIT ${limit}
   `;
 
@@ -159,6 +161,8 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   return rows.map((row) => ({
     id: row.id,
     videoId: row.videoId,
+    videoTitle: row.videoTitle,
+    videoPublishedAt: row.videoPublishedAt,
     startTime: Number(row.startTime),
     endTime: row.endTime ? Number(row.endTime) : undefined,
     player1: {
