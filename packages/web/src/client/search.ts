@@ -116,18 +116,18 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
 
   // キャラクターフィルター
   if (filters.character) {
-    conditions.push(`(player1.character = ? OR player2.character = ?)`);
+    conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
     params.push(filters.character, filters.character);
   }
 
   // 日付フィルター（YouTube公開日ベース）
   if (filters.dateFrom) {
-    conditions.push(`videoPublishedAt >= ?`);
+    conditions.push(`videoPublishedAt >= $${params.length + 1}`);
     params.push(filters.dateFrom);
   }
 
   if (filters.dateTo) {
-    conditions.push(`videoPublishedAt <= ?`);
+    conditions.push(`videoPublishedAt <= $${params.length + 1}`);
     params.push(filters.dateTo + 'T23:59:59Z');
   }
 
@@ -155,7 +155,12 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     LIMIT ${limit}
   `;
 
-  const result = await instance.conn.query(query);
+  // Prepared Statementを使用
+  console.log('[DuckDB] Executing query with params:', params);
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(...params);
+  await stmt.close();
+
   const rows = result.toArray() as unknown as MatchRow[];
 
   return rows.map((row) => ({
