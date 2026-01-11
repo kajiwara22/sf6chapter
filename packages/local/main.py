@@ -210,8 +210,8 @@ class SF6ChapterProcessor:
 
                 # 6. Parquetファイルを更新
                 logger.info("[6/6] Updating Parquet files...")
-                self.r2_uploader.update_parquet_table([video_data], "videos.parquet")
-                self.r2_uploader.update_parquet_table(matches, "matches.parquet")
+                self.r2_uploader.update_parquet_table([video_data], "videos.parquet", dedup_key="videoId")
+                self.r2_uploader.update_parquet_table(matches, "matches.parquet", dedup_key="id")
             else:
                 logger.info("[5/6] R2 upload disabled (ENABLE_R2=false)")
                 logger.info("[6/6] Skipping Parquet update")
@@ -672,8 +672,8 @@ def test_r2_upload(
 
     # 6. Parquetファイルを更新
     logger.info("[6/6] Updating Parquet files...")
-    r2_uploader.update_parquet_table([video_data], "videos.parquet")
-    r2_uploader.update_parquet_table(matches, "matches.parquet")
+    r2_uploader.update_parquet_table([video_data], "videos.parquet", dedup_key="videoId")
+    r2_uploader.update_parquet_table(matches, "matches.parquet", dedup_key="id")
 
     logger.info("✅ R2 upload and Parquet update completed")
     logger.info("   - Uploaded %d matches", len(matches))

@@ -94,13 +94,13 @@ export async function loadParquetData(): Promise<void> {
   // 3. DuckDBに登録
   await instance.db.registerFileBuffer('matches.parquet', new Uint8Array(parquetData));
 
-  // 4. テーブルを作成
+  // 4. matchesテーブルを作成
   await instance.conn.query(`
     CREATE TABLE IF NOT EXISTS matches AS
     SELECT * FROM read_parquet('matches.parquet')
   `);
 
-  console.log('[DuckDB] Parquet data loaded');
+  console.log('[DuckDB] Parquet data loaded (matches table)');
 }
 
 /**
@@ -185,6 +185,8 @@ export async function getStats(): Promise<Stats> {
   }
 
   // 基本統計
+  // total_matches: 全動画のchapters配列に含まれる対戦数の合計
+  // (matchesテーブルの各行が1つのchapterに対応)
   const statsResult = await instance.conn.query(`
     SELECT
       COUNT(*) as total_matches,

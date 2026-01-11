@@ -169,6 +169,7 @@ class R2Uploader:
         new_data: list[dict[str, Any]],
         key: str,
         schema: pa.Schema | None = None,
+        dedup_key: str = "id",
     ) -> str:
         """
         既存のParquetテーブルを更新（新データでマージ）
@@ -177,6 +178,9 @@ class R2Uploader:
             new_data: 追加するデータ
             key: R2オブジェクトキー
             schema: PyArrow スキーマ
+            dedup_key: 重複削除に使用するキー（デフォルト: "id"）
+                      - matches.parquet: "id" (マッチID)
+                      - videos.parquet: "videoId" (動画ID)
 
         Returns:
             更新されたオブジェクトのキー
@@ -200,13 +204,13 @@ class R2Uploader:
         # データをマージ
         merged_data = existing_data + new_data
 
-        # 重複削除（video_idベース）
+        # 重複削除（指定されたキーベース）
         seen = set()
         unique_data = []
         for item in merged_data:
-            video_id = item.get("videoId")
-            if video_id and video_id not in seen:
-                seen.add(video_id)
+            key_value = item.get(dedup_key)
+            if key_value and key_value not in seen:
+                seen.add(key_value)
                 unique_data.append(item)
 
         # アップロード
