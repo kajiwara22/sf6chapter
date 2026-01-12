@@ -17,7 +17,7 @@ app_root = Path(__file__).parent
 sys.path.insert(0, str(app_root))
 
 from src.character import CharacterRecognizer
-from src.detection import MatchDetection, TemplateMatcher
+from src.detection import MatchDetection, TemplateMatcher, load_detection_params
 from src.firestore import FirestoreClient
 from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
@@ -32,8 +32,13 @@ logger = setup_logger()
 class SF6ChapterProcessor:
     """SF6チャプター処理のメインクラス"""
 
-    def __init__(self):
-        """初期化"""
+    def __init__(self, detection_profile: str = "production"):
+        """
+        初期化
+
+        Args:
+            detection_profile: 検出パラメータのプロファイル名 (production/test/legacy)
+        """
         # アプリケーションルートディレクトリ（ローカル: packages/local/, Docker: /app/）
         self.app_root = Path(__file__).parent
 
@@ -55,22 +60,25 @@ class SF6ChapterProcessor:
             os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
         ]
 
+        # 検出パラメータを設定ファイルから読み込み
+        self.detection_params = load_detection_params(profile=detection_profile)
+        self.detection_params.log_params()  # パラメータをログに出力
+
         # モジュール初期化
         self.subscriber = PubSubSubscriber()
         self.firestore = FirestoreClient()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
-        # Round 1表示領域（画面中央上部）
-        self.round1_search_region = (575, 333, 1500, 800)
 
         self.matcher = TemplateMatcher(
             template_path=self.template_path,
-            threshold=0.32,
-            min_interval_sec=2.0,
+            threshold=self.detection_params.threshold,
+            min_interval_sec=self.detection_params.min_interval_sec,
             reject_templates=self.reject_templates,
-            reject_threshold=0.35,
-            search_region=self.round1_search_region,
-            post_check_frames=10,  # 検出後10フレームをチェック
-            post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
+            reject_threshold=self.detection_params.reject_threshold,
+            search_region=self.detection_params.search_region,
+            post_check_frames=self.detection_params.post_check_frames,
+            post_check_reject_limit=self.detection_params.post_check_reject_limit,
+            frame_interval=self.detection_params.frame_interval,
         )
         self.recognizer = CharacterRecognizer(aliases_path=str(self.app_root / "config" / "character_aliases.json"))
         self.youtube_updater = YouTubeChapterUpdater()
@@ -428,27 +436,10 @@ def save_detection_results(video_id: str, detections: list[MatchDetection], vide
     logger.info("✅ Saved detection summary: %s", summary_path)
 
     # 検出フレーム画像を保存
-    template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
-    reject_templates = [
-        os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
-        os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
-    ]
-    round1_search_region = (575, 333, 1500, 800)
-
-    matcher = TemplateMatcher(
-        template_path=template_path,
-        threshold=0.32,
-        min_interval_sec=2.0,
-        reject_templates=reject_templates,
-        reject_threshold=0.35,
-        search_region=round1_search_region,
-        post_check_frames=10,
-        post_check_reject_limit=2,
-    )
-
+    # TemplateMatcher.save_detection_frame は静的メソッドなので、パラメータ不要
     for i, detection in enumerate(detections, 1):
         frame_path = output_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
-        matcher.save_detection_frame(detection, str(frame_path))
+        TemplateMatcher.save_detection_frame(detection, str(frame_path))
 
     logger.info("✅ Saved %d detection frames to: %s", len(detections), output_dir)
 
@@ -580,7 +571,9 @@ def test_download(video_id: str) -> str:
     return video_path
 
 
-def test_detection(video_id: str, video_path: str, save_intermediate: bool = True) -> list[MatchDetection]:
+def test_detection(
+    video_id: str, video_path: str, save_intermediate: bool = True, detection_profile: str = "test"
+) -> list[MatchDetection]:
     """
     対戦シーン検出のテスト
 
@@ -588,30 +581,35 @@ def test_detection(video_id: str, video_path: str, save_intermediate: bool = Tru
         video_id: YouTube動画ID
         video_path: 動画ファイルのパス
         save_intermediate: 中間ファイルに保存するか
+        detection_profile: 検出パラメータのプロファイル名 (production/test/legacy)
 
     Returns:
         検出結果リスト
     """
     logger.info("[TEST] Detecting matches in: %s", video_path)
+
+    # 検出パラメータを設定ファイルから読み込み
+    params = load_detection_params(profile=detection_profile)
+    params.log_params()  # パラメータをログに出力
+
     template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
-
-    # Round 1表示領域（画面中央上部）
-    round1_search_region = (575, 333, 1500, 800)
-
     reject_templates = [
         os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
         os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
     ]
+
     matcher = TemplateMatcher(
         template_path=template_path,
-        threshold=0.32,
-        min_interval_sec=2.0,
+        threshold=params.threshold,
+        min_interval_sec=params.min_interval_sec,
         reject_templates=reject_templates,
-        reject_threshold=0.35,
-        search_region=round1_search_region,
-        post_check_frames=10,  # 検出後10フレームをチェック
-        post_check_reject_limit=2,  # 2回以上除外マッチがあれば誤検知
+        reject_threshold=params.reject_threshold,
+        search_region=params.search_region,
+        post_check_frames=params.post_check_frames,
+        post_check_reject_limit=params.post_check_reject_limit,
+        frame_interval=params.frame_interval,
     )
+
     crop_region = (339, 886, 1748, 980)
     detections = matcher.detect_matches(video_path=video_path, crop_region=crop_region)
     logger.info("✅ Found %d matches", len(detections))
@@ -925,6 +923,12 @@ def main():
         action="store_true",
         help="Load detection/recognition results from intermediate files instead of running from scratch",
     )
+    parser.add_argument(
+        "--detection-profile",
+        choices=["production", "test", "legacy"],
+        default="production",
+        help="Detection parameters profile (production/test/legacy)",
+    )
 
     args = parser.parse_args()
 
@@ -948,7 +952,7 @@ def main():
             if not video_path:
                 # video_pathが指定されていない場合、video_idから自動取得（既存ファイル優先）
                 video_path = test_download(args.video_id)
-            detections = test_detection(args.video_id, video_path)
+            detections = test_detection(args.video_id, video_path, detection_profile=args.detection_profile)
 
         if args.test_step in ["recognize", "all"]:
             # --from-intermediateが指定されている場合は中間ファイルから読み込み
@@ -959,7 +963,7 @@ def main():
                 if not detections:
                     if not video_path:
                         video_path = test_download(args.video_id)
-                    detections = test_detection(args.video_id, video_path)
+                    detections = test_detection(args.video_id, video_path, detection_profile=args.detection_profile)
                 results = test_recognition(args.video_id, detections=detections)
 
         if args.test_step in ["chapters", "all"]:
@@ -971,7 +975,7 @@ def main():
                 if not detections or not results:
                     if not video_path:
                         video_path = test_download(args.video_id)
-                    detections = test_detection(args.video_id, video_path)
+                    detections = test_detection(args.video_id, video_path, detection_profile=args.detection_profile)
                     results = test_recognition(args.video_id, detections=detections)
                 test_chapters(args.video_id, detections, results)
 
@@ -984,14 +988,14 @@ def main():
                 if not detections or not results:
                     if not video_path:
                         video_path = test_download(args.video_id)
-                    detections = test_detection(args.video_id, video_path)
+                    detections = test_detection(args.video_id, video_path, detection_profile=args.detection_profile)
                     results = test_recognition(args.video_id, detections=detections)
                 test_r2_upload(args.video_id, detections, results)
 
         return
 
     # 通常モード
-    processor = SF6ChapterProcessor()
+    processor = SF6ChapterProcessor(detection_profile=args.detection_profile)
 
     if args.mode == "once":
         processor.run_once()

@@ -38,6 +38,8 @@ R2 (ストレージ、非公開)
 ## 主な機能
 
 - **対戦シーン自動検出**: OpenCVテンプレートマッチングで「ROUND 1」画面を検出
+  - 設定ファイル (`config/detection_params.json`) で検出パラメータをカスタマイズ可能
+  - 偽陽性除外機能（Round 2/Final Roundの誤検出を防止）
 - **キャラクター認識**: Gemini APIで対戦キャラクターを自動認識・正規化
 - **YouTubeチャプター生成**: YouTube Data APIで動画説明文にチャプターを自動追加
 - **対戦データ検索**: DuckDB-WASMによるクライアントサイドSQL検索
@@ -114,7 +116,8 @@ sf6-chapter/
 │   └── character_aliases.schema.json
 │
 ├── config/                       # 設定ファイル
-│   └── character_aliases.json    # キャラクター名正規化テーブル
+│   ├── character_aliases.json    # キャラクター名正規化テーブル
+│   └── detection_params.json     # 検出パラメータ設定
 │
 ├── docs/
 │   ├── adr/                      # アーキテクチャ決定記録
@@ -236,6 +239,7 @@ pnpm deploy
 | [014](docs/adr/014-cloud-function-oidc-authentication.md) | Cloud FunctionのOIDC認証による保護 |
 | [015](docs/adr/015-google-cloud-logging-integration.md) | Cloud Functionsでのgoogle-cloud-logging統合 |
 | [016](docs/adr/016-vite-manifest-based-asset-reference.md) | Viteマニフェストベースのアセット参照 |
+| [017](docs/adr/017-detection-parameter-optimization.md) | 検出パラメータの最適化とパラメータ管理システムの導入 |
 
 ## 認証方式
 

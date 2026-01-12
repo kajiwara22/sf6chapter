@@ -61,7 +61,7 @@ sf6-chapter/
 ## 現在のステータス
 
 - [x] アーキテクチャ設計完了
-- [x] ADR作成（001〜016）
+- [x] ADR作成（001〜017）
 - [x] スキーマ定義 (`schema/`)
 - [x] ローカル処理実装 (`packages/local/`)
 - [x] ローカル処理のDocker化（ADR-013）
@@ -76,11 +76,13 @@ sf6-chapter/
 - [x] Cloudflare Pagesデプロイ
 - [x] Viteマニフェスト対応（ADR-016）
 - [x] Cloudflare Access設定
+- [x] 検出パラメータ最適化とパラメータ管理システム（ADR-017）
 
 ## 次のタスク
 
 1. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
 2. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
+3. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
 
 ## 重要な設計判断
 
@@ -112,6 +114,21 @@ sf6-chapter/
 
 - Gemini APIの認識結果にブレがあるため正規化テーブルを用意
 - `config/character_aliases.json` で管理
+
+### 検出パラメータ
+
+- **設定ファイル**: `config/detection_params.json` で一元管理
+- **プロファイル**: production/test/legacyの3つを用意
+- **主要パラメータ**:
+  - `threshold`: 検出の最小信頼度（デフォルト: 0.32）
+  - `reject_threshold`: 除外判定の閾値（デフォルト: 0.30、Round 2/Final Round除外用）
+  - `post_check_frames`: 後続フレームチェック数（デフォルト: 60、1秒分）
+  - `post_check_reject_limit`: 除外判定の最大回数（デフォルト: 2）
+- **切り替え方法**:
+  - コマンドライン引数: `--detection-profile production`
+  - 環境変数: `DETECTION_PROFILE=test`
+- **パラメータログ**: 実行時に使用されたパラメータを自動的にログ出力
+- **詳細**: [ADR-017](docs/adr/017-detection-parameter-optimization.md)
 
 ### 認証
 
@@ -193,5 +210,6 @@ docker compose up -d
 - [014: Cloud FunctionのOIDC認証による保護](docs/adr/014-cloud-function-oidc-authentication.md)
 - [015: Cloud Functionsでのgoogle-cloud-logging統合](docs/adr/015-google-cloud-logging-integration.md)
 - [016: Viteマニフェストベースのアセット参照](docs/adr/016-vite-manifest-based-asset-reference.md)
+- [017: 検出パラメータの最適化とパラメータ管理システムの導入](docs/adr/017-detection-parameter-optimization.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。

@@ -180,7 +180,94 @@ LOG_LEVEL=INFO
 
 `template/round1.png` に「ROUND 1」画面のスクリーンショットを配置。
 
-### 5. 初回認証フロー
+### 5. 検出パラメータ設定（オプション）
+
+対戦シーン検出の精度を調整するには、`config/detection_params.json` を編集します。
+
+#### 設定ファイルの場所
+
+```
+config/detection_params.json
+```
+
+#### プロファイル
+
+設定ファイルには3つのプロファイルが用意されています：
+
+- **production**: 本番環境用（偽陽性を厳しく除外）
+- **test**: テスト環境用（productionと同じ設定）
+- **legacy**: 旧設定（参考用）
+
+#### パラメータの説明
+
+```json
+{
+  "threshold": 0.32,                  // 検出の最小信頼度（0.0〜1.0）
+  "reject_threshold": 0.30,           // 除外判定の閾値（Round 2/Final Round除外用）
+  "min_interval_sec": 2.0,            // 検出間隔の最小値（秒）
+  "post_check_frames": 60,            // 後続フレームチェック数（1秒分）
+  "post_check_reject_limit": 2,       // 除外判定の最大回数
+  "search_region": [575, 333, 1500, 800],  // 検索領域（左上X, 左上Y, 右下X, 右下Y）
+  "frame_interval": 2                 // フレームスキップ間隔
+}
+```
+
+#### プロファイルの切り替え
+
+**コマンドライン引数で指定**:
+
+```bash
+# productionプロファイルを使用（デフォルト）
+uv run python main.py --mode test --test-step detect --video-id XXX
+
+# testプロファイルを使用
+uv run python main.py --mode test --test-step detect --video-id XXX --detection-profile test
+
+# legacyプロファイルを使用
+uv run python main.py --mode test --test-step detect --video-id XXX --detection-profile legacy
+```
+
+**環境変数で指定**:
+
+```bash
+# .envファイルまたはシェルで設定
+export DETECTION_PROFILE=test
+uv run python main.py --mode test --test-step detect --video-id XXX
+```
+
+#### パラメータログ
+
+実行時に使用されているパラメータは自動的にログに出力されます：
+
+```
+2026-01-12 16:50:16 - INFO - ============================================================
+2026-01-12 16:50:16 - INFO - Detection Parameters (Profile: production)
+2026-01-12 16:50:16 - INFO - ============================================================
+2026-01-12 16:50:16 - INFO -   threshold:                0.32
+2026-01-12 16:50:16 - INFO -   reject_threshold:         0.30
+2026-01-12 16:50:16 - INFO -   min_interval_sec:         2.0
+2026-01-12 16:50:16 - INFO -   post_check_frames:        60
+2026-01-12 16:50:16 - INFO -   post_check_reject_limit:  2
+2026-01-12 16:50:16 - INFO -   search_region:            (575, 333, 1500, 800)
+2026-01-12 16:50:16 - INFO -   frame_interval:           2
+2026-01-12 16:50:16 - INFO - ============================================================
+```
+
+#### パラメータの調整
+
+偽陽性（Round 2やFinal RoundをRound 1と誤検出）が発生する場合：
+
+1. `reject_threshold` を下げる（0.30 → 0.28など）
+2. `post_check_frames` を増やす（60 → 90など）
+
+検出漏れ（真のRound 1を見逃す）が発生する場合：
+
+1. `threshold` を下げる（0.32 → 0.30など）
+2. `reject_threshold` を上げる（0.30 → 0.32など）
+
+**詳細**: パラメータ最適化の詳細は[ADR-017](../../docs/adr/017-detection-parameter-optimization.md)を参照してください。
+
+### 6. 初回認証フロー
 
 初回実行時、ブラウザが自動的に開き、Googleアカウントでの認証が求められます：
 
