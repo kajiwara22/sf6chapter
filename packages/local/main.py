@@ -42,8 +42,11 @@ class SF6ChapterProcessor:
         # アプリケーションルートディレクトリ（ローカル: packages/local/, Docker: /app/）
         self.app_root = Path(__file__).parent
 
-        # 設定
-        self.template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
+        # 検出パラメータを設定ファイルから読み込み
+        self.detection_params = load_detection_params(profile=detection_profile)
+        self.detection_params.log_params()  # パラメータをログに出力
+
+        # 設定（環境変数で上書き可能）
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
         self.crop_region = (339, 886, 1748, 980)  # キャラクター名表示領域
 
@@ -54,26 +57,16 @@ class SF6ChapterProcessor:
         # R2アップロードを有効にするかどうか（環境変数で制御）
         self.enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
 
-        # 除外テンプレート（Round 2, Final Round）
-        self.reject_templates = [
-            os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
-            os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
-        ]
-
-        # 検出パラメータを設定ファイルから読み込み
-        self.detection_params = load_detection_params(profile=detection_profile)
-        self.detection_params.log_params()  # パラメータをログに出力
-
         # モジュール初期化
         self.subscriber = PubSubSubscriber()
         self.firestore = FirestoreClient()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
 
         self.matcher = TemplateMatcher(
-            template_path=self.template_path,
+            template_path=self.detection_params.template_path,
             threshold=self.detection_params.threshold,
             min_interval_sec=self.detection_params.min_interval_sec,
-            reject_templates=self.reject_templates,
+            reject_templates=self.detection_params.reject_templates,
             reject_threshold=self.detection_params.reject_threshold,
             search_region=self.detection_params.search_region,
             post_check_frames=self.detection_params.post_check_frames,
@@ -565,7 +558,7 @@ def load_recognition_results(video_id: str) -> list[dict[str, Any]] | None:
 def test_download(video_id: str) -> str:
     """動画ダウンロードのテスト（既存ファイルがあれば再利用）"""
     logger.info("[TEST] Downloading video: %s", video_id)
-    downloader = VideoDownloader(download_dir="./download")
+    downloader = VideoDownloader(download_dir="./download", cookie_path="./cookie/cookie.txt")
     video_path = downloader.download(video_id, skip_if_exists=True)
     logger.info("✅ Downloaded: %s", video_path)
     return video_path
@@ -592,17 +585,11 @@ def test_detection(
     params = load_detection_params(profile=detection_profile)
     params.log_params()  # パラメータをログに出力
 
-    template_path = os.environ.get("TEMPLATE_PATH", "./template/round1.png")
-    reject_templates = [
-        os.environ.get("REJECT_TEMPLATE_ROUND2", "./template/round2.png"),
-        os.environ.get("REJECT_TEMPLATE_FINAL", "./template/final_round.png"),
-    ]
-
     matcher = TemplateMatcher(
-        template_path=template_path,
+        template_path=params.template_path,
         threshold=params.threshold,
         min_interval_sec=params.min_interval_sec,
-        reject_templates=reject_templates,
+        reject_templates=params.reject_templates,
         reject_threshold=params.reject_threshold,
         search_region=params.search_region,
         post_check_frames=params.post_check_frames,

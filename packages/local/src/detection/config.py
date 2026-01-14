@@ -17,6 +17,8 @@ logger = get_logger()
 class DetectionParams:
     """検出パラメータを保持するデータクラス"""
 
+    template_path: str
+    reject_templates: list[str]
     threshold: float
     reject_threshold: float
     min_interval_sec: float
@@ -30,6 +32,8 @@ class DetectionParams:
         """辞書形式に変換"""
         return {
             "profile": self.profile,
+            "template_path": self.template_path,
+            "reject_templates": self.reject_templates,
             "threshold": self.threshold,
             "reject_threshold": self.reject_threshold,
             "min_interval_sec": self.min_interval_sec,
@@ -44,6 +48,8 @@ class DetectionParams:
         logger.info("=" * 60)
         logger.info("Detection Parameters (Profile: %s)", self.profile)
         logger.info("=" * 60)
+        logger.info("  template_path:            %s", self.template_path)
+        logger.info("  reject_templates:         %s", self.reject_templates)
         logger.info("  threshold:                %.2f", self.threshold)
         logger.info("  reject_threshold:         %.2f", self.reject_threshold)
         logger.info("  min_interval_sec:         %.1f", self.min_interval_sec)
@@ -95,6 +101,8 @@ def load_detection_params(profile: str = "production", config_path: str | None =
 
     # DetectionParamsに変換
     params = DetectionParams(
+        template_path=str(params_dict["template_path"]),
+        reject_templates=[str(p) for p in params_dict["reject_templates"]],
         threshold=float(params_dict["threshold"]),
         reject_threshold=float(params_dict["reject_threshold"]),
         min_interval_sec=float(params_dict["min_interval_sec"]),

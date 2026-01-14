@@ -1,0 +1,70 @@
+{
+  "$schema": "detection_params_schema.json",
+  "description": "テンプレートマッチングのパラメータ設定",
+  "version": "1.0.0",
+  "updated_at": "2026-01-12",
+  "profiles": {
+    "production": {
+      "description": "本番環境用の設定（偽陽性を厳しく除外）",
+      "template_path": "./template/round1.png",
+      "reject_templates": [
+        "./template/round2.png",
+        "./template/final_round.png"
+      ],
+      "threshold": 0.32,
+      "reject_threshold": 0.30,
+      "min_interval_sec": 2.0,
+      "post_check_frames": 60,
+      "post_check_reject_limit": 2,
+      "search_region": [575, 333, 1500, 800],
+      "frame_interval": 2
+    },
+    "test": {
+      "description": "テスト用の設定（本番と同じ）",
+      "template_path": "./template/round1.png",
+      "reject_templates": [
+        "./template/round2.png",
+        "./template/final_round.png"
+      ],
+      "threshold": 0.32,
+      "reject_threshold": 0.30,
+      "min_interval_sec": 2.0,
+      "post_check_frames": 60,
+      "post_check_reject_limit": 2,
+      "search_region": [575, 333, 1500, 800],
+      "frame_interval": 2
+    },
+    "legacy": {
+      "description": "旧設定（参考用）",
+      "template_path": "./template/round1.png",
+      "reject_templates": [
+        "./template/round2.png",
+        "./template/final_round.png"
+      ],
+      "threshold": 0.32,
+      "reject_threshold": 0.35,
+      "min_interval_sec": 2.0,
+      "post_check_frames": 10,
+      "post_check_reject_limit": 2,
+      "search_region": [575, 333, 1500, 800],
+      "frame_interval": 2
+    }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-12",
+      "changes": [
+        "reject_threshold: 0.35 → 0.30 (Round 2の除外を強化)",
+        "post_check_frames: 10 → 60 (1秒分のフレームをチェック)",
+        "偽陽性（90秒・195秒）を24回の除外マッチで正確に排除"
+      ],
+      "tested_video": "t38yQ5L1qoY",
+      "results": {
+        "true_positives": 8,
+        "false_positives_rejected": 11,
+        "detection_rate": "100%"
+      }
+    }
+  ]
+}
