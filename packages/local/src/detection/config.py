@@ -120,6 +120,31 @@ def load_detection_params(profile: str = "production", config_path: str | None =
     return params
 
 
+def get_available_profiles(config_path: str | None = None) -> list[str]:
+    """
+    利用可能なプロファイル名の一覧を取得
+
+    Args:
+        config_path: 設定ファイルのパス（省略時はデフォルト）
+
+    Returns:
+        list[str]: プロファイル名のリスト
+    """
+    # 設定ファイルのパス解決
+    if config_path is None:
+        app_root = Path(__file__).parent.parent.parent
+        config_path = str(app_root / "config" / "detection_params.json")
+
+    if not Path(config_path).exists():
+        # ファイルが見つからない場合はデフォルトを返す
+        return ["production", "test", "legacy"]
+
+    with open(config_path, encoding="utf-8") as f:
+        config = json.load(f)
+
+    return list(config.get("profiles", {}).keys())
+
+
 def _validate_params(params: DetectionParams) -> None:
     """パラメータの妥当性をチェック"""
     if not 0.0 <= params.threshold <= 1.0:

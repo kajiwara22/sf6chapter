@@ -12,11 +12,16 @@
         "./template/final_round.png"
       ],
       "threshold": 0.32,
-      "reject_threshold": 0.30,
+      "reject_threshold": 0.3,
       "min_interval_sec": 2.0,
       "post_check_frames": 60,
       "post_check_reject_limit": 2,
-      "search_region": [575, 333, 1500, 800],
+      "search_region": [
+        575,
+        333,
+        1500,
+        800
+      ],
       "frame_interval": 2
     },
     "test": {
@@ -27,11 +32,16 @@
         "./template/final_round.png"
       ],
       "threshold": 0.32,
-      "reject_threshold": 0.30,
+      "reject_threshold": 0.3,
       "min_interval_sec": 2.0,
       "post_check_frames": 60,
       "post_check_reject_limit": 2,
-      "search_region": [575, 333, 1500, 800],
+      "search_region": [
+        575,
+        333,
+        1500,
+        800
+      ],
       "frame_interval": 2
     },
     "legacy": {
@@ -46,7 +56,32 @@
       "min_interval_sec": 2.0,
       "post_check_frames": 10,
       "post_check_reject_limit": 2,
-      "search_region": [575, 333, 1500, 800],
+      "search_region": [
+        575,
+        333,
+        1500,
+        800
+      ],
+      "frame_interval": 2
+    },
+    "custom_2026": {
+      "description": "カスタム設定 - custom_2026",
+      "template_path": "./template/round1_custom_2026.png",
+      "reject_templates": [
+        "./template/round2_custom_2026.png",
+        "./template/final_round_custom_2026.png"
+      ],
+      "threshold": 0.43,
+      "reject_threshold": 0.3,
+      "min_interval_sec": 2.0,
+      "post_check_frames": 60,
+      "post_check_reject_limit": 2,
+      "search_region": [
+        477,
+        173,
+        1527,
+        780
+      ],
       "frame_interval": 2
     }
   },
@@ -64,6 +99,31 @@
         "true_positives": 8,
         "false_positives_rejected": 11,
         "detection_rate": "100%"
+      }
+    },
+    {
+      "version": "custom_2026_v1.0.0",
+      "date": "2026-01-17",
+      "changes": [
+        "新しいプロファイル 'custom_2026' を追加",
+        "Round 1テンプレート: ./template/round1_custom_2026.png",
+        "除外テンプレート: ./template/round2_custom_2026.png, ./template/final_round_custom_2026.png",
+        "検索領域: (477, 173, 1527, 780)",
+        "検出閾値: 0.43",
+        "除外閾値: 0.3"
+      ],
+      "tested_video": "20260113[raeRpxnQQQY]",
+      "results": {
+        "round1_scores": {
+          "min": 0.474745512008667,
+          "max": 0.9284356832504272,
+          "mean": 0.6288428803284963
+        },
+        "reject_scores": {
+          "min": 0.0,
+          "max": 0.6097611784934998,
+          "mean": 0.1733844419941306
+        }
       }
     }
   ]

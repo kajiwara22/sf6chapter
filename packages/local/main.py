@@ -17,7 +17,7 @@ app_root = Path(__file__).parent
 sys.path.insert(0, str(app_root))
 
 from src.character import CharacterRecognizer
-from src.detection import MatchDetection, TemplateMatcher, load_detection_params
+from src.detection import MatchDetection, TemplateMatcher, get_available_profiles, load_detection_params
 from src.firestore import FirestoreClient
 from src.pubsub import PubSubSubscriber
 from src.storage import R2Uploader
@@ -910,11 +910,13 @@ def main():
         action="store_true",
         help="Load detection/recognition results from intermediate files instead of running from scratch",
     )
+    # 利用可能なプロファイルをJSONファイルから動的に取得
+    available_profiles = get_available_profiles()
     parser.add_argument(
         "--detection-profile",
-        choices=["production", "test", "legacy"],
+        choices=available_profiles,
         default="production",
-        help="Detection parameters profile (production/test/legacy)",
+        help=f"Detection parameters profile ({'/'.join(available_profiles)})",
     )
 
     args = parser.parse_args()
