@@ -43,13 +43,15 @@ sudo apt-get install docker-compose-plugin
 
 1. [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop)をダウンロード
 2. インストーラーを実行
-3. WSL2バックエンドを有効化（推奨）
+3. WSL2バックエンドを有効化（必須）
 
 **確認**:
 ```bash
 docker --version
 docker compose version
 ```
+
+> **重要**: Windows環境では、WSL2バックエンドを使用してください。詳細は「[Windows環境での運用（WSL2）](#windows環境での運用wsl2)」セクションを参照してください。
 
 ## セットアップ手順
 
@@ -408,9 +410,163 @@ Dockerソケット（`/var/run/docker.sock`）へのアクセスを制限する�
 
 このアプリケーションではDockerソケットをマウントしていないため、デフォルトで安全です。
 
+## Windows環境での運用（WSL2）
+
+Windows環境でこのプロジェクトを動かす場合は、**WSL2の使用を強く推奨**します。
+
+### なぜWSL2が必要か
+
+#### 1. 依存関係の互換性
+
+DockerfileではLinux向けに`deno`（yt-dlpのJavaScriptランタイム）をインストールしています。Windows版Docker DesktopはWSL2バックエンドを使用するため、WSL2が必須となります。
+
+#### 2. ボリュームマウントのパフォーマンス
+
+このプロジェクトでは動画ファイル（数GB）を扱うため、I/O性能が重要です。
+
+| マウント元 | パフォーマンス |
+|-----------|---------------|
+| Windowsファイルシステム（`/mnt/c/...`） | ❌ 遅い |
+| WSL2内のファイルシステム（`/home/user/...`） | ✅ 高速 |
+
+WSL2内にリポジトリをクローンすることで、ネイティブに近いI/O性能を得られます。
+
+#### 3. パス形式の互換性
+
+`docker-compose.yml`はUnixパス形式（`./cookie:/app/cookie:ro`）で記述されています。WSL2内で実行すれば、パス変換の問題を回避できます。
+
+### 推奨構成
+
+```
+Windows 11
+└── WSL2 (Ubuntu)
+    ├── リポジトリ: /home/user/sf6-chapter/
+    ├── Docker Desktop (WSL2バックエンド)
+    └── 認証ファイル・Cookieを配置
+        ├── client_secrets.json
+        ├── token.pickle
+        └── cookie/cookie.txt
+```
+
+### セットアップ手順
+
+#### 1. WSL2のインストール
+
+PowerShell（管理者権限）で実行:
+
+```powershell
+wsl --install
+```
+
+再起動後、Ubuntuが自動的にインストールされます。
+
+#### 2. Docker Desktopの設定
+
+1. Docker Desktopをインストール
+2. Settings → General → 「Use the WSL 2 based engine」にチェック
+3. Settings → Resources → WSL Integration → Ubuntuを有効化
+
+#### 3. WSL2内でリポジトリをセットアップ
+
+```bash
+# WSL2ターミナル（Ubuntu）で実行
+cd ~
+git clone https://github.com/your-repo/sf6-chapter.git
+cd sf6-chapter/packages/local
+
+# 認証ファイルをWindowsからコピー
+cp /mnt/c/Users/<username>/Downloads/client_secrets.json ./
+mkdir -p cookie
+cp /mnt/c/Users/<username>/Downloads/cookie.txt ./cookie/
+
+# .envファイルを設定
+cp .env.example .env
+nano .env  # 環境変数を編集
+```
+
+#### 4. OAuth2認証（token.pickle）
+
+OAuth2認証にはブラウザ操作が必要です。以下の2つの方法があります。
+
+**方法A: 開発PCで認証してからコピー（推奨）**
+
+開発PC（macOS/Linux）で`token.pickle`を生成し、Windows常駐PCにコピーします。
+
+```bash
+# 開発PCで実行
+cd sf6-chapter/packages/local
+uv run python -c "from src.auth.oauth import get_oauth_credentials; get_oauth_credentials()"
+
+# 生成されたtoken.pickleをWindows PCにコピー
+scp token.pickle user@windows-pc:/path/to/wsl-home/sf6-chapter/packages/local/
+```
+
+**方法B: WSL2からWindowsブラウザを開く**
+
+WSL2から認証URLをWindowsブラウザで開くことも可能です。
+
+```bash
+# WSL2内で実行
+uv run python -c "from src.auth.oauth import get_oauth_credentials; get_oauth_credentials()"
+
+# 表示された認証URLをコピーし、Windowsブラウザで開く
+# または、以下のコマンドでブラウザを直接開く
+explorer.exe "https://accounts.google.com/o/oauth2/..."
+```
+
+#### 5. Dockerコンテナの起動
+
+```bash
+# WSL2内で実行
+cd ~/sf6-chapter/packages/local
+docker compose build
+docker compose up -d
+
+# ログを確認
+docker compose logs -f sf6-processor
+```
+
+### 注意点
+
+#### ファイル配置場所
+
+| ファイル | 配置場所 | 理由 |
+|---------|---------|------|
+| リポジトリ | `/home/user/sf6-chapter/` | I/O性能のため |
+| 認証ファイル | WSL2内にコピー | パス互換性のため |
+| ダウンロード動画 | Dockerボリューム | 永続化・パフォーマンス |
+
+> **注意**: `/mnt/c/...`（Windowsドライブ）にリポジトリを置くと、ファイルI/Oが遅くなります。必ずWSL2内のファイルシステム（`/home/user/...`）を使用してください。
+
+#### WSL2のメモリ制限
+
+WSL2はデフォルトでホストメモリの50%または8GBまで使用します。動画処理には十分ですが、必要に応じて制限を調整できます。
+
+`%USERPROFILE%\.wslconfig`を作成:
+
+```ini
+[wsl2]
+memory=4GB
+processors=2
+```
+
+設定後、WSL2を再起動:
+
+```powershell
+wsl --shutdown
+```
+
+#### PC起動時の自動起動
+
+Windows起動時にDockerコンテナを自動起動するには:
+
+1. Docker Desktopの設定で「Start Docker Desktop when you log in」を有効化
+2. `docker-compose.yml`の`restart: unless-stopped`により、Docker起動時にコンテナも自動起動
+
 ## 参考資料
 
 - [Docker公式ドキュメント](https://docs.docker.com/)
 - [Docker Compose公式ドキュメント](https://docs.docker.com/compose/)
+- [WSL公式ドキュメント](https://docs.microsoft.com/ja-jp/windows/wsl/)
 - [ADR-013: ローカル処理パッケージのDocker化](../../docs/adr/013-local-package-dockerization.md)
 - [SF6 Chapter README](./README.md)

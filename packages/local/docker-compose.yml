@@ -13,8 +13,10 @@ services:
       - ./token.pickle:/app/token.pickle
       # テンプレート画像（読み取り専用）
       - ./template:/app/template:ro
+      # Cookieファイル（読み取り専用）
+      - ./cookie:/app/cookie:ro
       # データディレクトリ（永続化）
-      - sf6-downloads:/app/downloads
+      - sf6-download:/app/download
       - sf6-output:/app/output
       - sf6-intermediate:/app/intermediate
       - sf6-chapters:/app/chapters
@@ -46,8 +48,8 @@ services:
 
 # 名前付きボリューム（データ永続化）
 volumes:
-  sf6-downloads:
-    name: sf6-chapter-downloads
+  sf6-download:
+    name: sf6-chapter-download
   sf6-output:
     name: sf6-chapter-output
   sf6-intermediate:
