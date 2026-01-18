@@ -58,3 +58,6 @@ htmlcov/
 
 # intermediate
 packages/local/intermediate/*
+
+# Cookie
+packages/local/cookie/*
