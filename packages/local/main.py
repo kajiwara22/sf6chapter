@@ -48,7 +48,6 @@ class SF6ChapterProcessor:
 
         # 設定（環境変数で上書き可能）
         self.download_dir = os.environ.get("DOWNLOAD_DIR", "./download")
-        self.crop_region = (339, 886, 1748, 980)  # キャラクター名表示領域
 
         # 中間ファイル保存ディレクトリ
         self.intermediate_dir = Path(os.environ.get("INTERMEDIATE_DIR", "./intermediate"))
@@ -119,7 +118,7 @@ class SF6ChapterProcessor:
             logger.info("[2/6] Detecting match scenes...")
             detections = self.matcher.detect_matches(
                 video_path=video_path,
-                crop_region=self.crop_region,
+                crop_region=self.detection_params.crop_region,
             )
             logger.info("Found %d matches", len(detections))
 
@@ -597,8 +596,7 @@ def test_detection(
         frame_interval=params.frame_interval,
     )
 
-    crop_region = (339, 886, 1748, 980)
-    detections = matcher.detect_matches(video_path=video_path, crop_region=crop_region)
+    detections = matcher.detect_matches(video_path=video_path, crop_region=params.crop_region)
     logger.info("✅ Found %d matches", len(detections))
     for i, det in enumerate(detections, 1):
         logger.info("   %d. %.1fs (confidence: %.3f)", i, det.timestamp, det.confidence)

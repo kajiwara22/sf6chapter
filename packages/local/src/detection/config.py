@@ -25,6 +25,7 @@ class DetectionParams:
     post_check_frames: int
     post_check_reject_limit: int
     search_region: tuple[int, int, int, int]
+    crop_region: tuple[int, int, int, int]  # キャラクター名表示領域 (x1, y1, x2, y2)
     frame_interval: int
     profile: str  # 使用したプロファイル名
 
@@ -40,6 +41,7 @@ class DetectionParams:
             "post_check_frames": self.post_check_frames,
             "post_check_reject_limit": self.post_check_reject_limit,
             "search_region": list(self.search_region),
+            "crop_region": list(self.crop_region),
             "frame_interval": self.frame_interval,
         }
 
@@ -56,6 +58,7 @@ class DetectionParams:
         logger.info("  post_check_frames:        %d", self.post_check_frames)
         logger.info("  post_check_reject_limit:  %d", self.post_check_reject_limit)
         logger.info("  search_region:            %s", self.search_region)
+        logger.info("  crop_region:              %s", self.crop_region)
         logger.info("  frame_interval:           %d", self.frame_interval)
         logger.info("=" * 60)
 
@@ -109,6 +112,7 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         post_check_frames=int(params_dict["post_check_frames"]),
         post_check_reject_limit=int(params_dict["post_check_reject_limit"]),
         search_region=tuple(params_dict["search_region"]),
+        crop_region=tuple(params_dict["crop_region"]),
         frame_interval=int(params_dict["frame_interval"]),
         profile=profile,
     )
@@ -164,6 +168,9 @@ def _validate_params(params: DetectionParams) -> None:
 
     if len(params.search_region) != 4:
         raise ValueError(f"search_region must have 4 elements, got {len(params.search_region)}")
+
+    if len(params.crop_region) != 4:
+        raise ValueError(f"crop_region must have 4 elements, got {len(params.crop_region)}")
 
     if params.frame_interval < 1:
         raise ValueError(f"frame_interval must be at least 1, got {params.frame_interval}")
