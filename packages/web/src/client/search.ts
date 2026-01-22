@@ -104,6 +104,33 @@ export async function loadParquetData(): Promise<void> {
 }
 
 /**
+ * JSTの日付文字列（YYYY-MM-DD）をUTCのISO8601文字列に変換
+ * @param dateStr JSTの日付文字列（例: "2026-01-14"）
+ * @param isEndOfDay trueの場合は23:59:59 JST、falseの場合は00:00:00 JST
+ * @returns UTC ISO8601文字列
+ */
+function convertJstDateToUtc(dateStr: string, isEndOfDay: boolean): string {
+  // JST = UTC + 9時間
+  // JST 00:00:00 → UTC 前日15:00:00
+  // JST 23:59:59 → UTC 当日14:59:59
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  if (isEndOfDay) {
+    // JST 23:59:59 → UTC 当日14:59:59
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T14:59:59Z`;
+  } else {
+    // JST 00:00:00 → UTC 前日15:00:00
+    const jstDate = new Date(year, month - 1, day, 0, 0, 0);
+    // JSTから9時間引いてUTCに変換
+    const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
+    const utcYear = utcDate.getUTCFullYear();
+    const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
+    return `${utcYear}-${utcMonth}-${utcDay}T15:00:00Z`;
+  }
+}
+
+/**
  * 対戦データを検索
  */
 export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
@@ -121,14 +148,17 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   }
 
   // 日付フィルター（YouTube公開日ベース）
+  // フロントエンドからの入力はJSTなので、UTCに変換してクエリ
   if (filters.dateFrom) {
+    const utcFrom = convertJstDateToUtc(filters.dateFrom, false);
     conditions.push(`videoPublishedAt >= $${params.length + 1}`);
-    params.push(filters.dateFrom);
+    params.push(utcFrom);
   }
 
   if (filters.dateTo) {
+    const utcTo = convertJstDateToUtc(filters.dateTo, true);
     conditions.push(`videoPublishedAt <= $${params.length + 1}`);
-    params.push(filters.dateTo + 'T23:59:59Z');
+    params.push(utcTo);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
