@@ -16,61 +16,53 @@ from ..utils.logger import get_logger
 
 logger = get_logger()
 
+# 認識できなかった場合の定数
+UNKNOWN_CHARACTER = "UNKNOWN"
+
 
 class CharacterRecognizer:
     """Gemini APIを使用したキャラクター認識器（Vertex AI経由）"""
 
     def __init__(
         self,
+        aliases_path: str,
         model_name: str = "gemini-2.5-flash-lite",
-        aliases_path: str | None = None,
         client_secrets_file: str = "client_secrets.json",
         token_file: str = "token.pickle",
         project_id: str | None = None,
         location: str = "us-central1",
-        use_oauth: bool = True,
-        api_key: str | None = None,
     ):
         """
         Args:
+            aliases_path: キャラクター名正規化マッピングファイルのパス（必須）
             model_name: 使用するモデル名
-            aliases_path: キャラクター名正規化マッピングファイルのパス
             client_secrets_file: OAuth2クライアントシークレットファイルのパス
             token_file: 認証トークン保存ファイルのパス（pickle形式）
             project_id: Google Cloud プロジェクトID（省略時は環境変数GOOGLE_CLOUD_PROJECTを使用）
             location: Vertex AIのロケーション（デフォルト: us-central1）
-            use_oauth: OAuth2認証を使用するか（Falseの場合はAPI Keyを使用）
-            api_key: Gemini API Key（use_oauth=Falseの場合に使用、省略時は環境変数GEMINI_API_KEYを使用）
         """
-        if use_oauth:
-            # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
-            project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
-            if not project_id:
-                raise ValueError("GOOGLE_CLOUD_PROJECT must be set when use_oauth=True")
+        # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
+        project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        if not project_id:
+            raise ValueError("GOOGLE_CLOUD_PROJECT must be set")
 
-            creds = get_oauth_credentials(
-                client_secrets_file=client_secrets_file,
-                token_file=token_file,
-            )
-            self.client = genai.Client(
-                vertexai=True,
-                project=project_id,
-                location=location,
-                credentials=creds,
-            )
-        else:
-            # API Key認証を使用（後方互換性のため）
-            api_key = api_key or os.environ.get("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GEMINI_API_KEY must be set when use_oauth=False")
-            self.client = genai.Client(api_key=api_key)
+        creds = get_oauth_credentials(
+            client_secrets_file=client_secrets_file,
+            token_file=token_file,
+        )
+        self.client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=location,
+            credentials=creds,
+        )
 
         self.model_name = model_name
 
-        # キャラクター名正規化マッピング読み込み
+        # キャラクター名正規化マッピング読み込み（必須）
         self.aliases_map: dict[str, str] = {}
-        if aliases_path:
-            self._load_aliases(aliases_path)
+        self.valid_characters: list[str] = []
+        self._load_aliases(aliases_path)
 
     def _load_aliases(self, aliases_path: str) -> None:
         """キャラクター名正規化マッピングを読み込み"""
@@ -78,10 +70,16 @@ class CharacterRecognizer:
             data = json.load(f)
 
         # エイリアスから正規名へのマッピングを構築
+        # 有効なキャラクター名リストも同時に構築
         for char_data in data["characters"].values():
             canonical = char_data["canonical"]
+            self.valid_characters.append(canonical)
             for alias in char_data["aliases"]:
                 self.aliases_map[alias.lower()] = canonical
+
+    def is_valid_character(self, name: str) -> bool:
+        """指定された名前が有効なキャラクター名かどうかを判定"""
+        return name in self.valid_characters
 
     def normalize_character_name(self, raw_name: str) -> str:
         """
@@ -91,9 +89,14 @@ class CharacterRecognizer:
             raw_name: Gemini APIから返された生の名前
 
         Returns:
-            正規化されたキャラクター名
+            正規化されたキャラクター名（無効な場合はUNKNOWN_CHARACTER）
         """
-        normalized = self.aliases_map.get(raw_name.lower(), raw_name)
+        if not raw_name:
+            return UNKNOWN_CHARACTER
+        normalized = self.aliases_map.get(raw_name.lower())
+        if normalized is None:
+            logger.warning("Unknown character name from Gemini: %s", raw_name)
+            return UNKNOWN_CHARACTER
         return normalized
 
     def recognize_from_frame(
@@ -120,29 +123,50 @@ class CharacterRecognizer:
         if save_debug_image:
             pil_image.save(save_debug_image)
 
-        # プロンプト
+        # 有効なキャラクター名リスト
+        valid_chars = self.valid_characters
+
+        # プロンプト（候補リストを含める）
+        char_list = ", ".join(valid_chars)
         prompt = (
-            "この画像はストリートファイター6のラウンド開始画面です。"
+            "この画像はストリートファイター6のラウンド開始画面です。\n"
             "左側のキャラクターを1p、右側のキャラクターを2pとし、"
-            "それぞれのキャラクター名をJSONで返してください。"
-            '例: {"1p": "Ryu", "2p": "Ken"}'
+            "それぞれのキャラクター名をJSONで返してください。\n\n"
+            f"有効なキャラクター名（必ずこの中から選んでください）:\n{char_list}\n\n"
+            '出力形式: {"1p": "RYU", "2p": "KEN"}'
         )
 
-        # Gemini API呼び出し
+        # Gemini API呼び出し（スキーマ制約付き）
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=[prompt, pil_image],
-            config=genai.types.GenerateContentConfig(response_mime_type="application/json"),
+            config=genai.types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "object",
+                    "properties": {
+                        "1p": {"type": "string", "enum": valid_chars},
+                        "2p": {"type": "string", "enum": valid_chars},
+                    },
+                    "required": ["1p", "2p"],
+                },
+            ),
         )
 
         # レスポンスパース
         raw_result = json.loads(response.text)
 
-        # キャラクター名正規化
+        # キャラクター名正規化と検証
         normalized_result = {
             "1p": self.normalize_character_name(raw_result.get("1p", "")),
             "2p": self.normalize_character_name(raw_result.get("2p", "")),
         }
+
+        # 認識失敗のログ出力
+        if normalized_result["1p"] == UNKNOWN_CHARACTER:
+            logger.warning("Failed to recognize 1p character, raw: %s", raw_result.get("1p"))
+        if normalized_result["2p"] == UNKNOWN_CHARACTER:
+            logger.warning("Failed to recognize 2p character, raw: %s", raw_result.get("2p"))
 
         return normalized_result, raw_result
 

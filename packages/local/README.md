@@ -634,10 +634,8 @@ print(s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME')))
 - 環境変数 `GEMINI_API_KEY` は不要
 - 環境変数 `GOOGLE_CLOUD_PROJECT` が必須
 
-### v1.x（非推奨）
-- **YouTube API**: OAuth2認証
-- **Gemini API**: API Key認証
-- トークンファイル: `token.pickle`（pickle形式）
-- 環境変数 `GEMINI_API_KEY` が必要
+### キャラクター認識の出力
 
-**後方互換性**: `CharacterRecognizer(use_oauth=False, api_key="...")` で旧方式も使用可能
+- 認識成功時: 正規化されたキャラクター名（例: `"RYU"`, `"KEN"`）
+- 認識失敗時: `"UNKNOWN"` を返し、ログに警告を出力
+- 認識失敗した場合は中間ファイルを手動で修正してください
