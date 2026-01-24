@@ -169,22 +169,27 @@ class R2Uploader:
         new_data: list[dict[str, Any]],
         key: str,
         schema: pa.Schema | None = None,
-        dedup_key: str = "id",
+        video_id: str | None = None,
     ) -> str:
         """
-        既存のParquetテーブルを更新（新データでマージ）
+        既存のParquetテーブルを更新（videoId単位で置換）
+
+        指定されたvideoIdに紐づく既存レコードをすべて削除してから、
+        新しいデータを追加します。これにより、中間ファイルで削除された
+        レコードがParquetに残らなくなります。
 
         Args:
             new_data: 追加するデータ
             key: R2オブジェクトキー
             schema: PyArrow スキーマ
-            dedup_key: 重複削除に使用するキー（デフォルト: "id"）
-                      - matches.parquet: "id" (マッチID)
-                      - videos.parquet: "videoId" (動画ID)
+            video_id: 置換対象のvideoId（必須）
 
         Returns:
             更新されたオブジェクトのキー
         """
+        if not video_id:
+            raise ValueError("video_id is required for update_parquet_table")
+
         try:
             # 既存データを取得
             response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
@@ -201,21 +206,25 @@ class R2Uploader:
             else:
                 raise
 
-        # データをマージ（新しいデータを後に配置）
-        merged_data = existing_data + new_data
+        # 指定されたvideoIdのレコードをすべて削除
+        filtered_data = [item for item in existing_data if item.get("videoId") != video_id]
+        deleted_count = len(existing_data) - len(filtered_data)
+        if deleted_count > 0:
+            logger.info(
+                "Deleted %d existing records for videoId=%s from %s",
+                deleted_count,
+                video_id,
+                key,
+            )
 
-        # 重複削除（指定されたキーベース、新しいデータを優先）
-        # 逆順でループし、最後に見つかった（最新の）データを保持
-        seen = set()
-        unique_data = []
-        for item in reversed(merged_data):
-            key_value = item.get(dedup_key)
-            if key_value and key_value not in seen:
-                seen.add(key_value)
-                unique_data.append(item)
-
-        # 元の順序に戻す（逆順でループしたため）
-        unique_data.reverse()
+        # 新しいデータを追加
+        merged_data = filtered_data + new_data
+        logger.info(
+            "Adding %d new records for videoId=%s to %s",
+            len(new_data),
+            video_id,
+            key,
+        )
 
         # アップロード
-        return self.upload_parquet(unique_data, key, schema)
+        return self.upload_parquet(merged_data, key, schema)

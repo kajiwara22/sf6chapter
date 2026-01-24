@@ -167,10 +167,10 @@ class SF6ChapterProcessor:
                     }
                     matches.append(match_data)
 
-                    # チャプター情報
+                    # チャプター情報（「第N戦」は含めない - 手動修正時の利便性のため）
                     chapter = {
                         "startTime": int(detection.timestamp),
-                        "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+                        "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
                         "matchId": match_id,
                     }
                     chapters.append(chapter)
@@ -199,7 +199,7 @@ class SF6ChapterProcessor:
                     "chapters": chapters,
                     "detectionStats": {
                         "totalFrames": 0,  # TODO: 実際のフレーム数
-                        "matchedFrames": len(detections),
+                        "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
                     },
                 }
 
@@ -210,10 +210,14 @@ class SF6ChapterProcessor:
                 for match in matches:
                     self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
 
-                # 6. Parquetファイルを更新
+                # 6. Parquetファイルを更新（videoId単位で置換）
                 logger.info("[6/6] Updating Parquet files...")
-                self.r2_uploader.update_parquet_table([video_data], "videos.parquet", dedup_key="videoId")
-                self.r2_uploader.update_parquet_table(matches, "matches.parquet", dedup_key="id")
+                self.r2_uploader.update_parquet_table(
+                    [video_data], "videos.parquet", video_id=video_id
+                )
+                self.r2_uploader.update_parquet_table(
+                    matches, "matches.parquet", video_id=video_id
+                )
             else:
                 logger.info("[5/6] R2 upload disabled (ENABLE_R2=false)")
                 logger.info("[6/6] Skipping Parquet update")
@@ -234,7 +238,7 @@ class SF6ChapterProcessor:
                     "chapters": chapters,
                     "detectionStats": {
                         "totalFrames": 0,
-                        "matchedFrames": len(detections),
+                        "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
                     },
                 }
 
@@ -508,17 +512,17 @@ def save_recognition_results(
         chapter = {
             "index": i,
             "startTime": int(detection.timestamp),
-            "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+            "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
             "normalized": normalized,
             "raw": raw,
             "confidence": detection.confidence,
         }
         chapters.append(chapter)
 
+    # totalMatchesは削除（配列長から算出可能、手動修正時の整合性維持のため）
     chapters_data = {
         "videoId": video_id,
         "recognizedAt": datetime.utcnow().isoformat() + "Z",
-        "totalMatches": len(chapters),
         "chapters": chapters,
     }
 
@@ -688,10 +692,10 @@ def test_chapters(
             raise ValueError("detections and results are required when from_intermediate=False")
 
         chapters = []
-        for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
+        for detection, (normalized, _) in zip(detections, results, strict=False):
             chapter = {
                 "startTime": int(detection.timestamp),
-                "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+                "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
             }
             chapters.append(chapter)
 
@@ -803,17 +807,17 @@ def test_r2_upload(
 
         # チャプターデータを生成
         chapters = []
-        for i, (detection, (normalized, _)) in enumerate(zip(detections, results, strict=False), 1):
+        for detection, (normalized, _) in zip(detections, results, strict=False):
             chapter = {
                 "startTime": int(detection.timestamp),
-                "title": f"第{i:02d}戦 {normalized.get('1p')} VS {normalized.get('2p')}",
+                "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
                 "matchId": f"{video_id}_{int(detection.timestamp)}",
             }
             chapters.append(chapter)
 
         # 対戦データを生成
         matches = []
-        for _i, (detection, (normalized, raw)) in enumerate(zip(detections, results, strict=False), 1):
+        for detection, (normalized, raw) in zip(detections, results, strict=False):
             match_id = f"{video_id}_{int(detection.timestamp)}"
             match_data = {
                 "id": match_id,
@@ -852,7 +856,7 @@ def test_r2_upload(
         "chapters": chapters,
         "detectionStats": {
             "totalFrames": 0,
-            "matchedFrames": len(matches),  # matchesの数を使用（detectionsはNoneの可能性がある）
+            "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
         },
     }
 
@@ -863,10 +867,10 @@ def test_r2_upload(
     for match in matches:
         r2_uploader.upload_json(match, f"matches/{match['id']}.json")
 
-    # 6. Parquetファイルを更新
+    # 6. Parquetファイルを更新（videoId単位で置換）
     logger.info("[6/6] Updating Parquet files...")
-    r2_uploader.update_parquet_table([video_data], "videos.parquet", dedup_key="videoId")
-    r2_uploader.update_parquet_table(matches, "matches.parquet", dedup_key="id")
+    r2_uploader.update_parquet_table([video_data], "videos.parquet", video_id=video_id)
+    r2_uploader.update_parquet_table(matches, "matches.parquet", video_id=video_id)
 
     logger.info("✅ R2 upload and Parquet update completed")
     logger.info("   - Uploaded %d matches", len(matches))
