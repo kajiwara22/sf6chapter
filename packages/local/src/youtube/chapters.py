@@ -88,7 +88,7 @@ class YouTubeChapterUpdater:
 
         Args:
             chapters: チャプター情報リスト
-                     [{"startTime": 47, "title": "第01戦 Ryu VS Ken"}, ...]
+                     [{"startTime": 47, "title": "Ryu VS Ken"}, ...]
             original_description: 元の説明文
 
         Returns:

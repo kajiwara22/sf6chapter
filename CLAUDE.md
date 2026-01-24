@@ -108,7 +108,8 @@ sf6-chapter/
   - `frame_XXX_YYYs.png` - 検出フレーム画像（視覚的確認用）
   - `video_data.json` / `matches.json` / `chapters.json` - 最終結果データ
 - **対象モード**: すべての実行モード（常駐/ワンショット/テスト）
-- **詳細**: [ADR-011](docs/adr/011-intermediate-file-preservation.md)
+- **手動修正**: `chapters.json`から誤検知の行を削除するだけで修正完了（「第N戦」は含まない形式）
+- **詳細**: [ADR-011](docs/adr/011-intermediate-file-preservation.md), [ADR-018](docs/adr/018-intermediate-file-format-improvement.md)
 
 ### キャラクター名
 
@@ -211,5 +212,6 @@ docker compose up -d
 - [015: Cloud Functionsでのgoogle-cloud-logging統合](docs/adr/015-google-cloud-logging-integration.md)
 - [016: Viteマニフェストベースのアセット参照](docs/adr/016-vite-manifest-based-asset-reference.md)
 - [017: 検出パラメータの最適化とパラメータ管理システムの導入](docs/adr/017-detection-parameter-optimization.md)
+- [018: 中間ファイル形式の改善（手動修正の容易化）](docs/adr/018-intermediate-file-format-improvement.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
