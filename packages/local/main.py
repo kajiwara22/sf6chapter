@@ -912,6 +912,11 @@ def main():
         action="store_true",
         help="Load detection/recognition results from intermediate files instead of running from scratch",
     )
+    parser.add_argument(
+        "--no-r2",
+        action="store_true",
+        help="Skip R2 upload when using --test-step chapters (by default, chapters step includes R2 upload)",
+    )
     # 利用可能なプロファイルをJSONファイルから動的に取得
     available_profiles = get_available_profiles()
     parser.add_argument(
@@ -969,6 +974,13 @@ def main():
                     detections = test_detection(args.video_id, video_path, detection_profile=args.detection_profile)
                     results = test_recognition(args.video_id, detections=detections)
                 test_chapters(args.video_id, detections, results)
+
+            # chaptersステップではデフォルトでR2アップロードも実行（--no-r2で無効化）
+            if args.test_step == "chapters" and not args.no_r2:
+                if args.from_intermediate:
+                    test_r2_upload(args.video_id, from_intermediate=True)
+                else:
+                    test_r2_upload(args.video_id, detections, results)
 
         if args.test_step in ["r2", "all"]:
             # --from-intermediateが指定されている場合は中間ファイルから読み込み

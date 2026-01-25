@@ -325,19 +325,23 @@ uv run python main.py --mode test --test-step recognize --video-id YFQU_kkhZtg
 uv run python main.py --mode test --test-step recognize --video-path ./download/20250513[YFQU_kkhZtg].mkv
 ```
 
-#### 4. YouTubeチャプター更新のみ
+#### 4. YouTubeチャプター更新 + R2アップロード
 
 ```bash
-# 通常: 検出・認識を実行してチャプター更新
-uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg
+# 通常: 検出・認識を実行してチャプター更新 + R2アップロード
+ENABLE_R2=true uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg
 
-# 中間ファイルから認識結果を読み込んでYouTube更新のみ実行（Gemini API課金を避ける）
-uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --from-intermediate
+# 中間ファイルから認識結果を読み込んでYouTube更新 + R2アップロード
+ENABLE_R2=true uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --from-intermediate
+
+# R2アップロードをスキップしてチャプター更新のみ
+uv run python main.py --mode test --test-step chapters --video-id YFQU_kkhZtg --no-r2
 ```
 
 **動作**:
-1. 通常モード: 既存ファイルを検索 → 検出 → 認識 → **中間ファイル保存** → YouTube更新
-2. `--from-intermediate`: 保存済み中間ファイル（`./intermediate/{video_id}/chapters.json`）を読み込んでYouTube更新のみ実行
+1. 通常モード: 既存ファイルを検索 → 検出 → 認識 → **中間ファイル保存** → YouTube更新 → **R2アップロード**
+2. `--from-intermediate`: 保存済み中間ファイル（`./intermediate/{video_id}/chapters.json`）を読み込んでYouTube更新 + R2アップロード
+3. `--no-r2`: R2アップロードをスキップしてYouTubeチャプター更新のみ実行
 
 **中間ファイルの利点**:
 - Gemini APIの課金を避けてチャプターのテスト・調整が可能
@@ -386,6 +390,7 @@ ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id YFQU
 - `--video-id`: YouTube動画ID（テストモードでは必須）
 - `--video-path`: ダウンロード済みファイルのパス（省略可、上級者向け）
 - `--from-intermediate`: 中間ファイルから検出・認識結果を読み込む（`--test-step recognize/chapters/r2` で使用可能）
+- `--no-r2`: R2アップロードをスキップ（`--test-step chapters` で使用可能）
 
 **推奨**: 基本的には `--video-id` のみを指定すれば、既存ファイルの再利用とダウンロードを自動判断します。
 
