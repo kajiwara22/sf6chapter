@@ -171,6 +171,10 @@ body {
   align-items: end;
 }
 
+.form-row + .form-row {
+  margin-top: var(--space-md);
+}
+
 .form-group {
   display: flex;
   flex-direction: column;

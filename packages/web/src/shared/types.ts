@@ -75,14 +75,23 @@ export interface DetectionStats {
   matchedFrames: number;
 }
 
+/** ソート順 */
+export type SortOrder = 'publishedAt_desc' | 'publishedAt_asc' | 'confidence_desc';
+
 /** 検索フィルター */
 export interface SearchFilters {
-  /** キャラクター名 */
+  /** キャラクター名（1人目） */
   character?: string;
+  /** キャラクター名（2人目、対戦カード検索用） */
+  character2?: string;
+  /** 動画タイトル検索（部分一致） */
+  videoTitle?: string;
   /** 期間（開始） */
   dateFrom?: string;
   /** 期間（終了） */
   dateTo?: string;
+  /** ソート順 */
+  sortBy?: SortOrder;
   /** 検索上限 */
   limit?: number;
 }

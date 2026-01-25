@@ -14,8 +14,11 @@ export interface DuckDBInstance {
 export const DOM_IDS = {
   SEARCH_FORM: 'search-form',
   CHARACTER_SELECT: 'character-select',
+  CHARACTER_SELECT_2: 'character-select-2',
+  VIDEO_TITLE: 'video-title',
   DATE_FROM: 'date-from',
   DATE_TO: 'date-to',
+  SORT_BY: 'sort-by',
   LOADING: 'loading',
   ERROR: 'error',
   RESULTS: 'results',

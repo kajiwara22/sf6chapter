@@ -64,13 +64,28 @@ pages.get('/', (c) => {
               <form id="search-form" class="search-form">
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="character-select">キャラクター</label>
+                    <label for="character-select">キャラクター1</label>
                     <select id="character-select" name="character">
                       <option value="">すべて</option>
                       <!-- DuckDB-WASMで動的に生成 -->
                     </select>
                   </div>
 
+                  <div class="form-group">
+                    <label for="character-select-2">キャラクター2</label>
+                    <select id="character-select-2" name="character2">
+                      <option value="">すべて</option>
+                      <!-- DuckDB-WASMで動的に生成 -->
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="video-title">タイトル検索</label>
+                    <input type="text" id="video-title" name="videoTitle" placeholder="動画タイトルを検索..." />
+                  </div>
+                </div>
+
+                <div class="form-row">
                   <div class="form-group">
                     <label for="date-from">期間（開始）</label>
                     <input type="date" id="date-from" name="dateFrom" />
@@ -79,6 +94,15 @@ pages.get('/', (c) => {
                   <div class="form-group">
                     <label for="date-to">期間（終了）</label>
                     <input type="date" id="date-to" name="dateTo" />
+                  </div>
+
+                  <div class="form-group">
+                    <label for="sort-by">並び順</label>
+                    <select id="sort-by" name="sortBy">
+                      <option value="publishedAt_desc">公開日（新しい順）</option>
+                      <option value="publishedAt_asc">公開日（古い順）</option>
+                      <option value="confidence_desc">信頼度（高い順）</option>
+                    </select>
                   </div>
 
                   <div class="form-group form-group-button">

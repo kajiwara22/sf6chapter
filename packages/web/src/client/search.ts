@@ -141,10 +141,29 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  // キャラクターフィルター
-  if (filters.character) {
+  // キャラクターフィルター（対戦カード検索）
+  if (filters.character && filters.character2) {
+    // 2キャラ指定: (P1=A AND P2=B) OR (P1=B AND P2=A)
+    conditions.push(`(
+      (player1.character = $${params.length + 1} AND player2.character = $${params.length + 2})
+      OR
+      (player1.character = $${params.length + 3} AND player2.character = $${params.length + 4})
+    )`);
+    params.push(filters.character, filters.character2, filters.character2, filters.character);
+  } else if (filters.character) {
+    // 1キャラ指定: P1またはP2にマッチ
     conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
     params.push(filters.character, filters.character);
+  } else if (filters.character2) {
+    // キャラ2だけ指定: P1またはP2にマッチ
+    conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
+    params.push(filters.character2, filters.character2);
+  }
+
+  // 動画タイトル検索（部分一致、大文字小文字区別なし）
+  if (filters.videoTitle) {
+    conditions.push(`videoTitle ILIKE $${params.length + 1}`);
+    params.push(`%${filters.videoTitle}%`);
   }
 
   // 日付フィルター（YouTube公開日ベース）
@@ -164,6 +183,21 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = filters.limit || 100;
 
+  // ソート順の決定
+  let orderClause: string;
+  switch (filters.sortBy) {
+    case 'publishedAt_asc':
+      orderClause = 'ORDER BY videoPublishedAt ASC, startTime ASC';
+      break;
+    case 'confidence_desc':
+      orderClause = 'ORDER BY confidence DESC, videoPublishedAt DESC';
+      break;
+    case 'publishedAt_desc':
+    default:
+      orderClause = 'ORDER BY videoPublishedAt DESC, startTime ASC';
+      break;
+  }
+
   const query = `
     SELECT
       id,
@@ -181,7 +215,7 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
       confidence
     FROM matches
     ${whereClause}
-    ORDER BY videoPublishedAt DESC, startTime ASC
+    ${orderClause}
     LIMIT ${limit}
   `;
 
