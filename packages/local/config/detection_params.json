@@ -5,25 +5,24 @@
   "updated_at": "2026-01-12",
   "profiles": {
     "production": {
-      "description": "本番環境用の設定（偽陽性を厳しく除外）",
-      "template_path": "./template/round1.png",
+      "description": "カスタム設定 - 2026_new_monitor",
+      "template_path": "./template/round1_2026_new_monitor.png",
       "reject_templates": [
-        "./template/round2.png",
-        "./template/final_round.png"
+        "./template/round2_2026_new_monitor.png"
       ],
-      "threshold": 0.32,
+      "threshold": 0.55,
       "reject_threshold": 0.3,
       "min_interval_sec": 2.0,
       "post_check_frames": 60,
       "post_check_reject_limit": 2,
       "search_region": [
-        575,
-        333,
-        1500,
-        800
+        1095,
+        227,
+        1365,
+        700
       ],
       "crop_region": [
-        339,
+        180,
         886,
         1748,
         980
@@ -32,100 +31,23 @@
     },
     "test": {
       "description": "テスト用の設定（本番と同じ）",
-      "template_path": "./template/round1.png",
+      "template_path": "./template/round1_2026_new_monitor.png",
       "reject_templates": [
-        "./template/round2.png",
-        "./template/final_round.png"
+        "./template/round2_2026_new_monitor.png"
       ],
-      "threshold": 0.32,
+      "threshold": 0.55,
       "reject_threshold": 0.3,
       "min_interval_sec": 2.0,
       "post_check_frames": 60,
       "post_check_reject_limit": 2,
       "search_region": [
-        575,
-        333,
-        1500,
-        800
+        1095,
+        227,
+        1365,
+        700
       ],
       "crop_region": [
-        339,
-        886,
-        1748,
-        980
-      ],
-      "frame_interval": 2
-    },
-    "legacy": {
-      "description": "旧設定（参考用）",
-      "template_path": "./template/round1.png",
-      "reject_templates": [
-        "./template/round2.png",
-        "./template/final_round.png"
-      ],
-      "threshold": 0.32,
-      "reject_threshold": 0.35,
-      "min_interval_sec": 2.0,
-      "post_check_frames": 10,
-      "post_check_reject_limit": 2,
-      "search_region": [
-        575,
-        333,
-        1500,
-        800
-      ],
-      "crop_region": [
-        339,
-        886,
-        1748,
-        980
-      ],
-      "frame_interval": 2
-    },
-    "custom_2026": {
-      "description": "カスタム設定 - custom_2026",
-      "template_path": "./template/round1_custom_2026.png",
-      "reject_templates": [
-      ],
-      "threshold": 0.43,
-      "reject_threshold": 0.3,
-      "min_interval_sec": 2.0,
-      "post_check_frames": 60,
-      "post_check_reject_limit": 2,
-      "search_region": [
-        477,
-        173,
-        1527,
-        780
-      ],
-      "crop_region": [
-        339,
-        886,
-        1748,
-        980
-      ],
-      "frame_interval": 2
-    },
-    "custom_2026_2": {
-      "description": "カスタム設定 - custom_2026_2",
-      "template_path": "./template/round1_custom_2026_2.png",
-      "reject_templates": [
-        "./template/round2_custom_2026_2.png",
-        "./template/final_round_custom_2026_2.png"
-      ],
-      "threshold": 0.36,
-      "reject_threshold": 0.3,
-      "min_interval_sec": 2.0,
-      "post_check_frames": 60,
-      "post_check_reject_limit": 2,
-      "search_region": [
-        481,
-        171,
-        1536,
-        780
-      ],
-      "crop_region": [
-        339,
+        180,
         886,
         1748,
         980
@@ -135,67 +57,28 @@
   },
   "changelog": [
     {
-      "version": "1.0.0",
-      "date": "2026-01-12",
+      "version": "2026_new_monitor_v1.0.0",
+      "date": "2026-01-21",
       "changes": [
-        "reject_threshold: 0.35 → 0.30 (Round 2の除外を強化)",
-        "post_check_frames: 10 → 60 (1秒分のフレームをチェック)",
-        "偽陽性（90秒・195秒）を24回の除外マッチで正確に排除"
-      ],
-      "tested_video": "t38yQ5L1qoY",
-      "results": {
-        "true_positives": 8,
-        "false_positives_rejected": 11,
-        "detection_rate": "100%"
-      }
-    },
-    {
-      "version": "custom_2026_v1.0.0",
-      "date": "2026-01-17",
-      "changes": [
-        "新しいプロファイル 'custom_2026' を追加",
-        "Round 1テンプレート: ./template/round1_custom_2026.png",
-        "除外テンプレート: ./template/round2_custom_2026.png, ./template/final_round_custom_2026.png",
-        "検索領域: (477, 173, 1527, 780)",
-        "検出閾値: 0.43",
+        "新しいプロファイル '2026_new_monitor' を追加",
+        "Round 1テンプレート: ./template/round1_2026_new_monitor.png",
+        "除外テンプレート: ./template/round2_2026_new_monitor.png",
+        "検索領域: (1095, 227, 1365, 700)",
+        "キャラクター名表示領域: (339, 886, 1748, 980)",
+        "検出閾値: 0.38",
         "除外閾値: 0.3"
       ],
-      "tested_video": "20260113[raeRpxnQQQY]",
+      "tested_video": "20260117[uS_gI-BcdBk]",
       "results": {
         "round1_scores": {
-          "min": 0.474745512008667,
-          "max": 0.9284356832504272,
-          "mean": 0.6288428803284963
+          "min": 0.5813217163085938,
+          "max": 0.7057876586914062,
+          "mean": 0.6603494087855021
         },
         "reject_scores": {
           "min": 0.0,
-          "max": 0.6097611784934998,
-          "mean": 0.1733844419941306
-        }
-      }
-    },
-    {
-      "version": "custom_2026_2_v1.0.0",
-      "date": "2026-01-19",
-      "changes": [
-        "新しいプロファイル 'custom_2026_2' を追加",
-        "Round 1テンプレート: ./template/round1_custom_2026_2.png",
-        "除外テンプレート: ./template/round2_custom_2026_2.png, ./template/final_round_custom_2026_2.png",
-        "検索領域: (481, 171, 1536, 780)",
-        "検出閾値: 0.36",
-        "除外閾値: 0.3"
-      ],
-      "tested_video": "20260113[raeRpxnQQQY]",
-      "results": {
-        "round1_scores": {
-          "min": 0.4007003903388977,
-          "max": 0.7481396794319153,
-          "mean": 0.5094373106956482
-        },
-        "reject_scores": {
-          "min": 0.02153262495994568,
-          "max": 0.5792624950408936,
-          "mean": 0.2698116912506521
+          "max": 0.1774548441171646,
+          "mean": 0.07732678502798081
         }
       }
     }
