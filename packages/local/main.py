@@ -5,6 +5,7 @@ Pub/Subから新着動画を受信し、チャプター生成・アップロー�
 """
 
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -933,8 +934,20 @@ def main():
         if not args.test_step:
             parser.error("--test-step is required when --mode test")
 
-        if not args.video_id:
-            parser.error("--video-id is required for test mode")
+        # --video-pathからvideo_idを抽出（ファイル名形式: YYYYMMDD[VIDEO_ID].ext）
+        if not args.video_id and args.video_path:
+            m = re.search(r'\[([^\]]+)\]', Path(args.video_path).name)
+            if m:
+                args.video_id = m.group(1)
+            else:
+                parser.error(
+                    "--video-path のファイル名からvideo_idを抽出できませんでした。"
+                    " ファイル名が 'YYYYMMDD[VIDEO_ID].ext' 形式か確認するか、"
+                    " --video-id を明示的に指定してください。"
+                )
+
+        if not args.video_id and not args.video_path:
+            parser.error("--video-id または --video-path のいずれかが必要です")
 
         video_path = args.video_path
         detections = None
