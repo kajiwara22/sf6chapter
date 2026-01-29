@@ -27,6 +27,7 @@ class DetectionParams:
     search_region: tuple[int, int, int, int]
     crop_region: tuple[int, int, int, int]  # キャラクター名表示領域 (x1, y1, x2, y2)
     frame_interval: int
+    recognize_frame_offset: int  # 認識用フレームのオフセット（フレーム数）
     profile: str  # 使用したプロファイル名
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +44,7 @@ class DetectionParams:
             "search_region": list(self.search_region),
             "crop_region": list(self.crop_region),
             "frame_interval": self.frame_interval,
+            "recognize_frame_offset": self.recognize_frame_offset,
         }
 
     def log_params(self) -> None:
@@ -60,6 +62,7 @@ class DetectionParams:
         logger.info("  search_region:            %s", self.search_region)
         logger.info("  crop_region:              %s", self.crop_region)
         logger.info("  frame_interval:           %d", self.frame_interval)
+        logger.info("  recognize_frame_offset:   %d", self.recognize_frame_offset)
         logger.info("=" * 60)
 
 
@@ -114,6 +117,7 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         search_region=tuple(params_dict["search_region"]),
         crop_region=tuple(params_dict["crop_region"]),
         frame_interval=int(params_dict["frame_interval"]),
+        recognize_frame_offset=int(params_dict.get("recognize_frame_offset", 0)),
         profile=profile,
     )
 
@@ -174,3 +178,6 @@ def _validate_params(params: DetectionParams) -> None:
 
     if params.frame_interval < 1:
         raise ValueError(f"frame_interval must be at least 1, got {params.frame_interval}")
+
+    if params.recognize_frame_offset < 0:
+        raise ValueError(f"recognize_frame_offset must be non-negative, got {params.recognize_frame_offset}")

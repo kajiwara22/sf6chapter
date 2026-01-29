@@ -37,6 +37,7 @@ class TemplateMatcher:
         search_region: tuple[int, int, int, int] | None = None,
         post_check_frames: int = 10,
         post_check_reject_limit: int = 2,
+        recognize_frame_offset: int = 0,
     ):
         """
         Args:
@@ -49,6 +50,7 @@ class TemplateMatcher:
             search_region: Round 1表示領域の限定 (x1, y1, x2, y2)
             post_check_frames: 検出後に確認するフレーム数
             post_check_reject_limit: この数以上除外マッチがあれば誤検知と判定
+            recognize_frame_offset: 認識用フレームのオフセット（フレーム数）
         """
         self.template = cv2.imread(template_path, cv2.IMREAD_COLOR)
         if self.template is None:
@@ -73,6 +75,7 @@ class TemplateMatcher:
         self.search_region = search_region
         self.post_check_frames = post_check_frames
         self.post_check_reject_limit = post_check_reject_limit
+        self.recognize_frame_offset = recognize_frame_offset
 
     @staticmethod
     def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
@@ -240,11 +243,32 @@ class TemplateMatcher:
 
                         prev_timestamp = timestamp
 
+                        # 認識用フレームを取得（オフセット適用）
+                        recognize_frame = frame
+                        if self.recognize_frame_offset > 0:
+                            # オフセット分進んだフレームを取得
+                            offset_frame_number = frame_count + self.recognize_frame_offset
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, offset_frame_number)
+                            ret_offset, offset_frame = cap.read()
+                            if ret_offset:
+                                recognize_frame = offset_frame
+                                logger.debug(
+                                    "Using offset frame %d (+%d) for recognition",
+                                    offset_frame_number, self.recognize_frame_offset
+                                )
+                            else:
+                                logger.warning(
+                                    "Failed to read offset frame %d, using original frame",
+                                    offset_frame_number
+                                )
+                            # 現在位置を元に戻す（次のループのため）
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count + 1)
+
                         # キャラクター名領域を切り抜き
-                        cropped_frame = frame
+                        cropped_frame = recognize_frame
                         if crop_region:
                             x1, y1, x2, y2 = crop_region
-                            cropped_frame = frame[y1:y2, x1:x2]
+                            cropped_frame = recognize_frame[y1:y2, x1:x2]
 
                         detection = MatchDetection(
                             timestamp=timestamp,

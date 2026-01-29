@@ -28,7 +28,8 @@
         1748,
         980
       ],
-      "frame_interval": 2
+      "frame_interval": 2,
+      "recognize_frame_offset": 6
     },
     "test": {
       "description": "テスト用の設定（本番と同じ）",
@@ -53,7 +54,8 @@
         1748,
         980
       ],
-      "frame_interval": 2
+      "frame_interval": 2,
+      "recognize_frame_offset": 6
     }
   },
   "changelog": [
