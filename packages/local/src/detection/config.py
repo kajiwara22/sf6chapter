@@ -27,7 +27,9 @@ class DetectionParams:
     search_region: tuple[int, int, int, int]
     crop_region: tuple[int, int, int, int]  # キャラクター名表示領域 (x1, y1, x2, y2)
     frame_interval: int
-    recognize_frame_offset: int  # 認識用フレームのオフセット（フレーム数）
+    recognize_frame_offset: int  # 認識用フレームのデフォルトオフセット（フレーム数）
+    recognize_frame_offset_alt: int  # 認識用フレームの代替オフセット（フレーム数）
+    recognize_frame_offset_threshold: float  # 動的オフセット選択の閾値（標準偏差の差分）
     profile: str  # 使用したプロファイル名
 
     def to_dict(self) -> dict[str, Any]:
@@ -45,6 +47,8 @@ class DetectionParams:
             "crop_region": list(self.crop_region),
             "frame_interval": self.frame_interval,
             "recognize_frame_offset": self.recognize_frame_offset,
+            "recognize_frame_offset_alt": self.recognize_frame_offset_alt,
+            "recognize_frame_offset_threshold": self.recognize_frame_offset_threshold,
         }
 
     def log_params(self) -> None:
@@ -63,6 +67,8 @@ class DetectionParams:
         logger.info("  crop_region:              %s", self.crop_region)
         logger.info("  frame_interval:           %d", self.frame_interval)
         logger.info("  recognize_frame_offset:   %d", self.recognize_frame_offset)
+        logger.info("  recognize_frame_offset_alt: %d", self.recognize_frame_offset_alt)
+        logger.info("  recognize_frame_offset_threshold: %.1f", self.recognize_frame_offset_threshold)
         logger.info("=" * 60)
 
 
@@ -117,7 +123,9 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         search_region=tuple(params_dict["search_region"]),
         crop_region=tuple(params_dict["crop_region"]),
         frame_interval=int(params_dict["frame_interval"]),
-        recognize_frame_offset=int(params_dict.get("recognize_frame_offset", 0)),
+        recognize_frame_offset=int(params_dict.get("recognize_frame_offset", 6)),
+        recognize_frame_offset_alt=int(params_dict.get("recognize_frame_offset_alt", 4)),
+        recognize_frame_offset_threshold=float(params_dict.get("recognize_frame_offset_threshold", 5.0)),
         profile=profile,
     )
 
@@ -181,3 +189,9 @@ def _validate_params(params: DetectionParams) -> None:
 
     if params.recognize_frame_offset < 0:
         raise ValueError(f"recognize_frame_offset must be non-negative, got {params.recognize_frame_offset}")
+
+    if params.recognize_frame_offset_alt < 0:
+        raise ValueError(f"recognize_frame_offset_alt must be non-negative, got {params.recognize_frame_offset_alt}")
+
+    if params.recognize_frame_offset_threshold < 0:
+        raise ValueError(f"recognize_frame_offset_threshold must be non-negative, got {params.recognize_frame_offset_threshold}")

@@ -37,7 +37,9 @@ class TemplateMatcher:
         search_region: tuple[int, int, int, int] | None = None,
         post_check_frames: int = 10,
         post_check_reject_limit: int = 2,
-        recognize_frame_offset: int = 0,
+        recognize_frame_offset: int = 6,
+        recognize_frame_offset_alt: int = 4,
+        recognize_frame_offset_threshold: float = 5.0,
     ):
         """
         Args:
@@ -50,7 +52,9 @@ class TemplateMatcher:
             search_region: Round 1表示領域の限定 (x1, y1, x2, y2)
             post_check_frames: 検出後に確認するフレーム数
             post_check_reject_limit: この数以上除外マッチがあれば誤検知と判定
-            recognize_frame_offset: 認識用フレームのオフセット（フレーム数）
+            recognize_frame_offset: 認識用フレームのデフォルトオフセット（フレーム数）
+            recognize_frame_offset_alt: 認識用フレームの代替オフセット（フレーム数）
+            recognize_frame_offset_threshold: 動的オフセット選択の閾値（標準偏差の差分）
         """
         self.template = cv2.imread(template_path, cv2.IMREAD_COLOR)
         if self.template is None:
@@ -76,6 +80,8 @@ class TemplateMatcher:
         self.post_check_frames = post_check_frames
         self.post_check_reject_limit = post_check_reject_limit
         self.recognize_frame_offset = recognize_frame_offset
+        self.recognize_frame_offset_alt = recognize_frame_offset_alt
+        self.recognize_frame_offset_threshold = recognize_frame_offset_threshold
 
     @staticmethod
     def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
@@ -138,6 +144,94 @@ class TemplateMatcher:
         cap.set(cv2.CAP_PROP_POS_FRAMES, current_pos)
 
         return reject_count
+
+    @staticmethod
+    def _calc_frame_std(frame: np.ndarray) -> float:
+        """
+        フレームの標準偏差を計算（品質指標として使用）
+
+        Args:
+            frame: BGRフレーム
+
+        Returns:
+            グレースケール変換後の標準偏差
+        """
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return float(np.std(gray))
+
+    def _select_best_offset_frame(
+        self,
+        cap: cv2.VideoCapture,
+        base_frame_number: int,
+        crop_region: tuple[int, int, int, int] | None,
+    ) -> tuple[np.ndarray, int]:
+        """
+        動的オフセット選択：2つのオフセットから品質の高いフレームを選択
+
+        判定ルール:
+        - std(offset_alt) - std(offset) >= threshold → offset_altを採用
+        - それ以外 → offsetを採用（デフォルト）
+
+        Args:
+            cap: VideoCapture オブジェクト
+            base_frame_number: 検出されたフレーム番号
+            crop_region: キャラクター名部分の切り抜き領域 (x1, y1, x2, y2)
+
+        Returns:
+            (選択されたフレーム, 使用したオフセット値)
+        """
+        current_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        # デフォルトオフセットのフレームを取得
+        offset_frame_number = base_frame_number + self.recognize_frame_offset
+        cap.set(cv2.CAP_PROP_POS_FRAMES, offset_frame_number)
+        ret_offset, frame_offset = cap.read()
+
+        # 代替オフセットのフレームを取得
+        offset_alt_frame_number = base_frame_number + self.recognize_frame_offset_alt
+        cap.set(cv2.CAP_PROP_POS_FRAMES, offset_alt_frame_number)
+        ret_alt, frame_alt = cap.read()
+
+        # 元の位置に戻す
+        cap.set(cv2.CAP_PROP_POS_FRAMES, current_pos)
+
+        # 読み込み失敗時のフォールバック
+        if not ret_offset and not ret_alt:
+            logger.warning("Failed to read both offset frames, returning None")
+            return None, 0
+        if not ret_offset:
+            logger.warning("Failed to read default offset frame, using alt offset")
+            return frame_alt, self.recognize_frame_offset_alt
+        if not ret_alt:
+            logger.warning("Failed to read alt offset frame, using default offset")
+            return frame_offset, self.recognize_frame_offset
+
+        # crop_regionで切り抜いて品質を比較
+        if crop_region:
+            x1, y1, x2, y2 = crop_region
+            cropped_offset = frame_offset[y1:y2, x1:x2]
+            cropped_alt = frame_alt[y1:y2, x1:x2]
+        else:
+            cropped_offset = frame_offset
+            cropped_alt = frame_alt
+
+        std_offset = self._calc_frame_std(cropped_offset)
+        std_alt = self._calc_frame_std(cropped_alt)
+        std_diff = std_alt - std_offset
+
+        # 閾値に基づいて選択
+        if std_diff >= self.recognize_frame_offset_threshold:
+            logger.debug(
+                "Dynamic offset selection: using alt offset %d (std_diff=%.2f >= threshold=%.1f)",
+                self.recognize_frame_offset_alt, std_diff, self.recognize_frame_offset_threshold
+            )
+            return frame_alt, self.recognize_frame_offset_alt
+        else:
+            logger.debug(
+                "Dynamic offset selection: using default offset %d (std_diff=%.2f < threshold=%.1f)",
+                self.recognize_frame_offset, std_diff, self.recognize_frame_offset_threshold
+            )
+            return frame_offset, self.recognize_frame_offset
 
     def detect_matches(
         self,
@@ -243,23 +337,23 @@ class TemplateMatcher:
 
                         prev_timestamp = timestamp
 
-                        # 認識用フレームを取得（オフセット適用）
+                        # 認識用フレームを取得（動的オフセット選択）
                         recognize_frame = frame
+                        used_offset = 0
                         if self.recognize_frame_offset > 0:
-                            # オフセット分進んだフレームを取得
-                            offset_frame_number = frame_count + self.recognize_frame_offset
-                            cap.set(cv2.CAP_PROP_POS_FRAMES, offset_frame_number)
-                            ret_offset, offset_frame = cap.read()
-                            if ret_offset:
-                                recognize_frame = offset_frame
+                            selected_frame, used_offset = self._select_best_offset_frame(
+                                cap, frame_count, crop_region
+                            )
+                            if selected_frame is not None:
+                                recognize_frame = selected_frame
                                 logger.debug(
-                                    "Using offset frame %d (+%d) for recognition",
-                                    offset_frame_number, self.recognize_frame_offset
+                                    "Using offset frame (+%d) for recognition at %.1fs",
+                                    used_offset, timestamp
                                 )
                             else:
                                 logger.warning(
-                                    "Failed to read offset frame %d, using original frame",
-                                    offset_frame_number
+                                    "Failed to read offset frames at %.1fs, using original frame",
+                                    timestamp
                                 )
                             # 現在位置を元に戻す（次のループのため）
                             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count + 1)

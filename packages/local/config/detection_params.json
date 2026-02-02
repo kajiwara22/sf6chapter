@@ -9,10 +9,11 @@
       "template_path": "./template/round1_2026_new_monitor.png",
       "reject_templates": [
         "./template/reject_0_template.png",
-        "./template/reject_0-2_template.png"
+        "./template/reject_0-2_template.png",
+        "./template/reject_0-3_template.png"
       ],
       "threshold": 0.55,
-      "reject_threshold": 0.5,
+      "reject_threshold": 0.478,
       "min_interval_sec": 2.0,
       "post_check_frames": 6,
       "post_check_reject_limit": 2,
@@ -29,7 +30,9 @@
         980
       ],
       "frame_interval": 2,
-      "recognize_frame_offset": 6
+      "recognize_frame_offset": 6,
+      "recognize_frame_offset_alt": 4,
+      "recognize_frame_offset_threshold": 5.0
     },
     "test": {
       "description": "テスト用の設定（本番と同じ）",
@@ -55,7 +58,9 @@
         980
       ],
       "frame_interval": 2,
-      "recognize_frame_offset": 6
+      "recognize_frame_offset": 6,
+      "recognize_frame_offset_alt": 4,
+      "recognize_frame_offset_threshold": 5.0
     }
   },
   "changelog": [

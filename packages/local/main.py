@@ -73,6 +73,8 @@ class SF6ChapterProcessor:
             post_check_reject_limit=self.detection_params.post_check_reject_limit,
             frame_interval=self.detection_params.frame_interval,
             recognize_frame_offset=self.detection_params.recognize_frame_offset,
+            recognize_frame_offset_alt=self.detection_params.recognize_frame_offset_alt,
+            recognize_frame_offset_threshold=self.detection_params.recognize_frame_offset_threshold,
         )
         self.recognizer = CharacterRecognizer(aliases_path=str(self.app_root / "config" / "character_aliases.json"))
         self.youtube_updater = YouTubeChapterUpdater()
@@ -601,6 +603,8 @@ def test_detection(
         post_check_reject_limit=params.post_check_reject_limit,
         frame_interval=params.frame_interval,
         recognize_frame_offset=params.recognize_frame_offset,
+        recognize_frame_offset_alt=params.recognize_frame_offset_alt,
+        recognize_frame_offset_threshold=params.recognize_frame_offset_threshold,
     )
 
     detections = matcher.detect_matches(video_path=video_path, crop_region=params.crop_region)
