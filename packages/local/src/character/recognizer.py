@@ -127,20 +127,39 @@ class CharacterRecognizer:
         valid_chars = self.valid_characters
 
         # プロンプト（候補リストを含める）
+        # ADR-019: OCRタスク明示とJP/JAMIE混同防止のための改善プロンプト（Phase 1.5強化版）
         char_list = ", ".join(valid_chars)
         prompt = (
-            "この画像はストリートファイター6のラウンド開始画面です。\n"
-            "左側のキャラクターを1p、右側のキャラクターを2pとし、"
-            "それぞれのキャラクター名をJSONで返してください。\n\n"
+            "あなたはOCR専門家です。この画像はストリートファイター6のラウンド開始画面です。\n"
+            "画面上部に表示されているキャラクター名のテキストを1文字ずつ正確に読み取ってください。\n\n"
+            "タスク: 左側（画面上部左）のキャラクター名を1p、右側（画面上部右）のキャラクター名を2pとして認識してください。\n\n"
+            "【重要】文字数を必ず確認してください:\n"
+            "- 'JP' は2文字のみです。絶対に 'JAMIE'（5文字）ではありません。\n"
+            "- 'ED' は2文字のみです。絶対に 'E.HONDA'（7文字）ではありません。\n"
+            "- 表示されている文字が2文字なら、その2文字だけを読み取ってください。\n"
+            "- 表示されている文字が5文字なら、その5文字を読み取ってください。\n\n"
+            "【認識手順】\n"
+            "1. 画面上部の左右を確認\n"
+            "2. それぞれの文字数を数える\n"
+            "3. 表示されている文字を正確に読み取る\n"
+            "4. 下記のリストから完全一致するものを選ぶ\n\n"
             f"有効なキャラクター名（必ずこの中から選んでください）:\n{char_list}\n\n"
+            "例:\n"
+            '- 画面に "JP" と "RYU" が表示 → {"1p": "JP", "2p": "RYU"}\n'
+            '- 画面に "JAMIE" と "KEN" が表示 → {"1p": "JAMIE", "2p": "KEN"}\n\n'
             '出力形式: {"1p": "RYU", "2p": "KEN"}'
         )
 
         # Gemini API呼び出し（スキーマ制約付き）
+        # ADR-019: OCRタスク最適化のため低温度（temperature=0.1）を設定
+        logger.debug("Calling Gemini API with temperature=0.1 (ADR-019 improvement)")
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=[prompt, pil_image],
             config=genai.types.GenerateContentConfig(
+                temperature=0.1,  # OCRタスクに最適（決定性向上、変動性低減）
+                top_p=0.95,  # 累積確率のカットオフ
+                top_k=40,  # 候補数の制限
                 response_mime_type="application/json",
                 response_schema={
                     "type": "object",

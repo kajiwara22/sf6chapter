@@ -213,5 +213,6 @@ docker compose up -d
 - [016: Viteマニフェストベースのアセット参照](docs/adr/016-vite-manifest-based-asset-reference.md)
 - [017: 検出パラメータの最適化とパラメータ管理システムの導入](docs/adr/017-detection-parameter-optimization.md)
 - [018: 中間ファイル形式の改善（手動修正の容易化）](docs/adr/018-intermediate-file-format-improvement.md)
+- [019: Geminiキャラクター認識精度の改善](docs/adr/019-gemini-character-recognition-improvement.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
