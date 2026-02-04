@@ -221,15 +221,15 @@ class TemplateMatcher:
 
         # 閾値に基づいて選択
         if std_diff >= self.recognize_frame_offset_threshold:
-            logger.debug(
-                "Dynamic offset selection: using alt offset %d (std_diff=%.2f >= threshold=%.1f)",
-                self.recognize_frame_offset_alt, std_diff, self.recognize_frame_offset_threshold
+            logger.info(
+                "  → Selected alt offset +%d frames (std: %.2f → %.2f, diff=%.2f >= threshold %.1f)",
+                self.recognize_frame_offset_alt, std_offset, std_alt, std_diff, self.recognize_frame_offset_threshold
             )
             return frame_alt, self.recognize_frame_offset_alt
         else:
-            logger.debug(
-                "Dynamic offset selection: using default offset %d (std_diff=%.2f < threshold=%.1f)",
-                self.recognize_frame_offset, std_diff, self.recognize_frame_offset_threshold
+            logger.info(
+                "  → Selected default offset +%d frames (std: %.2f vs %.2f, diff=%.2f < threshold %.1f)",
+                self.recognize_frame_offset, std_offset, std_alt, std_diff, self.recognize_frame_offset_threshold
             )
             return frame_offset, self.recognize_frame_offset
 
@@ -337,6 +337,8 @@ class TemplateMatcher:
 
                         prev_timestamp = timestamp
 
+                        logger.info("Match detected at %.1fs (confidence: %.3f)", timestamp, max_val)
+
                         # 認識用フレームを取得（動的オフセット選択）
                         recognize_frame = frame
                         used_offset = 0
@@ -346,14 +348,9 @@ class TemplateMatcher:
                             )
                             if selected_frame is not None:
                                 recognize_frame = selected_frame
-                                logger.debug(
-                                    "Using offset frame (+%d) for recognition at %.1fs",
-                                    used_offset, timestamp
-                                )
                             else:
                                 logger.warning(
-                                    "Failed to read offset frames at %.1fs, using original frame",
-                                    timestamp
+                                    "  → Failed to read offset frames, using original frame"
                                 )
                             # 現在位置を元に戻す（次のループのため）
                             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count + 1)
@@ -371,8 +368,6 @@ class TemplateMatcher:
                             frame=cropped_frame.copy(),
                         )
                         detections.append(detection)
-
-                        logger.info("Match detected at %.1fs (confidence: %.3f)", timestamp, max_val)
 
             frame_count += 1
 
