@@ -165,6 +165,28 @@ sf6-chapter/
 - **GCP**: gcloud CLI使用
 - **設計方針**: Cloudflare Workersへの将来的な移行を想定し、Pages固有機能への依存を最小化（詳細: [ADR-009](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)）
 
+## カスタムスキル
+
+### `/ml-tune` - パラメータチューニング支援
+
+検出パラメータの調整を支援するスキル。Jupyter Notebookを使った分析ワークフローを標準化します。
+
+**詳細**: [.claude/skills/ml-tune.md](.claude/skills/ml-tune.md)を参照
+
+**既存のNotebook**: `packages/local/notebooks/` に以下が存在
+- `detection_analysis.ipynb` - 検出結果の分析
+- `false_positive_analysis.ipynb` - 偽陽性の分析
+- `frame_quality_analysis.ipynb` - フレーム品質分析
+- `parameter_optimization.ipynb` - パラメータ最適化
+- `parameter_tuning.ipynb` - パラメータ調整
+- `recognize_frame_offset_analysis.ipynb` - オフセット分析
+- `reject_template_creator.ipynb` - 除外テンプレート作成
+
+**使い方**:
+```
+User: ml-tune スキルを使って、閾値分析用のNotebookを作成してください
+```
+
 ## ローカル処理のデプロイ方法
 
 `packages/local/`は開発PC・常駐PCのどちらでも動作可能です。
