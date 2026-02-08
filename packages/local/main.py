@@ -759,51 +759,26 @@ def test_r2_upload(
     r2_uploader = R2Uploader()
 
     if from_intermediate:
-        # 中間ファイルから読み込み
-        saved_chapters = load_recognition_results(video_id)
-        if not saved_chapters:
-            raise FileNotFoundError(f"Recognition results not found for video: {video_id}")
+        # 中間ファイルのmatches.jsonから読み込み（player1/player2のキャラクター情報を含む）
+        import json
 
-        logger.info("✅ Using saved recognition results from intermediate files")
-        # 保存済みデータから生成
-        chapters = []
-        matches = []
+        output_dir = get_intermediate_dir(video_id)
+        matches_path = output_dir / "matches.json"
+        chapters_path = output_dir / "chapters.json"
 
-        for chapter_data in saved_chapters:
-            # チャプターデータ
-            match_id = f"{video_id}_{chapter_data['startTime']}"
-            chapter = {
-                "startTime": chapter_data["startTime"],
-                "title": chapter_data["title"],
-                "matchId": match_id,
-            }
-            chapters.append(chapter)
+        if not matches_path.exists():
+            raise FileNotFoundError(f"matches.json not found for video: {video_id}")
+        if not chapters_path.exists():
+            raise FileNotFoundError(f"chapters.json not found for video: {video_id}")
 
-            # 対戦データ
-            normalized = chapter_data.get("normalized", {})
-            raw = chapter_data.get("raw", {})
-            match_data = {
-                "id": match_id,
-                "videoId": video_id,
-                "videoTitle": video_info["title"],
-                "videoPublishedAt": video_info["publishedAt"],
-                "startTime": chapter_data["startTime"],
-                "player1": {
-                    "character": normalized.get("1p", "Unknown"),
-                    "characterRaw": raw.get("1p", ""),
-                    "side": "left",
-                },
-                "player2": {
-                    "character": normalized.get("2p", "Unknown"),
-                    "characterRaw": raw.get("2p", ""),
-                    "side": "right",
-                },
-                "detectedAt": datetime.utcnow().isoformat() + "Z",
-                "confidence": chapter_data.get("confidence", 0.0),
-                "templateMatchScore": chapter_data.get("confidence", 0.0),
-                "frameTimestamp": 0,
-            }
-            matches.append(match_data)
+        with open(matches_path, encoding="utf-8") as f:
+            matches = json.load(f)
+
+        with open(chapters_path, encoding="utf-8") as f:
+            chapters_data = json.load(f)
+        chapters = chapters_data["chapters"]
+
+        logger.info("✅ Using saved matches from intermediate files (%d records)", len(matches))
 
     else:
         # detectionsとresultsから生成
