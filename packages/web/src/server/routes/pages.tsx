@@ -104,6 +104,24 @@ pages.get('/', (c) => {
                       <option value="confidence_desc">信頼度（高い順）</option>
                     </select>
                   </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="player-result">勝敗</label>
+                    <select id="player-result" name="playerResult">
+                      <option value="">すべて</option>
+                      <option value="win">勝利</option>
+                      <option value="loss">敗北</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="battlelog-only" class="checkbox-label">
+                      <input type="checkbox" id="battlelog-only" name="battlelogOnly" />
+                      Battlelog マッチのみ
+                    </label>
+                  </div>
 
                   <div class="form-group form-group-button">
                     <button type="submit" class="btn-search">

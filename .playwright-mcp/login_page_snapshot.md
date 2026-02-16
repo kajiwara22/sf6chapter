@@ -1,0 +1,27 @@
+- generic [ref=e7]:
+  - generic [ref=e8]:
+    - generic "Log In" [ref=e23]
+    - generic [ref=e31]:
+      - navigation [ref=e32]:
+        - list [ref=e33]:
+          - listitem [ref=e34]:
+            - generic [ref=e35]: Log In
+          - listitem [ref=e36] [cursor=pointer]:
+            - link "Sign Up" [ref=e37]:
+              - /url: javascript:void(0)
+      - generic [ref=e39]:
+        - generic [ref=e41]:
+          - img [ref=e42]
+          - textbox "Email" [active] [ref=e47]:
+            - /placeholder: yours@example.com
+        - generic [ref=e50]:
+          - img [ref=e51]
+          - textbox "Password" [ref=e55]:
+            - /placeholder: your password
+        - paragraph [ref=e56]:
+          - link "Don't remember your password?" [ref=e57] [cursor=pointer]:
+            - /url: javascript:void(0)
+  - button "Log In" [ref=e58] [cursor=pointer]:
+    - generic [ref=e59]:
+      - text: Log In
+      - img [ref=e61]

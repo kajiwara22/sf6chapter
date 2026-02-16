@@ -180,6 +180,21 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     params.push(utcTo);
   }
 
+  // 勝敗フィルター（キャラクターフィルターと組み合わせ）
+  if (filters.playerResult && filters.character) {
+    conditions.push(`(
+      (player1.character = $${params.length + 1} AND player1.result = $${params.length + 2})
+      OR
+      (player2.character = $${params.length + 3} AND player2.result = $${params.length + 4})
+    )`);
+    params.push(filters.character, filters.playerResult, filters.character, filters.playerResult);
+  }
+
+  // Battlelog マッチのみ
+  if (filters.battlelogOnly) {
+    conditions.push(`battlelogMatched = true`);
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = filters.limit || 100;
 
@@ -208,11 +223,17 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
       player1.character as player1_character,
       player1.characterRaw as player1_characterRaw,
       player1.side as player1_side,
+      player1.result as player1_result,
       player2.character as player2_character,
       player2.characterRaw as player2_characterRaw,
       player2.side as player2_side,
+      player2.result as player2_result,
       detectedAt,
-      confidence
+      confidence,
+      battlelogMatched,
+      battlelogConfidence,
+      battlelogReplayId,
+      battlelogTimeDiff
     FROM matches
     ${whereClause}
     ${orderClause}
@@ -238,14 +259,20 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
       character: row.player1_character,
       characterRaw: row.player1_characterRaw,
       side: row.player1_side as 'left' | 'right',
+      result: row.player1_result as 'win' | 'loss' | undefined,
     },
     player2: {
       character: row.player2_character,
       characterRaw: row.player2_characterRaw,
       side: row.player2_side as 'left' | 'right',
+      result: row.player2_result as 'win' | 'loss' | undefined,
     },
     detectedAt: row.detectedAt,
     confidence: row.confidence,
+    battlelogMatched: row.battlelogMatched,
+    battlelogConfidence: row.battlelogConfidence,
+    battlelogReplayId: row.battlelogReplayId,
+    battlelogTimeDiff: row.battlelogTimeDiff,
   }));
 }
 

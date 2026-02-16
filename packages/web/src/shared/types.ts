@@ -11,6 +11,8 @@ export interface Player {
   characterRaw: string;
   /** プレイヤーの位置 */
   side: 'left' | 'right';
+  /** Battlelog マッピング結果（勝敗） */
+  result?: 'win' | 'loss';
 }
 
 /** 対戦データ */
@@ -35,6 +37,14 @@ export interface Match {
   detectedAt: string;
   /** 信頼度スコア (0-1) */
   confidence: number;
+  /** Battlelog マッピング成功フラグ */
+  battlelogMatched?: boolean;
+  /** Battlelog 信頼度 */
+  battlelogConfidence?: 'high' | 'medium' | 'low';
+  /** Battlelog リプレイID */
+  battlelogReplayId?: string | null;
+  /** Battlelog 時間差（秒） */
+  battlelogTimeDiff?: number | null;
 }
 
 /** 動画データ */
@@ -94,6 +104,10 @@ export interface SearchFilters {
   sortBy?: SortOrder;
   /** 検索上限 */
   limit?: number;
+  /** プレイヤーの勝敗（キャラクターフィルターとの組み合わせ） */
+  playerResult?: 'win' | 'loss';
+  /** Battlelog マッチのみを表示 */
+  battlelogOnly?: boolean;
 }
 
 /** 統計情報 */

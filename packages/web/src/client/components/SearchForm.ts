@@ -29,6 +29,8 @@ export function initSearchForm(onSearch: SearchHandler): void {
       dateFrom: formData.get('dateFrom') as string || undefined,
       dateTo: formData.get('dateTo') as string || undefined,
       sortBy: (formData.get('sortBy') as SortOrder) || 'publishedAt_desc',
+      playerResult: formData.get('playerResult') as 'win' | 'loss' | undefined,
+      battlelogOnly: formData.get('battlelogOnly') === 'on',
     };
 
     // 空文字列をundefinedに変換
@@ -37,6 +39,7 @@ export function initSearchForm(onSearch: SearchHandler): void {
     if (filters.videoTitle === '') filters.videoTitle = undefined;
     if (filters.dateFrom === '') filters.dateFrom = undefined;
     if (filters.dateTo === '') filters.dateTo = undefined;
+    if (filters.playerResult === '') filters.playerResult = undefined;
 
     onSearch(filters);
   });

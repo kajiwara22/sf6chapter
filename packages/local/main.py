@@ -17,10 +17,12 @@ from typing import Any
 app_root = Path(__file__).parent
 sys.path.insert(0, str(app_root))
 
+from src.battlelog_matcher import BattlelogMatcher, CharacterNormalizer
 from src.character import CharacterRecognizer
 from src.detection import MatchDetection, TemplateMatcher, get_available_profiles, load_detection_params
 from src.firestore import FirestoreClient
 from src.pubsub import PubSubSubscriber
+from src.sf6_battlelog import BattlelogCollector, BattlelogCacheManager, BattlelogSiteClient
 from src.storage import R2Uploader
 from src.utils.logger import setup_logger
 from src.video import VideoDownloader
@@ -81,6 +83,15 @@ class SF6ChapterProcessor:
 
         # R2Uploaderはenable_r2がTrueの場合のみ初期化
         self.r2_uploader = R2Uploader() if self.enable_r2 else None
+
+        # Battlelog 設定
+        self.sf6_player_id = os.environ.get("SF6_PLAYER_ID")
+        self.battlelog_cache_db = os.environ.get("BATTLELOG_CACHE_DB", "./battlelog_cache.db")
+
+        # キャラクター正規化とマッチング（Battlelog マッピング用）
+        aliases_path = self.app_root / "config" / "character_aliases.json"
+        self.character_normalizer = CharacterNormalizer(aliases_path=str(aliases_path) if aliases_path.exists() else None)
+        self.battlelog_matcher = BattlelogMatcher(normalizer=self.character_normalizer)
 
     def process_video(self, message_data: dict[str, Any]) -> None:
         """
@@ -189,6 +200,11 @@ class SF6ChapterProcessor:
             logger.info("[4/6] Updating YouTube chapters...")
             self.youtube_updater.update_video_description(video_id, chapters)
 
+            # 4.5. Battlelog マッピング実行（新規、オプショナル）
+            chapters_with_battlelog = self._run_battlelog_matching(
+                video_id, chapters, message_data.get("publishedAt", "")
+            )
+
             # 5-6. R2アップロード処理（有効な場合のみ）
             if self.enable_r2 and self.r2_uploader:
                 # 5. JSONデータをR2にアップロード
@@ -200,7 +216,7 @@ class SF6ChapterProcessor:
                     "channelTitle": message_data.get("channelTitle", ""),
                     "publishedAt": message_data.get("publishedAt", ""),
                     "processedAt": datetime.utcnow().isoformat() + "Z",
-                    "chapters": chapters,
+                    "chapters": chapters_with_battlelog,
                     "detectionStats": {
                         "totalFrames": 0,  # TODO: 実際のフレーム数
                         "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
@@ -209,6 +225,26 @@ class SF6ChapterProcessor:
 
                 # 動画メタデータをアップロード
                 self.r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
+
+                # 対戦データに Battlelog 情報を統合
+                # chapters_with_battlelog からマッピング情報を取得して match に追加
+                chapter_map = {
+                    ch.get("matchId"): ch for ch in chapters_with_battlelog
+                }
+                for match in matches:
+                    match_id = match.get("id")
+                    if match_id in chapter_map:
+                        chapter = chapter_map[match_id]
+                        # Battlelog マッピング結果を match に追加
+                        match["battlelogMatched"] = chapter.get("matched", False)
+                        match["battlelogConfidence"] = chapter.get("confidence", "low")
+                        match["battlelogReplayId"] = chapter.get("replay_id")
+                        match["battlelogTimeDiff"] = chapter.get("time_difference_seconds")
+                        # player1, player2 構造内に result フィールドを追加
+                        if chapter.get("player1_result"):
+                            match["player1"]["result"] = chapter.get("player1_result")
+                        if chapter.get("player2_result"):
+                            match["player2"]["result"] = chapter.get("player2_result")
 
                 # 対戦データを個別にアップロード
                 for match in matches:
@@ -239,10 +275,10 @@ class SF6ChapterProcessor:
                     "channelTitle": message_data.get("channelTitle", ""),
                     "publishedAt": message_data.get("publishedAt", ""),
                     "processedAt": datetime.utcnow().isoformat() + "Z",
-                    "chapters": chapters,
+                    "chapters": chapters_with_battlelog,
                     "detectionStats": {
                         "totalFrames": 0,
-                        "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
+                        "matchedFrames": len(chapters_with_battlelog),  # 最終的なチャプター数（手動修正後も正確）
                     },
                 }
 
@@ -259,7 +295,7 @@ class SF6ChapterProcessor:
                 logger.info("   Saved matches data: %s", matches_json_path)
 
             # 最終結果を中間ファイルとして保存
-            self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters)
+            self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_battlelog)
 
             # 処理完了をFirestoreに記録
             self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
@@ -373,6 +409,101 @@ class SF6ChapterProcessor:
         logger.info("     - %s", video_path)
         logger.info("     - %s", matches_path)
         logger.info("     - %s", chapters_path)
+
+    def _run_battlelog_matching(
+        self, video_id: str, chapters: list[dict[str, Any]], video_published_at: str
+    ) -> list[dict[str, Any]]:
+        """
+        Battlelog マッピング実行（オプショナル）
+
+        Args:
+            video_id: YouTube動画ID
+            chapters: チャプターリスト
+            video_published_at: 動画公開日時（ISO 8601）
+
+        Returns:
+            Battlelog データを含むチャプターリスト（マッピング失敗時は元のリスト）
+        """
+        # SF6_PLAYER_ID と BUCKLER_ID_COOKIE が設定されていない場合はスキップ
+        if not self.sf6_player_id:
+            logger.info("[4.5/6] SF6_PLAYER_ID not set, skipping Battlelog matching")
+            return chapters
+
+        auth_cookie = os.environ.get("BUCKLER_ID_COOKIE")
+        if not auth_cookie:
+            logger.warning("[4.5/6] BUCKLER_ID_COOKIE not set, skipping Battlelog matching")
+            return chapters
+
+        try:
+            logger.info("[4.5/6] Running Battlelog matching...")
+
+            # buildId を取得
+            import asyncio
+
+            async def get_build_id():
+                site_client = BattlelogSiteClient()
+                return await site_client.get_build_id()
+
+            build_id = asyncio.run(get_build_id())
+            logger.info(f"  buildId: {build_id[:20]}...")
+
+            # BattlelogCollector をキャッシング付きで初期化
+            cache_manager = BattlelogCacheManager(db_path=self.battlelog_cache_db)
+            collector = BattlelogCollector(
+                build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager
+            )
+
+            # 全ページ分のリプレイを取得
+            async def get_all_replays():
+                replays = []
+                for page in range(1, 21):  # 最大20ページ
+                    page_replays = await collector.get_replay_list(
+                        player_id=self.sf6_player_id, page=page
+                    )
+                    replays.extend(page_replays)
+                    if len(page_replays) < 10:  # 最後のページ
+                        break
+                return replays
+
+            replays = asyncio.run(get_all_replays())
+            logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
+
+            # チャプターをマッピング
+            sorted_chapters = sorted(chapters, key=lambda c: c.get("startTime", 0))
+            sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
+            used_replay_ids = set()
+
+            enriched_chapters = []
+            for chapter in sorted_chapters:
+                result = self.battlelog_matcher.match_chapter_with_battlelog(
+                    chapter,
+                    sorted_replays,
+                    video_published_at,
+                    used_replay_ids,
+                    tolerance_seconds=600,
+                )
+
+                # マッチ成功時、リプレイIDを記録（重複排除用）
+                if result.get("matched") and result.get("replay_id"):
+                    used_replay_ids.add(result["replay_id"])
+
+                # チャプターに Battlelog データを統合
+                enriched_chapter = {**chapter, **result}
+                enriched_chapters.append(enriched_chapter)
+
+            matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
+            logger.info(
+                f"  Matched {matched_count}/{len(enriched_chapters)} chapters "
+                f"({matched_count*100//len(enriched_chapters) if enriched_chapters else 0}%)"
+            )
+
+            return enriched_chapters
+
+        except Exception as e:
+            logger.error(f"Battlelog マッピング失敗: {e}")
+            logger.warning("  Proceeding without Battlelog data")
+            # フォールバック: Battlelog マッピングなしで続行
+            return chapters
 
 
 # ====================
