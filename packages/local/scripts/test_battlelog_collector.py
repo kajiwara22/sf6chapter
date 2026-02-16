@@ -146,7 +146,7 @@ async def main(
         try:
             replay_list = await api_client.get_replay_list(
                 player_id=player_id,
-                page=1,
+                page=page,
             )
 
             print("  ✓ 対戦ログ取得成功")
@@ -163,7 +163,7 @@ async def main(
             try:
                 pagination_info = await api_client.get_pagination_info(
                     player_id=player_id,
-                    page=1,
+                    page=page,
                 )
                 print("  ✓ ページング情報取得成功")
                 print(f"    現在ページ: {pagination_info['current_page']}")
@@ -181,17 +181,6 @@ async def main(
                 }
 
             matches = replay_list
-
-        except Exception as e:
-            print(f"  ✗ 対戦ログ取得失敗: {e}")
-            results["steps"]["get_replay_list"] = {
-                "status": "failed",
-                "error": str(e),
-            }
-            raise
-
-            # Step 5: レスポンス構造の検査
-            print("\n[Step 5] レスポンス構造の検査...")
 
             # Step 6: レスポンス構造の検査
             print("\n[Step 6] レスポンス構造の検査...")
@@ -271,6 +260,13 @@ async def main(
                 "error": str(e),
             }
             results["final_status"] = "failed"
+            raise
+        except Exception as e:
+            print(f"  ✗ 対戦ログ取得失敗: {e}")
+            results["steps"]["get_replay_list"] = {
+                "status": "failed",
+                "error": str(e),
+            }
             raise
 
     except Exception as e:

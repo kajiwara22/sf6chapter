@@ -23,6 +23,10 @@
 | [015](./015-google-cloud-logging-integration.md) | Cloud Functionsでのgoogle-cloud-logging統合 | 採用 | 2026-01-09 |
 | [016](./016-vite-manifest-based-asset-reference.md) | Viteマニフェストベースのアセット参照 | 採用 | 2026-01-10 |
 | [017](./017-detection-parameter-optimization.md) | 検出パラメータの最適化とパラメータ管理システムの導入 | 採用 | 2026-01-12 |
+| [018](./018-intermediate-file-format-improvement.md) | 中間ファイル形式の改善（手動修正の容易化） | 採用 | 2026-01-12 |
+| [019](./019-gemini-character-recognition-improvement.md) | Geminiキャラクター認識精度の改善 | 採用 | 2026-02-04 |
+| [020](./020-sf6-battlelog-collector-implementation.md) | SF6 Battlelog 対戦ログ収集システムの実装 | 採用 | 2026-02-17 |
+| [021](./021-battlelog-chapter-mapping-implementation.md) | YouTube チャプターと Battlelog リプレイのマッピング実装 | 採用 | 2026-02-17 |
 
 ## ADRのフォーマット
 
