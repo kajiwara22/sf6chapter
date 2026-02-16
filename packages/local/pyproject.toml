@@ -21,6 +21,8 @@ dependencies = [
     "matplotlib>=3.10.8",
     "pandas>=2.3.3",
     "seaborn>=0.13.2",
+    "playwright>=1.40.0",
+    "aiohttp>=3.9.0",
 ]
 
 [build-system]
