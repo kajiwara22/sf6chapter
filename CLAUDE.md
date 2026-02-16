@@ -236,5 +236,55 @@ docker compose up -d
 - [017: 検出パラメータの最適化とパラメータ管理システムの導入](docs/adr/017-detection-parameter-optimization.md)
 - [018: 中間ファイル形式の改善（手動修正の容易化）](docs/adr/018-intermediate-file-format-improvement.md)
 - [019: Geminiキャラクター認識精度の改善](docs/adr/019-gemini-character-recognition-improvement.md)
+- [020: SF6 Battlelog対戦ログ収集システムの実装](docs/adr/020-sf6-battlelog-collector-implementation.md)
+- [021: YouTubeチャプターとBattlelogリプレイのマッピング実装](docs/adr/021-battlelog-chapter-mapping-implementation.md)
+- [022: Battlelog API キャッシング機構（SQLite）](docs/adr/022-battlelog-api-caching-with-sqlite.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
+
+## BattlelogCollector のキャッシング機構
+
+Battlelog API のレスポンスを SQLite でキャッシュし、重複リクエストを削減します。
+
+### キャッシュキー
+
+- `player_id` + `uploaded_at` の組み合わせで一意性を保証
+
+### 使用方法
+
+```python
+from sf6_battlelog import BattlelogCollector, BattlelogCacheManager
+
+# キャッシュマネージャーを初期化
+cache = BattlelogCacheManager(db_path="./battlelog_cache.db")
+
+# BattlelogCollector を初期化（キャッシュを統合）
+collector = BattlelogCollector(
+    build_id=build_id,
+    auth_cookie=auth_cookie,
+    cache=cache
+)
+
+# 対戦ログを取得（キャッシュ + API新規データのマージ）
+replays = collector.get_replay_list_sync(player_id="1319673732", page=1)
+```
+
+### キャッシュ統計
+
+```python
+stats = cache.get_cache_stats()
+print(f"総レコード数: {stats['total_records']}")
+print(f"ユニークプレイヤー数: {stats['unique_players']}")
+```
+
+### キャッシュのクリア
+
+```python
+# 特定プレイヤーのキャッシュをクリア
+cache.clear_cache(player_id="1319673732")
+
+# 全キャッシュをクリア
+cache.clear_cache()
+```
+
+詳細は [ADR-022](docs/adr/022-battlelog-api-caching-with-sqlite.md) を参照。

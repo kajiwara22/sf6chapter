@@ -11,6 +11,7 @@ from typing import Any, Optional
 import aiohttp
 
 from sf6_battlelog.battlelog_parser import BattlelogParser
+from sf6_battlelog.cache import BattlelogCacheManager
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -39,6 +40,8 @@ class BattlelogCollector:
         auth_cookie: str,
         user_agent: Optional[str] = None,
         timeout: int = 30,
+        cache: Optional[BattlelogCacheManager] = None,
+        cache_db_path: str = "./battlelog_cache.db",
     ):
         """
         Args:
@@ -46,6 +49,8 @@ class BattlelogCollector:
             auth_cookie: 認証クッキー
             user_agent: HTTPリクエスト用User-Agent
             timeout: HTTPリクエストのタイムアウト秒数
+            cache: キャッシュマネージャー（未指定時は新規作成）
+            cache_db_path: キャッシュDBパス（cache未指定時に使用）
         """
         self.build_id = build_id
         self.auth_cookie = auth_cookie
@@ -55,6 +60,7 @@ class BattlelogCollector:
             or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.cache = cache or BattlelogCacheManager(db_path=cache_db_path)
 
     def _get_headers(self, accept: str = "application/json") -> dict[str, str]:
         """
@@ -274,9 +280,10 @@ class BattlelogCollector:
         language: str = "ja-jp",
     ) -> list[dict[str, Any]]:
         """
-        プレイヤーの対戦ログリストを取得
+        プレイヤーの対戦ログリストを取得（キャッシング対応）
 
-        battlelog ページから __NEXT_DATA__ を抽出して対戦ログを取得
+        battlelog ページから __NEXT_DATA__ を抽出して対戦ログを取得。
+        キャッシュにない対戦ログのみをキャッシュに追加。
 
         Args:
             player_id: プレイヤーID
@@ -284,7 +291,7 @@ class BattlelogCollector:
             language: 言語コード
 
         Returns:
-            対戦ログの配列
+            対戦ログの配列（キャッシュ + API新規データのマージ）
 
         Raises:
             Unauthorized: 認証エラー
@@ -292,7 +299,11 @@ class BattlelogCollector:
             ValueError: HTML解析エラー
             RuntimeError: その他のエラー
         """
-        # HTML を取得
+        # 1. キャッシュから既存データを取得
+        cached_replays = self.cache.get_cached_replays(player_id)
+        cached_uploaded_at_set = self.cache.get_cached_uploaded_at_set(player_id)
+
+        # 2. HTML を取得してパース
         html = await self.get_battlelog_html(
             player_id=player_id,
             page=page,
@@ -302,12 +313,25 @@ class BattlelogCollector:
         # __NEXT_DATA__ を抽出
         try:
             next_data = BattlelogParser.extract_next_data(html)
-            replay_list = BattlelogParser.get_replay_list(next_data)
-            logger.info(f"Successfully extracted {len(replay_list)} replays")
-            return replay_list
+            api_replays = BattlelogParser.get_replay_list(next_data)
+            logger.info(f"Successfully extracted {len(api_replays)} replays from API")
         except (ValueError, KeyError, Exception) as e:
             logger.error(f"Failed to extract replay list: {e}")
             raise RuntimeError(f"Failed to parse battlelog HTML: {e}") from e
+
+        # 3. キャッシュにない対戦ログを抽出
+        new_replays = [
+            r for r in api_replays
+            if str(r.get("uploaded_at")) not in cached_uploaded_at_set
+        ]
+
+        # 4. 新規データをキャッシュに保存
+        if new_replays:
+            cached_count = self.cache.cache_replays(player_id, new_replays)
+            logger.info(f"Cached {cached_count} new replays for {player_id}")
+
+        # 5. キャッシュ + API レスポンスをマージして返却
+        return cached_replays + api_replays
 
     async def get_pagination_info(
         self,
