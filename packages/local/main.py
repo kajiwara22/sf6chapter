@@ -958,6 +958,116 @@ def test_r2_upload(
         # 中間ファイルに保存（まだ保存されていない場合）
         save_recognition_results(video_id, detections, results)
 
+    # 4.5. Battlelog マッピング実行
+    # test_r2_upload 関数内で VideoProcessor の _run_battlelog_matching を呼び出すため、
+    # 簡潔な実装を用いる。SF6_PLAYER_ID が設定されていない場合はスキップ
+    sf6_player_id = os.environ.get("SF6_PLAYER_ID")
+    battlelog_cache_db = os.environ.get("BATTLELOG_CACHE_DB", "./battlelog_cache.db")
+
+    if sf6_player_id:
+        logger.info("[4.5/6] Running Battlelog matching...")
+        try:
+            # Battlelog マッチングに必要なコンポーネントを初期化
+            aliases_file = Path(__file__).parent / "config" / "character_aliases.json"
+            character_normalizer = CharacterNormalizer(
+                aliases_file=str(aliases_file) if aliases_file.exists() else None
+            )
+            battlelog_matcher = BattlelogMatcher(normalizer=character_normalizer)
+
+            # buildId を取得
+            import asyncio
+
+            async def get_build_id():
+                site_client = BattlelogSiteClient()
+                return await site_client.get_build_id()
+
+            auth_cookie = os.environ.get("BUCKLER_ID_COOKIE")
+            if not auth_cookie:
+                logger.warning("[4.5/6] BUCKLER_ID_COOKIE not set, skipping Battlelog matching")
+                chapters_with_battlelog = chapters
+            else:
+                build_id = asyncio.run(get_build_id())
+                logger.info(f"  buildId: {build_id[:20]}...")
+
+                # BattlelogCollector をキャッシング付きで初期化
+                cache_manager = BattlelogCacheManager(db_path=battlelog_cache_db)
+                collector = BattlelogCollector(
+                    build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager
+                )
+
+                # 全ページ分のリプレイを取得
+                async def get_all_replays():
+                    replays = []
+                    for page in range(1, 21):  # 最大20ページ
+                        page_replays = await collector.get_replay_list(
+                            player_id=sf6_player_id, page=page
+                        )
+                        replays.extend(page_replays)
+                        if len(page_replays) < 10:  # 最後のページ
+                            break
+                    return replays
+
+                replays = asyncio.run(get_all_replays())
+                logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
+
+                # チャプターをマッピング
+                sorted_chapters = sorted(chapters, key=lambda c: c.get("startTime", 0))
+                sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
+                used_replay_ids = set()
+
+                enriched_chapters = []
+                for chapter in sorted_chapters:
+                    result = battlelog_matcher.match_chapter_with_battlelog(
+                        chapter,
+                        sorted_replays,
+                        video_info["publishedAt"],
+                        used_replay_ids,
+                        tolerance_seconds=600,
+                    )
+
+                    # マッチ成功時、リプレイIDを記録（重複排除用）
+                    if result.get("matched") and result.get("replay_id"):
+                        used_replay_ids.add(result["replay_id"])
+
+                    # チャプターに Battlelog データを統合
+                    enriched_chapter = {**chapter, **result}
+                    enriched_chapters.append(enriched_chapter)
+
+                matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
+                logger.info(
+                    f"  Matched {matched_count}/{len(enriched_chapters)} chapters "
+                    f"({matched_count*100//len(enriched_chapters) if enriched_chapters else 0}%)"
+                )
+
+                chapters_with_battlelog = enriched_chapters
+        except Exception as e:
+            logger.error(f"Battlelog マッピング失敗: {e}")
+            logger.warning("  Proceeding without Battlelog data")
+            # フォールバック: Battlelog マッピングなしで続行
+            chapters_with_battlelog = chapters
+    else:
+        logger.info("[4.5/6] SF6_PLAYER_ID not set, skipping Battlelog matching")
+        chapters_with_battlelog = chapters
+
+    # 対戦データに Battlelog 情報を統合
+    chapter_map = {
+        ch.get("matchId"): ch for ch in chapters_with_battlelog
+    }
+    for match in matches:
+        match_id = match.get("id")
+        if match_id in chapter_map:
+            chapter = chapter_map[match_id]
+            # Battlelog マッピング結果を match に追加
+            match["battlelogMatched"] = chapter.get("matched", False)
+            match["battlelogConfidence"] = chapter.get("confidence", "low")
+            match["battlelogReplayId"] = chapter.get("replay_id")
+            match["battlelogTimeDiff"] = chapter.get("time_difference_seconds")
+            # player1, player2 構造内に result フィールドを追加
+            if chapter.get("player1_result"):
+                match["player1"]["result"] = chapter.get("player1_result")
+            if chapter.get("player2_result"):
+                match["player2"]["result"] = chapter.get("player2_result")
+
     # 動画メタデータを生成
     video_data = {
         "videoId": video_id,
@@ -966,10 +1076,10 @@ def test_r2_upload(
         "channelTitle": video_info["channelTitle"],
         "publishedAt": video_info["publishedAt"],
         "processedAt": datetime.utcnow().isoformat() + "Z",
-        "chapters": chapters,
+        "chapters": chapters_with_battlelog,
         "detectionStats": {
             "totalFrames": 0,
-            "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
+            "matchedFrames": len(chapters_with_battlelog),  # 最終的なチャプター数（手動修正後も正確）
         },
     }
 

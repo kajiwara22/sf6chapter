@@ -9,7 +9,8 @@ import os
 from typing import Any
 
 import aiohttp
-from utils.logger import get_logger
+
+from src.utils.logger import get_logger
 
 logger = get_logger()
 

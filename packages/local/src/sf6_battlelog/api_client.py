@@ -10,9 +10,10 @@ from typing import Any, Optional
 
 import aiohttp
 
-from sf6_battlelog.battlelog_parser import BattlelogParser
-from sf6_battlelog.cache import BattlelogCacheManager
-from utils.logger import get_logger
+from src.utils.logger import get_logger
+
+from .battlelog_parser import BattlelogParser
+from .cache import BattlelogCacheManager
 
 logger = get_logger()
 

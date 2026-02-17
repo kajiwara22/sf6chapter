@@ -3,7 +3,7 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, MatchRow, StatsRow, CharacterCountRow } from './types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow } from './types';
 import type { SearchFilters, Match, Stats, PresignedUrlResponse } from '@shared/types';
 
 let instance: DuckDBInstance | null = null;
@@ -229,11 +229,7 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
       player2.side as player2_side,
       player2.result as player2_result,
       detectedAt,
-      confidence,
-      battlelogMatched,
-      battlelogConfidence,
-      battlelogReplayId,
-      battlelogTimeDiff
+      confidence
     FROM matches
     ${whereClause}
     ${orderClause}
@@ -246,7 +242,7 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   const result = await stmt.query(...params);
   await stmt.close();
 
-  const rows = result.toArray() as unknown as MatchRow[];
+  const rows = result.toArray() as unknown as any[];
 
   return rows.map((row) => ({
     id: row.id,
@@ -254,7 +250,7 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     videoTitle: row.videoTitle,
     videoPublishedAt: row.videoPublishedAt,
     startTime: Number(row.startTime),
-    endTime: row.endTime ? Number(row.endTime) : undefined,
+    endTime: undefined,
     player1: {
       character: row.player1_character,
       characterRaw: row.player1_characterRaw,
@@ -269,10 +265,10 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     },
     detectedAt: row.detectedAt,
     confidence: row.confidence,
-    battlelogMatched: row.battlelogMatched,
-    battlelogConfidence: row.battlelogConfidence,
-    battlelogReplayId: row.battlelogReplayId,
-    battlelogTimeDiff: row.battlelogTimeDiff,
+    battlelogMatched: undefined,
+    battlelogConfidence: undefined,
+    battlelogReplayId: undefined,
+    battlelogTimeDiff: undefined,
   }));
 }
 

@@ -8,7 +8,7 @@ Playwrightを使用してStreet Fighter 6の公式サイト（Capcom ID）にロ
 import asyncio
 import os
 
-from utils.logger import get_logger
+from src.utils.logger import get_logger
 
 logger = get_logger()
 
