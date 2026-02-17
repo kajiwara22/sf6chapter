@@ -903,6 +903,11 @@ def test_r2_upload(
             chapters_data = json.load(f)
         chapters = chapters_data["chapters"]
 
+        # 中間ファイルから読み込んだmatchesのvideoTitleとvideoPublishedAtを最新情報で更新
+        for match in matches:
+            match["videoTitle"] = video_info["title"]
+            match["videoPublishedAt"] = video_info["publishedAt"]
+
         logger.info("✅ Using saved matches from intermediate files (%d records)", len(matches))
 
     else:
