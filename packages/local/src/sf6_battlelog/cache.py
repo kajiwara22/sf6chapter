@@ -300,3 +300,66 @@ class BattlelogCacheManager:
 
         finally:
             conn.close()
+
+    def get_latest_uploaded_at(self, player_id: str) -> int | None:
+        """
+        特定 player_id のキャッシュ済み対戦ログで最新の uploaded_at を取得
+
+        Returns:
+            最新の uploaded_at（キャッシュなしの場合は None）
+
+        Raises:
+            sqlite3.Error: データベースエラー
+        """
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT MAX(CAST(uploaded_at AS INTEGER)) FROM replay_cache WHERE player_id = ?",
+                (player_id,),
+            )
+            result = cursor.fetchone()[0]
+            logger.debug(f"Latest cached uploaded_at for {player_id}: {result}")
+            return result  # None or int
+
+        finally:
+            conn.close()
+
+    def has_reached_cache_boundary(
+        self,
+        player_id: str,
+        current_page_replays: list[dict[str, Any]],
+    ) -> bool:
+        """
+        現在のページが最新キャッシュに到達したかを判定
+
+        Args:
+            player_id: プレイヤーID
+            current_page_replays: 現在のページから取得した対戦ログリスト
+
+        Returns:
+            キャッシュ境界に到達した場合は True
+
+        Raises:
+            sqlite3.Error: データベースエラー
+        """
+        if not current_page_replays:
+            logger.debug(f"Empty page for {player_id}: reached boundary")
+            return True  # 空ページ = 終了
+
+        latest_cached_at = self.get_latest_uploaded_at(player_id)
+        if latest_cached_at is None:
+            logger.debug(f"No cache for {player_id}: continue fetching")
+            return False  # キャッシュなし = まだ続行
+
+        # 現在のページの最も古い対戦ログがキャッシュの最新より古い = 境界到達
+        oldest_in_page = min(
+            int(r.get("uploaded_at", float("inf"))) for r in current_page_replays
+        )
+        has_reached = oldest_in_page <= latest_cached_at
+        logger.debug(
+            f"Cache boundary check for {player_id}: "
+            f"oldest_in_page={oldest_in_page}, latest_cached_at={latest_cached_at}, "
+            f"reached={has_reached}"
+        )
+        return has_reached

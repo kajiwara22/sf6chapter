@@ -453,17 +453,11 @@ class SF6ChapterProcessor:
                 build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager
             )
 
-            # 全ページ分のリプレイを取得
+            # 最新キャッシュ以降のリプレイを増分取得
             async def get_all_replays():
-                replays = []
-                for page in range(1, 21):  # 最大20ページ
-                    page_replays = await collector.get_replay_list(
-                        player_id=self.sf6_player_id, page=page
-                    )
-                    replays.extend(page_replays)
-                    if len(page_replays) < 10:  # 最後のページ
-                        break
-                return replays
+                return await collector.get_replay_list_incremental(
+                    player_id=self.sf6_player_id
+                )
 
             replays = asyncio.run(get_all_replays())
             logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
@@ -995,17 +989,11 @@ def test_r2_upload(
                     build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager
                 )
 
-                # 全ページ分のリプレイを取得
+                # 最新キャッシュ以降のリプレイを増分取得
                 async def get_all_replays():
-                    replays = []
-                    for page in range(1, 21):  # 最大20ページ
-                        page_replays = await collector.get_replay_list(
-                            player_id=sf6_player_id, page=page
-                        )
-                        replays.extend(page_replays)
-                        if len(page_replays) < 10:  # 最後のページ
-                            break
-                    return replays
+                    return await collector.get_replay_list_incremental(
+                        player_id=sf6_player_id
+                    )
 
                 replays = asyncio.run(get_all_replays())
                 logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")

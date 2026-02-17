@@ -334,6 +334,99 @@ class BattlelogCollector:
         # 5. キャッシュ + API レスポンスをマージして返却
         return cached_replays + api_replays
 
+    async def get_replay_list_incremental(
+        self,
+        player_id: str,
+        language: str = "ja-jp",
+        max_pages: int = 20,
+    ) -> list[dict[str, Any]]:
+        """
+        最新キャッシュ以降のリプレイのみを増分取得
+
+        battlelog ページから __NEXT_DATA__ を抽出してリプレイを取得。
+        最新キャッシュ以降の新しいリプレイのみを取得し、キャッシュ境界に到達したら終了。
+
+        Args:
+            player_id: プレイヤーID
+            language: 言語コード
+            max_pages: 最大ページ数（安全装置）
+
+        Returns:
+            キャッシュ + 新規リプレイのマージ結果
+
+        Raises:
+            Unauthorized: 認証エラー
+            PageNotFound: ページ不在
+            ValueError: HTML解析エラー
+            RuntimeError: その他のエラー
+        """
+        # 1. キャッシュから既存データを取得
+        cached_replays = self.cache.get_cached_replays(player_id)
+        cached_uploaded_at_set = self.cache.get_cached_uploaded_at_set(player_id)
+        latest_cached_at = self.cache.get_latest_uploaded_at(player_id)
+
+        logger.info(
+            f"Starting incremental fetch for {player_id}: "
+            f"latest_cached_at={latest_cached_at}, cached_count={len(cached_replays)}"
+        )
+
+        all_new_replays = []
+
+        # 2. ページ1から順に取得
+        for page in range(1, max_pages + 1):
+            # ページを取得
+            html = await self.get_battlelog_html(
+                player_id=player_id,
+                page=page,
+                language=language,
+            )
+
+            try:
+                next_data = BattlelogParser.extract_next_data(html)
+                page_replays = BattlelogParser.get_replay_list(next_data)
+                logger.info(
+                    f"Fetching battlelog for player {player_id}, page {page}: "
+                    f"got {len(page_replays)} replays"
+                )
+            except (ValueError, KeyError, Exception) as e:
+                logger.error(f"Failed to parse page {page}: {e}")
+                break
+
+            # 3. キャッシュにない対戦ログを抽出
+            new_page_replays = [
+                r for r in page_replays
+                if str(r.get("uploaded_at")) not in cached_uploaded_at_set
+            ]
+
+            if new_page_replays:
+                all_new_replays.extend(new_page_replays)
+                self.cache.cache_replays(player_id, new_page_replays)
+                logger.info(f"Cached {len(new_page_replays)} new replays from page {page}")
+
+            # 4. キャッシュ境界に到達したか確認
+            if self.cache.has_reached_cache_boundary(player_id, page_replays):
+                logger.info(
+                    f"Reached cache boundary at page {page}. "
+                    f"Stopping incremental fetch."
+                )
+                break
+
+            # 5. ラストページの判定（10件未満）
+            if len(page_replays) < 10:
+                logger.info(
+                    f"Page {page} has only {len(page_replays)} replays. "
+                    f"This is likely the last page. Stopping fetch."
+                )
+                break
+
+        logger.info(
+            f"Incremental fetch completed: "
+            f"fetched {len(all_new_replays)} new replays"
+        )
+
+        # 6. キャッシュ + 新規データをマージして返却
+        return cached_replays + all_new_replays
+
     async def get_pagination_info(
         self,
         player_id: str,
@@ -434,6 +527,21 @@ class BattlelogCollector:
                 player_id=player_id,
                 page=page,
                 language=language,
+            )
+        )
+
+    def get_replay_list_incremental_sync(
+        self,
+        player_id: str,
+        language: str = "ja-jp",
+        max_pages: int = 20,
+    ) -> list[dict[str, Any]]:
+        """同期版get_replay_list_incremental"""
+        return asyncio.run(
+            self.get_replay_list_incremental(
+                player_id=player_id,
+                language=language,
+                max_pages=max_pages,
             )
         )
 
