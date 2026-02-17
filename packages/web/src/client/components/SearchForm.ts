@@ -12,10 +12,27 @@ export type SearchHandler = (filters: SearchFilters) => void;
  */
 export function initSearchForm(onSearch: SearchHandler): void {
   const form = document.getElementById(DOM_IDS.SEARCH_FORM) as HTMLFormElement | null;
+  const characterSelect = document.getElementById(DOM_IDS.CHARACTER_SELECT) as HTMLSelectElement | null;
 
   if (!form) {
     console.error('[SearchForm] Form element not found');
     return;
+  }
+
+  // キャラクター1変更時にラベルを動的更新
+  if (characterSelect) {
+    characterSelect.addEventListener('change', (e) => {
+      const selectedChar = (e.target as HTMLSelectElement).value;
+      const contextSpan = document.getElementById(DOM_IDS.PLAYER_RESULT_CONTEXT);
+
+      if (contextSpan) {
+        if (selectedChar) {
+          contextSpan.textContent = ` (${selectedChar}の)`;
+        } else {
+          contextSpan.textContent = '';
+        }
+      }
+    });
   }
 
   form.addEventListener('submit', (e) => {
@@ -62,7 +79,7 @@ export function updateCharacterSelect(characters: string[]): void {
 
   // 両方のセレクトを更新
   for (const select of [select1, select2]) {
-    // 既存のオプションをクリア（「すべて」以外）
+    // 既存のオプションをクリア（最初のオプション以外）
     while (select.options.length > 1) {
       select.remove(1);
     }

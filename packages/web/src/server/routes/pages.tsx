@@ -72,9 +72,9 @@ pages.get('/', (c) => {
                   </div>
 
                   <div class="form-group">
-                    <label for="character-select-2">キャラクター2</label>
+                    <label for="character-select-2">キャラクター2（オプション）</label>
                     <select id="character-select-2" name="character2">
-                      <option value="">すべて</option>
+                      <option value="">指定しない</option>
                       <!-- DuckDB-WASMで動的に生成 -->
                     </select>
                   </div>
@@ -108,7 +108,9 @@ pages.get('/', (c) => {
 
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="player-result">勝敗</label>
+                    <label for="player-result">
+                      勝敗<span id="player-result-context"></span>
+                    </label>
                     <select id="player-result" name="playerResult">
                       <option value="">すべて</option>
                       <option value="win">勝利</option>

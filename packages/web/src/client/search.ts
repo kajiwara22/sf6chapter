@@ -141,21 +141,43 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  // キャラクターフィルター（対戦カード検索）
+  // キャラクターフィルター（対戦カード検索 or 単キャラ検索）
   if (filters.character && filters.character2) {
-    // 2キャラ指定: (P1=A AND P2=B) OR (P1=B AND P2=A)
-    conditions.push(`(
-      (player1.character = $${params.length + 1} AND player2.character = $${params.length + 2})
-      OR
-      (player1.character = $${params.length + 3} AND player2.character = $${params.length + 4})
-    )`);
-    params.push(filters.character, filters.character2, filters.character2, filters.character);
+    // 対戦カード検索: (P1=A AND P2=B) OR (P1=B AND P2=A)
+    if (filters.playerResult) {
+      // キャラ1の結果でフィルター
+      conditions.push(`(
+        (player1.character = $${params.length + 1} AND player2.character = $${params.length + 2} AND player1.result = $${params.length + 3})
+        OR
+        (player1.character = $${params.length + 4} AND player2.character = $${params.length + 5} AND player2.result = $${params.length + 6})
+      )`);
+      params.push(filters.character, filters.character2, filters.playerResult, filters.character2, filters.character, filters.playerResult);
+    } else {
+      // 勝敗フィルターなし
+      conditions.push(`(
+        (player1.character = $${params.length + 1} AND player2.character = $${params.length + 2})
+        OR
+        (player1.character = $${params.length + 3} AND player2.character = $${params.length + 4})
+      )`);
+      params.push(filters.character, filters.character2, filters.character2, filters.character);
+    }
   } else if (filters.character) {
-    // 1キャラ指定: P1またはP2にマッチ
-    conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
-    params.push(filters.character, filters.character);
+    // 単キャラ検索: P1またはP2にマッチ
+    if (filters.playerResult) {
+      // キャラクターと勝敗の両方を指定
+      conditions.push(`(
+        (player1.character = $${params.length + 1} AND player1.result = $${params.length + 2})
+        OR
+        (player2.character = $${params.length + 3} AND player2.result = $${params.length + 4})
+      )`);
+      params.push(filters.character, filters.playerResult, filters.character, filters.playerResult);
+    } else {
+      // キャラクターのみ
+      conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
+      params.push(filters.character, filters.character);
+    }
   } else if (filters.character2) {
-    // キャラ2だけ指定: P1またはP2にマッチ
+    // キャラ2だけ指定（通常は起こらない）: P1またはP2にマッチ
     conditions.push(`(player1.character = $${params.length + 1} OR player2.character = $${params.length + 2})`);
     params.push(filters.character2, filters.character2);
   }
@@ -178,16 +200,6 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     const utcTo = convertJstDateToUtc(filters.dateTo, true);
     conditions.push(`videoPublishedAt <= $${params.length + 1}`);
     params.push(utcTo);
-  }
-
-  // 勝敗フィルター（キャラクターフィルターと組み合わせ）
-  if (filters.playerResult && filters.character) {
-    conditions.push(`(
-      (player1.character = $${params.length + 1} AND player1.result = $${params.length + 2})
-      OR
-      (player2.character = $${params.length + 3} AND player2.result = $${params.length + 4})
-    )`);
-    params.push(filters.character, filters.playerResult, filters.character, filters.playerResult);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
