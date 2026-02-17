@@ -30,6 +30,7 @@
 | [022](./022-battlelog-api-caching-with-sqlite.md) | Battlelog API キャッシング機構（SQLite） | 採用 | 2026-02-17 |
 | [023](./023-battlelog-data-integration-with-parquet-search.md) | Battlelog データ統合と Parquet Web 検索機能の実装 | 採用 | 2026-02-17 |
 | [024](./024-web-ui-search-filter-with-match-results.md) | Web UI 検索フィルター - Battlelog 勝敗結果対応 | 提案 | 2026-02-17 |
+| [025](./025-battlelog-api-incremental-fetching-optimization.md) | Battlelog API 増分取得の最適化 | 採用 | 2026-02-17 |
 
 ## ADRのフォーマット
 

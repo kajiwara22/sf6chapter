@@ -251,6 +251,7 @@ docker compose up -d
 - [022: Battlelog API キャッシング機構（SQLite）](docs/adr/022-battlelog-api-caching-with-sqlite.md)
 - [023: Battlelogデータ統合とParquet Web検索機能の実装](docs/adr/023-battlelog-data-integration-with-parquet-search.md)
 - [024: Web UI 検索フィルター - Battlelog 勝敗結果対応](docs/adr/024-web-ui-search-filter-with-match-results.md)
+- [025: Battlelog API 増分取得の最適化](docs/adr/025-battlelog-api-incremental-fetching-optimization.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
 
