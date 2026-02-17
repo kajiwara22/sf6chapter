@@ -90,7 +90,7 @@ class SF6ChapterProcessor:
 
         # キャラクター正規化とマッチング（Battlelog マッピング用）
         aliases_path = self.app_root / "config" / "character_aliases.json"
-        self.character_normalizer = CharacterNormalizer(aliases_path=str(aliases_path) if aliases_path.exists() else None)
+        self.character_normalizer = CharacterNormalizer(aliases_file=str(aliases_path) if aliases_path.exists() else None)
         self.battlelog_matcher = BattlelogMatcher(normalizer=self.character_normalizer)
 
     def process_video(self, message_data: dict[str, Any]) -> None:
