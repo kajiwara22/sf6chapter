@@ -109,12 +109,12 @@ pages.get('/', (c) => {
                 <div class="form-row">
                   <div class="form-group">
                     <label for="player-result">
-                      勝敗<span id="player-result-context"></span>
+                      Result<span id="player-result-context"></span>
                     </label>
                     <select id="player-result" name="playerResult">
-                      <option value="">すべて</option>
-                      <option value="win">勝利</option>
-                      <option value="loss">敗北</option>
+                      <option value="">All</option>
+                      <option value="win">Wins</option>
+                      <option value="loss">Loses</option>
                     </select>
                   </div>
 

@@ -49,13 +49,13 @@ function createMatchCard(match: Match): string {
         <div class="player player-1p">
           <span class="player-character">${escapeHtml(match.player1.character)}</span>
           <span class="player-side">1P</span>
-          ${match.player1.result ? `<span class="player-result result-${match.player1.result}">${match.player1.result === 'win' ? '勝' : '負'}</span>` : ''}
+          ${match.player1.result ? `<span class="player-result result-${match.player1.result}">${match.player1.result === 'win' ? 'Wins' : 'Loses'}</span>` : ''}
         </div>
         <div class="match-vs">VS</div>
         <div class="player player-2p">
           <span class="player-character">${escapeHtml(match.player2.character)}</span>
           <span class="player-side">2P</span>
-          ${match.player2.result ? `<span class="player-result result-${match.player2.result}">${match.player2.result === 'win' ? '勝' : '負'}</span>` : ''}
+          ${match.player2.result ? `<span class="player-result result-${match.player2.result}">${match.player2.result === 'win' ? 'Wins' : 'Loses'}</span>` : ''}
         </div>
       </div>
       <div class="match-meta">
