@@ -27,6 +27,9 @@
 | [019](./019-gemini-character-recognition-improvement.md) | Geminiキャラクター認識精度の改善 | 採用 | 2026-02-04 |
 | [020](./020-sf6-battlelog-collector-implementation.md) | SF6 Battlelog 対戦ログ収集システムの実装 | 採用 | 2026-02-17 |
 | [021](./021-battlelog-chapter-mapping-implementation.md) | YouTube チャプターと Battlelog リプレイのマッピング実装 | 採用 | 2026-02-17 |
+| [022](./022-battlelog-api-caching-with-sqlite.md) | Battlelog API キャッシング機構（SQLite） | 採用 | 2026-02-17 |
+| [023](./023-battlelog-data-integration-with-parquet-search.md) | Battlelog データ統合と Parquet Web 検索機能の実装 | 採用 | 2026-02-17 |
+| [024](./024-web-ui-search-filter-with-match-results.md) | Web UI 検索フィルター - Battlelog 勝敗結果対応 | 提案 | 2026-02-17 |
 
 ## ADRのフォーマット
 

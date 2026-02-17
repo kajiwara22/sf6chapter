@@ -77,12 +77,22 @@ sf6-chapter/
 - [x] Viteマニフェスト対応（ADR-016）
 - [x] Cloudflare Access設定
 - [x] 検出パラメータ最適化とパラメータ管理システム（ADR-017）
+- [x] 中間ファイル形式の改善（ADR-018）
+- [x] Geminiキャラクター認識精度の改善（ADR-019）
+- [x] SF6 Battlelog対戦ログ収集システムの実装（ADR-020）
+- [x] YouTubeチャプターとBattlelogリプレイのマッピング実装（ADR-021）
+- [x] Battlelog API キャッシング機構（ADR-022）
+- [ ] Web UI 検索フィルター - Battlelog 勝敗結果対応（ADR-024 提案）
 
 ## 次のタスク
 
-1. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
-2. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
-3. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
+1. **Web UI の勝敗検索対応**: ADR-024 に基づいて UI/検索ロジックを実装
+   - 単キャラ検索モード実装
+   - 対戦カード検索モード実装
+   - 動的ラベル更新機能実装
+2. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
+3. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
+4. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
 
 ## 重要な設計判断
 
@@ -239,6 +249,8 @@ docker compose up -d
 - [020: SF6 Battlelog対戦ログ収集システムの実装](docs/adr/020-sf6-battlelog-collector-implementation.md)
 - [021: YouTubeチャプターとBattlelogリプレイのマッピング実装](docs/adr/021-battlelog-chapter-mapping-implementation.md)
 - [022: Battlelog API キャッシング機構（SQLite）](docs/adr/022-battlelog-api-caching-with-sqlite.md)
+- [023: Battlelogデータ統合とParquet Web検索機能の実装](docs/adr/023-battlelog-data-integration-with-parquet-search.md)
+- [024: Web UI 検索フィルター - Battlelog 勝敗結果対応](docs/adr/024-web-ui-search-filter-with-match-results.md)
 
 新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
 

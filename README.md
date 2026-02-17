@@ -240,6 +240,13 @@ pnpm deploy
 | [015](docs/adr/015-google-cloud-logging-integration.md) | Cloud Functionsでのgoogle-cloud-logging統合 |
 | [016](docs/adr/016-vite-manifest-based-asset-reference.md) | Viteマニフェストベースのアセット参照 |
 | [017](docs/adr/017-detection-parameter-optimization.md) | 検出パラメータの最適化とパラメータ管理システムの導入 |
+| [018](docs/adr/018-intermediate-file-format-improvement.md) | 中間ファイル形式の改善（手動修正の容易化） |
+| [019](docs/adr/019-gemini-character-recognition-improvement.md) | Geminiキャラクター認識精度の改善 |
+| [020](docs/adr/020-sf6-battlelog-collector-implementation.md) | SF6 Battlelog対戦ログ収集システムの実装 |
+| [021](docs/adr/021-battlelog-chapter-mapping-implementation.md) | YouTubeチャプターとBattlelogリプレイのマッピング実装 |
+| [022](docs/adr/022-battlelog-api-caching-with-sqlite.md) | Battlelog API キャッシング機構（SQLite） |
+| [023](docs/adr/023-battlelog-data-integration-with-parquet-search.md) | Battlelogデータ統合とParquet Web検索機能の実装 |
+| [024](docs/adr/024-web-ui-search-filter-with-match-results.md) | Web UI 検索フィルター - Battlelog 勝敗結果対応 |
 
 ## 認証方式
 
