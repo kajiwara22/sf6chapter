@@ -190,11 +190,6 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
     params.push(filters.character, filters.playerResult, filters.character, filters.playerResult);
   }
 
-  // Battlelog マッチのみ
-  if (filters.battlelogOnly) {
-    conditions.push(`battlelogMatched = true`);
-  }
-
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = filters.limit || 100;
 

@@ -116,13 +116,6 @@ pages.get('/', (c) => {
                     </select>
                   </div>
 
-                  <div class="form-group">
-                    <label for="battlelog-only" class="checkbox-label">
-                      <input type="checkbox" id="battlelog-only" name="battlelogOnly" />
-                      Battlelog マッチのみ
-                    </label>
-                  </div>
-
                   <div class="form-group form-group-button">
                     <button type="submit" class="btn-search">
                       検索

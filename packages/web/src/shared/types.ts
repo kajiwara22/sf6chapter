@@ -106,8 +106,6 @@ export interface SearchFilters {
   limit?: number;
   /** プレイヤーの勝敗（キャラクターフィルターとの組み合わせ） */
   playerResult?: 'win' | 'loss';
-  /** Battlelog マッチのみを表示 */
-  battlelogOnly?: boolean;
 }
 
 /** 統計情報 */
