@@ -82,7 +82,10 @@ sf6-chapter/
 - [x] SF6 Battlelog対戦ログ収集システムの実装（ADR-020）
 - [x] YouTubeチャプターとBattlelogリプレイのマッピング実装（ADR-021）
 - [x] Battlelog API キャッシング機構（ADR-022）
+- [x] Battlelog データ統合と Parquet Web 検索機能の実装（ADR-023）
 - [ ] Web UI 検索フィルター - Battlelog 勝敗結果対応（ADR-024 提案）
+- [x] Battlelog API 増分取得の最適化（ADR-025）
+- [ ] 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）（ADR-026 提案）
 
 ## 次のタスク
 
@@ -252,8 +255,12 @@ docker compose up -d
 - [023: Battlelogデータ統合とParquet Web検索機能の実装](docs/adr/023-battlelog-data-integration-with-parquet-search.md)
 - [024: Web UI 検索フィルター - Battlelog 勝敗結果対応](docs/adr/024-web-ui-search-filter-with-match-results.md)
 - [025: Battlelog API 増分取得の最適化](docs/adr/025-battlelog-api-incremental-fetching-optimization.md)
+- [026: 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）](docs/adr/026-result-screen-match-outcome-detection.md)
 
-新しいアーキテクチャ決定を記録する際は、`docs/adr/` ディレクトリに連番でファイルを追加してください。
+新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
+1. `docs/adr/XXX-title.md` - ADR ファイル作成
+2. `docs/adr/README.md` - ADR 一覧に追加
+3. `CLAUDE.md` - このファイルの ADR リスト + ステータスを更新
 
 ## BattlelogCollector のキャッシング機構
 
