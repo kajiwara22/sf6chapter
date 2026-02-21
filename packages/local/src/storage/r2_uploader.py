@@ -87,6 +87,36 @@ class R2Uploader:
             logger.exception("Error uploading JSON to R2: %s", key)
             raise
 
+    def _get_matches_schema(self) -> pa.Schema:
+        """
+        matches.parquet用のスキーマを定義
+        player1/player2 の構造体に result フィールドを含める
+        """
+        player_struct = pa.struct([
+            pa.field("character", pa.string()),
+            pa.field("characterRaw", pa.string()),
+            pa.field("result", pa.string(), nullable=True),  # "win" | "loss" | None
+            pa.field("side", pa.string()),
+        ])
+
+        return pa.schema([
+            pa.field("id", pa.string()),
+            pa.field("videoId", pa.string()),
+            pa.field("videoTitle", pa.string()),
+            pa.field("videoPublishedAt", pa.string()),
+            pa.field("startTime", pa.int64()),
+            pa.field("player1", player_struct),
+            pa.field("player2", player_struct),
+            pa.field("detectedAt", pa.string()),
+            pa.field("confidence", pa.float64()),
+            pa.field("templateMatchScore", pa.float64()),
+            pa.field("frameTimestamp", pa.int64()),
+            pa.field("battlelogMatched", pa.bool_(), nullable=True),
+            pa.field("battlelogConfidence", pa.string(), nullable=True),
+            pa.field("battlelogReplayId", pa.string(), nullable=True),
+            pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
+        ])
+
     def upload_parquet(
         self,
         data: list[dict[str, Any]],
@@ -99,11 +129,15 @@ class R2Uploader:
         Args:
             data: アップロードするデータ（辞書のリスト）
             key: R2オブジェクトキー（例: "matches.parquet"）
-            schema: PyArrow スキーマ（省略時は自動推論）
+            schema: PyArrow スキーマ（省略時は自動推論。matches.parquetの場合は明示的に定義）
 
         Returns:
             アップロードされたオブジェクトのキー
         """
+        # matches.parquetの場合はスキーマを自動選択
+        if key == "matches.parquet" and schema is None:
+            schema = self._get_matches_schema()
+
         # Parquetファイル作成
         table = pa.Table.from_pylist(data, schema=schema) if schema else pa.Table.from_pylist(data)
 
@@ -181,7 +215,7 @@ class R2Uploader:
         Args:
             new_data: 追加するデータ
             key: R2オブジェクトキー
-            schema: PyArrow スキーマ
+            schema: PyArrow スキーマ（matches.parquetの場合は自動選択）
             video_id: 置換対象のvideoId（必須）
 
         Returns:
@@ -189,6 +223,10 @@ class R2Uploader:
         """
         if not video_id:
             raise ValueError("video_id is required for update_parquet_table")
+
+        # matches.parquetの場合はスキーマを自動選択
+        if key == "matches.parquet" and schema is None:
+            schema = self._get_matches_schema()
 
         try:
             # 既存データを取得

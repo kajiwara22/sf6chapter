@@ -14,6 +14,19 @@ logger = get_logger()
 
 
 @dataclass
+class ResultDetectionParams:
+    """RESULT画面検出パラメータ"""
+
+    enabled: bool
+    result_template_paths: list[str]  # 複数のテンプレートに対応
+    win_template_paths: list[str]  # 複数のテンプレートに対応
+    result_threshold: float
+    win_threshold: float
+    result_screen_search_region: tuple[int, int, int, int] | None
+    win_text_search_region: tuple[int, int, int, int] | None
+
+
+@dataclass
 class DetectionParams:
     """検出パラメータを保持するデータクラス"""
 
@@ -30,6 +43,7 @@ class DetectionParams:
     recognize_frame_offset: int  # 認識用フレームのデフォルトオフセット（フレーム数）
     recognize_frame_offset_alt: int  # 認識用フレームの代替オフセット（フレーム数）
     recognize_frame_offset_threshold: float  # 動的オフセット選択の閾値（標準偏差の差分）
+    result_detection: ResultDetectionParams  # RESULT画面検出パラメータ
     profile: str  # 使用したプロファイル名
 
     def to_dict(self) -> dict[str, Any]:
@@ -56,19 +70,29 @@ class DetectionParams:
         logger.info("=" * 60)
         logger.info("Detection Parameters (Profile: %s)", self.profile)
         logger.info("=" * 60)
-        logger.info("  template_path:            %s", self.template_path)
-        logger.info("  reject_templates:         %s", self.reject_templates)
-        logger.info("  threshold:                %.2f", self.threshold)
-        logger.info("  reject_threshold:         %.2f", self.reject_threshold)
-        logger.info("  min_interval_sec:         %.1f", self.min_interval_sec)
-        logger.info("  post_check_frames:        %d", self.post_check_frames)
-        logger.info("  post_check_reject_limit:  %d", self.post_check_reject_limit)
-        logger.info("  search_region:            %s", self.search_region)
-        logger.info("  crop_region:              %s", self.crop_region)
-        logger.info("  frame_interval:           %d", self.frame_interval)
-        logger.info("  recognize_frame_offset:   %d", self.recognize_frame_offset)
-        logger.info("  recognize_frame_offset_alt: %d", self.recognize_frame_offset_alt)
-        logger.info("  recognize_frame_offset_threshold: %.1f", self.recognize_frame_offset_threshold)
+        logger.info("  [Match Detection]")
+        logger.info("    template_path:            %s", self.template_path)
+        logger.info("    reject_templates:         %s", self.reject_templates)
+        logger.info("    threshold:                %.2f", self.threshold)
+        logger.info("    reject_threshold:         %.2f", self.reject_threshold)
+        logger.info("    min_interval_sec:         %.1f", self.min_interval_sec)
+        logger.info("    post_check_frames:        %d", self.post_check_frames)
+        logger.info("    post_check_reject_limit:  %d", self.post_check_reject_limit)
+        logger.info("    search_region:            %s", self.search_region)
+        logger.info("    crop_region:              %s", self.crop_region)
+        logger.info("    frame_interval:           %d", self.frame_interval)
+        logger.info("    recognize_frame_offset:   %d", self.recognize_frame_offset)
+        logger.info("    recognize_frame_offset_alt: %d", self.recognize_frame_offset_alt)
+        logger.info("    recognize_frame_offset_threshold: %.1f", self.recognize_frame_offset_threshold)
+        logger.info("  [Result Detection]")
+        logger.info("    enabled:                  %s", self.result_detection.enabled)
+        if self.result_detection.enabled:
+            logger.info("    result_template_paths:    %s", self.result_detection.result_template_paths)
+            logger.info("    win_template_paths:       %s", self.result_detection.win_template_paths)
+            logger.info("    result_threshold:         %.2f", self.result_detection.result_threshold)
+            logger.info("    win_threshold:            %.2f", self.result_detection.win_threshold)
+            logger.info("    result_screen_search_region: %s", self.result_detection.result_screen_search_region)
+            logger.info("    win_text_search_region:   %s", self.result_detection.win_text_search_region)
         logger.info("=" * 60)
 
 
@@ -111,6 +135,44 @@ def load_detection_params(profile: str = "production", config_path: str | None =
 
     params_dict = config["profiles"][profile]
 
+    # RESULT検出パラメータを読み込み
+    result_detection_dict = params_dict.get("result_detection", {})
+    result_screen_search_region = result_detection_dict.get("result_screen_search_region")
+    if result_screen_search_region is not None:
+        result_screen_search_region = tuple(result_screen_search_region)
+    win_text_search_region = result_detection_dict.get("win_text_search_region")
+    if win_text_search_region is not None:
+        win_text_search_region = tuple(win_text_search_region)
+
+    # result_template_path / win_template_path は文字列または配列に対応
+    result_template_paths = result_detection_dict.get("result_template_paths", [])
+    if isinstance(result_template_paths, str):
+        result_template_paths = [result_template_paths]
+    elif not isinstance(result_template_paths, list):
+        # 互換性: 古い形式の result_template_path から変換
+        result_template_path = result_detection_dict.get("result_template_path")
+        result_template_paths = [result_template_path] if result_template_path else []
+    result_template_paths = [str(p) for p in result_template_paths]
+
+    win_template_paths = result_detection_dict.get("win_template_paths", [])
+    if isinstance(win_template_paths, str):
+        win_template_paths = [win_template_paths]
+    elif not isinstance(win_template_paths, list):
+        # 互換性: 古い形式の win_template_path から変換
+        win_template_path = result_detection_dict.get("win_template_path")
+        win_template_paths = [win_template_path] if win_template_path else []
+    win_template_paths = [str(p) for p in win_template_paths]
+
+    result_detection = ResultDetectionParams(
+        enabled=bool(result_detection_dict.get("enabled", False)),
+        result_template_paths=result_template_paths,
+        win_template_paths=win_template_paths,
+        result_threshold=float(result_detection_dict.get("result_threshold", 0.3)),
+        win_threshold=float(result_detection_dict.get("win_threshold", 0.3)),
+        result_screen_search_region=result_screen_search_region,
+        win_text_search_region=win_text_search_region,
+    )
+
     # DetectionParamsに変換
     params = DetectionParams(
         template_path=str(params_dict["template_path"]),
@@ -126,6 +188,7 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         recognize_frame_offset=int(params_dict.get("recognize_frame_offset", 6)),
         recognize_frame_offset_alt=int(params_dict.get("recognize_frame_offset_alt", 4)),
         recognize_frame_offset_threshold=float(params_dict.get("recognize_frame_offset_threshold", 5.0)),
+        result_detection=result_detection,
         profile=profile,
     )
 

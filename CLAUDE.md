@@ -308,3 +308,8 @@ cache.clear_cache()
 ```
 
 詳細は [ADR-022](docs/adr/022-battlelog-api-caching-with-sqlite.md) を参照。
+
+# セッション引き継ぎ
+
+- セッション開始時にプロジェクトルートの `.claude/handovers/` ディレクトリを確認し、ファイルが存在すれば最新のものを読み込む
+- セッション終了時や作業の区切りでは `/handover` の実行を促す

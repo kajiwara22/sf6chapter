@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案（Proposed） - 2026-02-19
+実装完了（Implemented） - 2026-02-19
 
 ## 文脈
 
@@ -183,6 +183,18 @@ chapters.json はユーザーが手動修正するため情報は最小化し、
 
 ## 実装方針
 
+### 動画走査の統合による最適化
+
+**従来の方式（2 回走査）:**
+- 第 1 走査: Round 1 画面テンプレートマッチング
+- 第 2 走査: RESULT 画面検出（各チャプターの startTime + target_time_offset をシーク）
+
+**新方式（1 回走査）:**
+- 第 1 走査で Round 1 とRESULT 画面を同時スキャン
+  - Round 1 検出 → 次の Round 1 検出前までの間に RESULT 画面も検出
+  - 動画走査は 1 回で完結
+- `target_time_offset` パラメータ廃止（固定 offset では RESULT 画面の正確な位置が不明確なため）
+
 ### 1. テンプレート画像の準備
 
 以下の 2 つのテンプレート画像をユーザーが手作業で作成：
@@ -195,7 +207,7 @@ packages/local/config/result_screen_template/
 
 **対象解像度**: 1080p（配信環境が 1080p 固定）
 
-### 2. ResultScreenDetector クラス実装
+### 2. ResultScreenDetector クラス実装（既存）
 
 ```python
 from pathlib import Path
@@ -304,61 +316,44 @@ class ResultScreenDetector:
         return "left" if centroid_x < frame_width / 2 else "right"
 ```
 
-### 3. main.py への統合
+### 3. TemplateMatcher への統合（新方式）
 
-`_run_battlelog_matching()` メソッド内に以下を追加：
+`TemplateMatcher` クラスに以下を追加：
 
 ```python
-async def _run_battlelog_matching(self):
-    """Battlelog マッピング + 画像ベース検出の統合"""
+def __init__(self, ..., result_detector: ResultScreenDetector | None = None):
+    # ... 既存の初期化処理 ...
+    self.result_detector = result_detector
 
-    # ... 既存の Battlelog マッピング処理 ...
-    chapters = await self.battlelog_matcher.match_chapters_with_battlelog(...)
-
-    # 画像テンプレートマッチングで補完
-    detector = ResultScreenDetector(
-        result_template_path=str(
-            self.app_root / "config" / "result_screen_template" / "result_screen.png"
-        ),
-        win_template_path=str(
-            self.app_root / "config" / "result_screen_template" / "win_text.png"
-        ),
-    )
-
-    # 動画ファイルを開く
-    cap = cv2.VideoCapture(self.video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-
-    for chapter in chapters:
-        # Battlelog マッピングが成功しているならスキップ
-        if chapter.get('winner_side') is not None:
-            continue
-
-        logger.info(f"Attempting image-based result detection for {chapter['matchId']}")
-
-        # RESULT 画面の推定フレーム位置（対戦開始 + 2 秒）
-        target_time = chapter['startTime'] + 2.0
-        frame_number = int(target_time * fps)
-
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+def detect_matches(self, video_path, ...) -> list[MatchDetection]:
+    # ... 既存のフレームループ ...
+    while frame_count < end_frame:
         ret, frame = cap.read()
 
-        if not ret:
-            logger.warning(f"Failed to extract frame for {chapter['matchId']}")
-            continue
+        if (frame_count - start_frame) % self.frame_interval == 0:
+            # Round 1 テンプレートマッチング（既存）
+            if round1_detected:
+                detection = MatchDetection(...)
+                detections.append(detection)
+                round1_detected = True
 
-        # 勝敗を検出
-        detection = detector.detect_result(frame)
+            # RESULT 画面マッチング（新規、統合）
+            # 直前の対戦が検出済みで RESULT 未検出の場合のみチェック
+            elif (self.result_detector is not None
+                  and len(detections) > 0
+                  and detections[-1].winner_side is None):
+                result = self.result_detector.detect_result(frame)
+                if result.winner_side is not None:
+                    detections[-1].winner_side = result.winner_side
+                    logger.info("RESULT detected at %.1fs: %s", frame_count/fps, result.winner_side)
 
-        if detection["winner_side"] is not None:
-            chapter['winner_side'] = detection["winner_side"]
-            logger.info(f"✅ Detected result: {detection['winner_side']} (win_pos={detection['win_position']})")
-        else:
-            logger.warning(f"❌ Result detection failed for {chapter['matchId']}")
-
-    cap.release()
-    return chapters
+        frame_count += 1
 ```
+
+**統合の利点:**
+- 動画走査が 1 回で完結（第 2 走査不要）
+- `target_time_offset` パラメータ廃止（固定値では不正確）
+- LoG出力が明確（「RESULT detected at」がメイン処理内に出力される）
 
 ## トレードオフと帰結
 
@@ -399,13 +394,15 @@ async def _run_battlelog_matching(self):
 
 ## 実装チェックリスト
 
-- [ ] RESULT 画面テンプレート画像作成（result_screen.png）
-- [ ] 「Win」テキストテンプレート画像作成（win_text.png）
-- [ ] `ResultScreenDetector` クラス実装
-- [ ] `main.py` への統合
-- [ ] 単体テスト：RESULT 画面検出
-- [ ] 単体テスト：「Win」位置判定
-- [ ] 24 本動画での検出実行
+- [x] RESULT 画面テンプレート画像作成（result_screen.png）
+- [x] 「Win」テキストテンプレート画像作成（win_text.png）
+- [x] `ResultScreenDetector` クラス実装
+- [x] `TemplateMatcher` への統合（第 1 走査に統合）
+- [x] `MatchDetection` に `winner_side` フィールドを追加
+- [x] `main.py` での `_run_result_screen_detection()` メソッド削除
+- [x] `config.py` から `target_time_offset` パラメータを削除
+- [x] `detection_params.json` から `target_time_offset` キーを削除
+- [ ] 24 本動画での検出実行・検証
 - [ ] 検出結果確認 & ユーザー手動修正（ADR-011）
 - [ ] detection_summary.json への結果記録確認
 

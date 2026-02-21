@@ -4,11 +4,15 @@ OpenCVを使用してフレームから対戦開始画面を検出
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
 
 from ..utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from .result_detector import ResultScreenDetector
 
 logger = get_logger()
 
@@ -21,6 +25,7 @@ class MatchDetection:
     frame_number: int
     confidence: float  # マッチング信頼度
     frame: np.ndarray  # 検出されたフレーム
+    winner_side: str | None = None  # RESULT画面検出による勝者側 ("player1" | "player2" | None)
 
 
 class TemplateMatcher:
@@ -40,6 +45,7 @@ class TemplateMatcher:
         recognize_frame_offset: int = 6,
         recognize_frame_offset_alt: int = 4,
         recognize_frame_offset_threshold: float = 5.0,
+        result_detector: "ResultScreenDetector | None" = None,
     ):
         """
         Args:
@@ -55,6 +61,7 @@ class TemplateMatcher:
             recognize_frame_offset: 認識用フレームのデフォルトオフセット（フレーム数）
             recognize_frame_offset_alt: 認識用フレームの代替オフセット（フレーム数）
             recognize_frame_offset_threshold: 動的オフセット選択の閾値（標準偏差の差分）
+            result_detector: RESULT画面検出器（オプション）- None でRESULT検出をスキップ
         """
         self.template = cv2.imread(template_path, cv2.IMREAD_COLOR)
         if self.template is None:
@@ -82,6 +89,7 @@ class TemplateMatcher:
         self.recognize_frame_offset = recognize_frame_offset
         self.recognize_frame_offset_alt = recognize_frame_offset_alt
         self.recognize_frame_offset_threshold = recognize_frame_offset_threshold
+        self.result_detector = result_detector
 
     @staticmethod
     def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
@@ -297,6 +305,8 @@ class TemplateMatcher:
                 result = cv2.matchTemplate(frame_edges, self.template_edges, cv2.TM_CCOEFF_NORMED)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
+                # Round 1テンプレート検出
+                round1_detected = False
                 if max_val >= self.threshold:
                     # 除外テンプレート（Round 2, Final Round）との照合
                     should_reject = False
@@ -368,6 +378,19 @@ class TemplateMatcher:
                             frame=cropped_frame.copy(),
                         )
                         detections.append(detection)
+                        round1_detected = True
+
+                # RESULT画面検出（Round 1検出後で、RESULT未検出の場合）
+                if (not round1_detected
+                    and self.result_detector is not None
+                    and len(detections) > 0
+                    and detections[-1].winner_side is None):
+                    # Round 1フレーム（search_region適用済み）をそのまま使用
+                    result_detection = self.result_detector.detect_result(frame)
+                    if result_detection.winner_side is not None:
+                        detections[-1].winner_side = result_detection.winner_side
+                        logger.info("RESULT detected at %.1fs: %s (win_position=%s)",
+                                    frame_count / fps, result_detection.winner_side, result_detection.win_position)
 
             frame_count += 1
 

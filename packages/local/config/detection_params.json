@@ -32,7 +32,16 @@
       "frame_interval": 2,
       "recognize_frame_offset": 6,
       "recognize_frame_offset_alt": 4,
-      "recognize_frame_offset_threshold": 5.0
+      "recognize_frame_offset_threshold": 5.0,
+      "result_detection": {
+        "enabled": true,
+        "result_template_paths": ["./template/result_template.png","./template/result_template_L.png"],
+        "win_template_paths": ["./template/win_template.png"],
+        "result_threshold": 0.3,
+        "win_threshold": 0.3,
+        "result_screen_search_region": [20, 35, 383, 150],
+        "win_text_search_region": [800, 810, 1130, 900]
+      }
     },
     "test": {
       "description": "テスト用の設定（本番と同じ）",
@@ -60,8 +69,27 @@
       "frame_interval": 2,
       "recognize_frame_offset": 6,
       "recognize_frame_offset_alt": 4,
-      "recognize_frame_offset_threshold": 5.0
+      "recognize_frame_offset_threshold": 5.0,
+      "result_detection": {
+        "enabled": true,
+        "result_template_paths": ["./result_screen_template/result_screen.png"],
+        "win_template_paths": ["./result_screen_template/win_text.png"],
+        "result_threshold": 0.3,
+        "win_threshold": 0.3,
+        "result_screen_search_region": null,
+        "win_text_search_region": null
+      }
     }
+  },
+  "result_detection_guide": {
+    "description": "RESULT画面検出パラメータの設定ガイド",
+    "enabled": "true で有効化、false で無効化",
+    "result_template_paths": "RESULT画面テンプレート画像のパスの配列（config/からの相対パス）。複数指定可能。例: [\"./template/result_template.png\", \"./template/result_template_alt.png\"]",
+    "win_template_paths": "Win テキストテンプレート画像のパスの配列（config/からの相対パス）。複数指定可能。例: [\"./template/win_template.png\", \"./template/win_template_N.png\"]",
+    "result_threshold": "RESULT画面検出の閾値（0.0-1.0、推奨: 0.25-0.35）。配列内のいずれかのテンプレートがこの閾値を超えたら検出と判定",
+    "win_threshold": "Win テキスト検出の閾値（0.0-1.0、推奨: 0.25-0.35）。配列内のいずれかのテンプレートがこの閾値を超えたら検出と判定",
+    "result_screen_search_region": "RESULT画面検出の検索領域 [x1, y1, x2, y2]、null で全体を検索。例: [0, 0, 600, 400]",
+    "win_text_search_region": "Win テキスト検出の検索領域 [x1, y1, x2, y2]、null で全体を検索。例: [300, 300, 1620, 900]"
   },
   "changelog": [
     {
