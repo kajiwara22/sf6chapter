@@ -103,14 +103,23 @@ class SF6ChapterProcessor:
         # RESULT画面検出器の初期化（設定で有効な場合）
         if self.detection_params.result_detection.enabled:
             # テンプレートパスを相対パスから絶対パスに変換（アプリケーションルートからの相対パス）
-            result_template_path = self.app_root / self.detection_params.result_detection.result_template_path
-            win_template_path = self.app_root / self.detection_params.result_detection.win_template_path
+            result_template_paths = [self.app_root / Path(p) for p in self.detection_params.result_detection.result_template_paths]
+            win_template_paths = [self.app_root / Path(p) for p in self.detection_params.result_detection.win_template_paths]
 
-            if result_template_path.exists() and win_template_path.exists():
+            # 最初の有効なテンプレートペアを使用
+            result_template_path = None
+            win_template_path = None
+            for rtp, wtp in zip(result_template_paths, win_template_paths, strict=False):
+                if rtp.exists() and wtp.exists():
+                    result_template_path = rtp
+                    win_template_path = wtp
+                    break
+
+            if result_template_path and win_template_path:
                 try:
                     self.result_detector = ResultScreenDetector(
-                        result_template_path=str(result_template_path),
-                        win_template_path=str(win_template_path),
+                        result_template_paths=[str(result_template_path)],
+                        win_template_paths=[str(win_template_path)],
                         result_threshold=self.detection_params.result_detection.result_threshold,
                         win_threshold=self.detection_params.result_detection.win_threshold,
                         result_screen_search_region=self.detection_params.result_detection.result_screen_search_region,
