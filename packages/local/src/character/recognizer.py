@@ -207,8 +207,11 @@ class CharacterRecognizer:
             try:
                 result = self.recognize_from_frame(frame)
                 results.append(result)
-            except Exception:
-                logger.exception("Error recognizing frame %d", i)
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                logger.error("Error recognizing frame %d: %s", i, e)
+                results.append(({}, {}))
+            except Exception as e:
+                logger.exception("Unexpected error recognizing frame %d: %s", i, e)
                 results.append(({}, {}))
 
         return results

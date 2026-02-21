@@ -137,9 +137,8 @@ class ResultScreenDetector:
         is_detected = max_score >= self.result_threshold
 
         logger.debug(
-            f"🔍 RESULT screen detection: "
-            f"max_match_value={max_score:.3f} | threshold={self.result_threshold:.3f} | "
-            f"templates_count={len(self.result_templates_edges)} | detected={is_detected}"
+            "🔍 RESULT screen detection: max_match_value=%.3f | threshold=%.3f | templates_count=%d | detected=%s",
+            max_score, self.result_threshold, len(self.result_templates_edges), is_detected
         )
 
         return is_detected
@@ -176,7 +175,10 @@ class ResultScreenDetector:
             all_win_matches = np.vstack([all_win_matches, win_matches]) if len(win_matches) > 0 else all_win_matches
 
         if len(all_win_matches) == 0:
-            logger.debug(f"   🔍 Win text detection: no matches (threshold={self.win_threshold:.3f}, templates_count={len(self.win_templates_edges)})")
+            logger.debug(
+                "🔍 Win text detection: no matches (threshold=%.3f, templates_count=%d)",
+                self.win_threshold, len(self.win_templates_edges)
+            )
             return "unknown"
 
         # 重心計算 (argwhereは(row, col)の順序なので注意)
@@ -187,9 +189,8 @@ class ResultScreenDetector:
         position = "left" if centroid_x < frame_center else "right"
 
         logger.debug(
-            f"   🔍 Win text detection: "
-            f"match_count={len(all_win_matches)} | templates_count={len(self.win_templates_edges)} | centroid_x={centroid_x:.1f} | "
-            f"frame_center={frame_center:.1f} | position={position}"
+            "🔍 Win text detection: match_count=%d | templates_count=%d | centroid_x=%.1f | frame_center=%.1f | position=%s",
+            len(all_win_matches), len(self.win_templates_edges), centroid_x, frame_center, position
         )
 
         return position
@@ -234,14 +235,10 @@ class ResultScreenDetector:
             result.detection_confidence = 0.8  # テンプレートマッチング信頼度
 
             logger.debug(
-                f"  [Step 2] ✅ Result detected: "
-                f"winner_side={result.winner_side} | "
-                f"win_position={win_position} | "
-                f"confidence={result.detection_confidence}"
+                "✅ Result detected: winner_side=%s | win_position=%s | confidence=%.1f",
+                result.winner_side, win_position, result.detection_confidence
             )
         else:
-            logger.debug(
-                f"  [Step 2] ⚠️ Win text position unknown: {win_position}"
-            )
+            logger.debug("⚠️ Win text position unknown: %s", win_position)
 
         return result

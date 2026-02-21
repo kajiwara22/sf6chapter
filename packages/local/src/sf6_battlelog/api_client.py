@@ -116,7 +116,7 @@ class BattlelogCollector:
                 headers=headers,
                 **kwargs,
             ) as resp:
-                logger.debug(f"{method} {url} -> {resp.status}")
+                logger.debug("%s %s -> %d", method, url, resp.status)
 
                 if resp.status == 401:
                     raise self.Unauthorized("Authentication failed (401)")
@@ -124,7 +124,7 @@ class BattlelogCollector:
                     raise self.PageNotFound(f"Endpoint not found: {url}")
                 elif resp.status >= 400:
                     text = await resp.text()
-                    logger.error(f"HTTP {resp.status}: {text[:200]}")
+                    logger.error("HTTP %d: %s", resp.status, text[:200])
                     raise RuntimeError(f"HTTP {resp.status}: {text[:200]}")
 
                 if response_type == "text":
@@ -194,8 +194,8 @@ class BattlelogCollector:
             params["home_character_id"] = home_character_id
 
         logger.info(
-            f"Fetching matches for player {player_id} "
-            f"from {date_from} to {date_to}"
+            "Fetching matches for player %s from %s to %s",
+            player_id, date_from, date_to
         )
 
         # 複数のエンドポイント候補を試す
@@ -208,29 +208,29 @@ class BattlelogCollector:
         last_error = None
         for endpoint in endpoints:
             try:
-                logger.debug(f"Trying endpoint: {endpoint}")
+                logger.debug("Trying endpoint: %s", endpoint)
                 result = await self._request(
                     "GET",
                     endpoint,
                     params=params,
                 )
-                logger.info(f"Successfully fetched from {endpoint}")
+                logger.info("Successfully fetched from %s", endpoint)
                 return result.get("matches", result) if isinstance(result, dict) else result
 
             except self.PageNotFound as e:
                 last_error = e
-                logger.debug(f"Endpoint not found: {endpoint}")
+                logger.debug("Endpoint not found: %s", endpoint)
                 continue
-            except Exception as e:
+            except (RuntimeError, aiohttp.ClientError) as e:
                 last_error = e
-                logger.debug(f"Error on {endpoint}: {e}")
+                logger.debug("Error on %s: %s", endpoint, e)
                 continue
 
         # すべてのエンドポイントが失敗
-        logger.error(f"All endpoints failed. Last error: {last_error}")
+        logger.error("All endpoints failed. Last error: %s", last_error)
         raise RuntimeError(
             f"Could not fetch matches from any endpoint. Last error: {last_error}"
-        )
+        ) from last_error
 
     async def get_battlelog_html(
         self,
@@ -259,7 +259,7 @@ class BattlelogCollector:
             f"profile/{player_id}/battlelog"
         )
 
-        logger.info(f"Fetching battlelog for player {player_id}, page {page}")
+        logger.info("Fetching battlelog for player %s, page %d", player_id, page)
 
         # ページパラメータを付与
         params = {"page": str(page)}
@@ -271,7 +271,7 @@ class BattlelogCollector:
             params=params,
         )
 
-        logger.debug(f"Fetched battlelog HTML: {len(html)} chars")
+        logger.debug("Fetched battlelog HTML: %d chars", len(html))
         return html
 
     async def get_replay_list(
@@ -315,9 +315,9 @@ class BattlelogCollector:
         try:
             next_data = BattlelogParser.extract_next_data(html)
             api_replays = BattlelogParser.get_replay_list(next_data)
-            logger.info(f"Successfully extracted {len(api_replays)} replays from API")
-        except (ValueError, KeyError, Exception) as e:
-            logger.error(f"Failed to extract replay list: {e}")
+            logger.info("Successfully extracted %d replays from API", len(api_replays))
+        except (ValueError, KeyError) as e:
+            logger.error("Failed to extract replay list: %s", e)
             raise RuntimeError(f"Failed to parse battlelog HTML: {e}") from e
 
         # 3. キャッシュにない対戦ログを抽出
@@ -366,8 +366,8 @@ class BattlelogCollector:
         latest_cached_at = self.cache.get_latest_uploaded_at(player_id)
 
         logger.info(
-            f"Starting incremental fetch for {player_id}: "
-            f"latest_cached_at={latest_cached_at}, cached_count={len(cached_replays)}"
+            "Starting incremental fetch for %s: latest_cached_at=%s, cached_count=%d",
+            player_id, latest_cached_at, len(cached_replays)
         )
 
         all_new_replays = []
@@ -385,11 +385,11 @@ class BattlelogCollector:
                 next_data = BattlelogParser.extract_next_data(html)
                 page_replays = BattlelogParser.get_replay_list(next_data)
                 logger.info(
-                    f"Fetching battlelog for player {player_id}, page {page}: "
-                    f"got {len(page_replays)} replays"
+                    "Fetching battlelog for player %s, page %d: got %d replays",
+                    player_id, page, len(page_replays)
                 )
-            except (ValueError, KeyError, Exception) as e:
-                logger.error(f"Failed to parse page {page}: {e}")
+            except (ValueError, KeyError) as e:
+                logger.error("Failed to parse page %d: %s", page, e)
                 break
 
             # 3. キャッシュにない対戦ログを抽出
@@ -401,28 +401,19 @@ class BattlelogCollector:
             if new_page_replays:
                 all_new_replays.extend(new_page_replays)
                 self.cache.cache_replays(player_id, new_page_replays)
-                logger.info(f"Cached {len(new_page_replays)} new replays from page {page}")
+                logger.info("Cached %d new replays from page %d", len(new_page_replays), page)
 
             # 4. キャッシュ境界に到達したか確認
             if self.cache.has_reached_cache_boundary(player_id, page_replays):
-                logger.info(
-                    f"Reached cache boundary at page {page}. "
-                    f"Stopping incremental fetch."
-                )
+                logger.info("Reached cache boundary at page %d. Stopping incremental fetch.", page)
                 break
 
             # 5. ラストページの判定（10件未満）
             if len(page_replays) < 10:
-                logger.info(
-                    f"Page {page} has only {len(page_replays)} replays. "
-                    f"This is likely the last page. Stopping fetch."
-                )
+                logger.info("Page %d has only %d replays. This is likely the last page.", page, len(page_replays))
                 break
 
-        logger.info(
-            f"Incremental fetch completed: "
-            f"fetched {len(all_new_replays)} new replays"
-        )
+        logger.info("Incremental fetch completed: fetched %d new replays", len(all_new_replays))
 
         # 6. キャッシュ + 新規データをマージして返却
         return cached_replays + all_new_replays
@@ -453,10 +444,10 @@ class BattlelogCollector:
         try:
             next_data = BattlelogParser.extract_next_data(html)
             pagination_info = BattlelogParser.get_pagination_info(next_data)
-            logger.info(f"Pagination: {pagination_info}")
+            logger.info("Pagination: %s", pagination_info)
             return pagination_info
-        except (ValueError, KeyError, Exception) as e:
-            logger.error(f"Failed to extract pagination info: {e}")
+        except (ValueError, KeyError) as e:
+            logger.error("Failed to extract pagination info: %s", e)
             raise RuntimeError(f"Failed to parse battlelog HTML: {e}") from e
 
     async def get_friends(self) -> dict[str, Any]:
@@ -481,19 +472,19 @@ class BattlelogCollector:
         last_error = None
         for endpoint in endpoints:
             try:
-                logger.debug(f"Trying endpoint: {endpoint}")
+                logger.debug("Trying endpoint: %s", endpoint)
                 result = await self._request("GET", endpoint)
-                logger.info(f"Connection test successful via {endpoint}")
+                logger.info("Connection test successful via %s", endpoint)
                 return result
 
             except self.PageNotFound:
                 last_error = "PageNotFound"
                 continue
-            except Exception as e:
+            except (RuntimeError, aiohttp.ClientError) as e:
                 last_error = e
                 continue
 
-        raise RuntimeError(f"Connection test failed. Last error: {last_error}")
+        raise RuntimeError(f"Connection test failed. Last error: {last_error}") from last_error
 
     # 同期版メソッド
     def get_matches_sync(

@@ -205,7 +205,7 @@ class TemplateMatcher:
 
         # 読み込み失敗時のフォールバック
         if not ret_offset and not ret_alt:
-            logger.warning("Failed to read both offset frames, returning None")
+            logger.warning("Failed to read both offset frames")
             return None, 0
         if not ret_offset:
             logger.warning("Failed to read default offset frame, using alt offset")
@@ -264,140 +264,139 @@ class TemplateMatcher:
         if not cap.isOpened():
             raise OSError(f"Cannot open video: {video_path}")
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        start_frame = int(start_sec * fps)
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            start_frame = int(start_sec * fps)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
-        end_frame = start_frame + int(duration_sec * fps) if duration_sec is not None else total_frames
+            end_frame = start_frame + int(duration_sec * fps) if duration_sec is not None else total_frames
 
-        detections: list[MatchDetection] = []
-        frame_count = start_frame
-        prev_timestamp: float | None = None
+            detections: list[MatchDetection] = []
+            frame_count = start_frame
+            prev_timestamp: float | None = None
 
-        logger.info("Scanning video from %.1fs to %.1fs...", start_sec, end_frame / fps)
-        logger.info("Threshold is %.2f", self.threshold)
+            logger.info("Scanning video from %.1fs to %.1fs...", start_sec, end_frame / fps)
+            logger.info("Threshold is %.2f", self.threshold)
 
-        while frame_count < end_frame:
-            ret, frame = cap.read()
-            if not ret:
-                break
+            while frame_count < end_frame:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-            # 進捗表示（10秒ごと）
-            if (frame_count - start_frame) % int(fps * 10) == 0:
-                progress = 100 * (frame_count - start_frame) / (end_frame - start_frame)
-                logger.info("Progress: %.1f%% (%d/%d frames)", progress, frame_count - start_frame, end_frame - start_frame)
+                # 進捗表示（10秒ごと）
+                if (frame_count - start_frame) % int(fps * 10) == 0:
+                    progress = 100 * (frame_count - start_frame) / (end_frame - start_frame)
+                    logger.info("Progress: %.1f%% (%d/%d frames)", progress, frame_count - start_frame, end_frame - start_frame)
 
-            # frame_interval毎にマッチング
-            if (frame_count - start_frame) % self.frame_interval == 0:
-                # 検索範囲を限定
-                if self.search_region:
-                    x1, y1, x2, y2 = self.search_region
-                    search_frame = frame[y1:y2, x1:x2]
-                else:
-                    search_frame = frame
+                # frame_interval毎にマッチング
+                if (frame_count - start_frame) % self.frame_interval == 0:
+                    # 検索範囲を限定
+                    if self.search_region:
+                        x1, y1, x2, y2 = self.search_region
+                        search_frame = frame[y1:y2, x1:x2]
+                    else:
+                        search_frame = frame
 
-                # フレームを前処理（エッジ抽出）
-                frame_edges = self._preprocess_for_matching(search_frame)
+                    # フレームを前処理（エッジ抽出）
+                    frame_edges = self._preprocess_for_matching(search_frame)
 
-                # エッジ画像同士でマッチング
-                result = cv2.matchTemplate(frame_edges, self.template_edges, cv2.TM_CCOEFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+                    # エッジ画像同士でマッチング
+                    result = cv2.matchTemplate(frame_edges, self.template_edges, cv2.TM_CCOEFF_NORMED)
+                    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
-                # Round 1テンプレート検出
-                round1_detected = False
-                if max_val >= self.threshold:
-                    # 除外テンプレート（Round 2, Final Round）との照合
-                    should_reject = False
-                    reject_reason = ""
-                    for idx, reject_template in enumerate(self.reject_templates_edges):
-                        reject_result = cv2.matchTemplate(frame_edges, reject_template, cv2.TM_CCOEFF_NORMED)
-                        _, reject_max_val, _, _ = cv2.minMaxLoc(reject_result)
+                    # Round 1テンプレート検出
+                    round1_detected = False
+                    if max_val >= self.threshold:
+                        # 除外テンプレート（Round 2, Final Round）との照合
+                        should_reject = False
+                        reject_reason = ""
+                        for idx, reject_template in enumerate(self.reject_templates_edges):
+                            reject_result = cv2.matchTemplate(frame_edges, reject_template, cv2.TM_CCOEFF_NORMED)
+                            _, reject_max_val, _, _ = cv2.minMaxLoc(reject_result)
 
-                        if reject_max_val >= self.reject_threshold:
-                            should_reject = True
-                            reject_reason = f"reject_template_{idx} (confidence: {reject_max_val:.3f})"
-                            break
+                            if reject_max_val >= self.reject_threshold:
+                                should_reject = True
+                                reject_reason = f"reject_template_{idx} (confidence: {reject_max_val:.3f})"
+                                break
 
-                    if should_reject:
-                        logger.info("Rejected match at %.1fs - matched %s", frame_count / fps, reject_reason)
-                        frame_count += 1
-                        continue
+                        if should_reject:
+                            logger.info("Rejected match at %.1fs - matched %s", frame_count / fps, reject_reason)
+                            frame_count += 1
+                            continue
 
-                    timestamp = frame_count / fps
+                        timestamp = frame_count / fps
 
-                    # 連続マッチのスキップ
-                    if prev_timestamp is None or timestamp - prev_timestamp >= self.min_interval_sec:
-                        # 後続フレームで除外テンプレートマッチをチェック
-                        if self.reject_templates_edges and self.post_check_frames > 0:
-                            subsequent_reject_count = self._check_subsequent_frames(
-                                cap, frame_count + 1, self.post_check_frames
-                            )
-
-                            if subsequent_reject_count >= self.post_check_reject_limit:
-                                logger.info(
-                                    "Rejected match at %.1fs - subsequent frames have %d reject matches (limit: %d)",
-                                    timestamp, subsequent_reject_count, self.post_check_reject_limit
+                        # 連続マッチのスキップ
+                        if prev_timestamp is None or timestamp - prev_timestamp >= self.min_interval_sec:
+                            # 後続フレームで除外テンプレートマッチをチェック
+                            if self.reject_templates_edges and self.post_check_frames > 0:
+                                subsequent_reject_count = self._check_subsequent_frames(
+                                    cap, frame_count + 1, self.post_check_frames
                                 )
-                                # 誤検知判定されたら、次のチェックまでスキップ
-                                prev_timestamp = timestamp
-                                frame_count += 1
-                                continue
 
-                        prev_timestamp = timestamp
+                                if subsequent_reject_count >= self.post_check_reject_limit:
+                                    logger.info(
+                                        "Rejected match at %.1fs - subsequent frames have %d reject matches (limit: %d)",
+                                        timestamp, subsequent_reject_count, self.post_check_reject_limit
+                                    )
+                                    # 誤検知判定されたら、次のチェックまでスキップ
+                                    prev_timestamp = timestamp
+                                    frame_count += 1
+                                    continue
 
-                        logger.info("Match detected at %.1fs (confidence: %.3f)", timestamp, max_val)
+                            prev_timestamp = timestamp
 
-                        # 認識用フレームを取得（動的オフセット選択）
-                        recognize_frame = frame
-                        used_offset = 0
-                        if self.recognize_frame_offset > 0:
-                            selected_frame, used_offset = self._select_best_offset_frame(
-                                cap, frame_count, crop_region
-                            )
-                            if selected_frame is not None:
-                                recognize_frame = selected_frame
-                            else:
-                                logger.warning(
-                                    "  → Failed to read offset frames, using original frame"
+                            logger.info("Match detected at %.1fs (confidence: %.3f)", timestamp, max_val)
+
+                            # 認識用フレームを取得（動的オフセット選択）
+                            recognize_frame = frame
+                            used_offset = 0
+                            if self.recognize_frame_offset > 0:
+                                selected_frame, used_offset = self._select_best_offset_frame(
+                                    cap, frame_count, crop_region
                                 )
-                            # 現在位置を元に戻す（次のループのため）
-                            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count + 1)
+                                if selected_frame is not None:
+                                    recognize_frame = selected_frame
+                                else:
+                                    logger.warning("Failed to read offset frames, using original frame")
+                                # 現在位置を元に戻す（次のループのため）
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count + 1)
 
-                        # キャラクター名領域を切り抜き
-                        cropped_frame = recognize_frame
-                        if crop_region:
-                            x1, y1, x2, y2 = crop_region
-                            cropped_frame = recognize_frame[y1:y2, x1:x2]
+                            # キャラクター名領域を切り抜き
+                            cropped_frame = recognize_frame
+                            if crop_region:
+                                x1, y1, x2, y2 = crop_region
+                                cropped_frame = recognize_frame[y1:y2, x1:x2]
 
-                        detection = MatchDetection(
-                            timestamp=timestamp,
-                            frame_number=frame_count,
-                            confidence=float(max_val),
-                            frame=cropped_frame.copy(),
-                        )
-                        detections.append(detection)
-                        round1_detected = True
+                            detection = MatchDetection(
+                                timestamp=timestamp,
+                                frame_number=frame_count,
+                                confidence=float(max_val),
+                                frame=cropped_frame.copy(),
+                            )
+                            detections.append(detection)
+                            round1_detected = True
 
-                # RESULT画面検出（Round 1検出後で、RESULT未検出の場合）
-                if (not round1_detected
-                    and self.result_detector is not None
-                    and len(detections) > 0
-                    and detections[-1].winner_side is None):
-                    # Round 1フレーム（search_region適用済み）をそのまま使用
-                    result_detection = self.result_detector.detect_result(frame)
-                    if result_detection.winner_side is not None:
-                        detections[-1].winner_side = result_detection.winner_side
-                        logger.info("RESULT detected at %.1fs: %s (win_position=%s)",
-                                    frame_count / fps, result_detection.winner_side, result_detection.win_position)
+                    # RESULT画面検出（Round 1検出後で、RESULT未検出の場合）
+                    if (not round1_detected
+                        and self.result_detector is not None
+                        and len(detections) > 0
+                        and detections[-1].winner_side is None):
+                        # Round 1フレーム（search_region適用済み）をそのまま使用
+                        result_detection = self.result_detector.detect_result(frame)
+                        if result_detection.winner_side is not None:
+                            detections[-1].winner_side = result_detection.winner_side
+                            logger.info("RESULT detected at %.1fs: %s (win_position=%s)",
+                                        frame_count / fps, result_detection.winner_side, result_detection.win_position)
 
-            frame_count += 1
+                frame_count += 1
 
-        cap.release()
-        logger.info("Detection complete. Found %d matches.", len(detections))
-
-        return detections
+            logger.info("Detection complete. Found %d matches.", len(detections))
+            return detections
+        finally:
+            cap.release()
 
     @staticmethod
     def save_detection_frame(detection: MatchDetection, output_path: str) -> None:
