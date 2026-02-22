@@ -331,14 +331,14 @@ class BattlelogCacheManager:
         current_page_replays: list[dict[str, Any]],
     ) -> bool:
         """
-        現在のページが最新キャッシュに到達したかを判定
+        現在のページがすべてキャッシュ済みかを判定（キャッシュ境界到達判定）
 
         Args:
             player_id: プレイヤーID
             current_page_replays: 現在のページから取得した対戦ログリスト
 
         Returns:
-            キャッシュ境界に到達した場合は True
+            キャッシュ境界に到達した場合は True（ページのすべてがキャッシュ済み）
 
         Raises:
             sqlite3.Error: データベースエラー
@@ -347,19 +347,19 @@ class BattlelogCacheManager:
             logger.debug(f"Empty page for {player_id}: reached boundary")
             return True  # 空ページ = 終了
 
-        latest_cached_at = self.get_latest_uploaded_at(player_id)
-        if latest_cached_at is None:
+        # 現在のページのキャッシュ済みupload_atの集合を取得
+        cached_uploaded_at_set = self.get_cached_uploaded_at_set(player_id)
+        if not cached_uploaded_at_set:
             logger.debug(f"No cache for {player_id}: continue fetching")
             return False  # キャッシュなし = まだ続行
 
-        # 現在のページの最も古い対戦ログがキャッシュの最新より古い = 境界到達
-        oldest_in_page = min(
-            int(r.get("uploaded_at", float("inf"))) for r in current_page_replays
-        )
-        has_reached = oldest_in_page <= latest_cached_at
+        # 現在のページのすべてがキャッシュ済みか確認
+        page_uploaded_ats = {str(r.get("uploaded_at")) for r in current_page_replays}
+        all_cached = page_uploaded_ats.issubset(cached_uploaded_at_set)
+
         logger.debug(
             f"Cache boundary check for {player_id}: "
-            f"oldest_in_page={oldest_in_page}, latest_cached_at={latest_cached_at}, "
-            f"reached={has_reached}"
+            f"page_count={len(page_uploaded_ats)}, "
+            f"all_cached={all_cached}"
         )
-        return has_reached
+        return all_cached

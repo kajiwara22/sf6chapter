@@ -403,9 +403,9 @@ class BattlelogCollector:
                 self.cache.cache_replays(player_id, new_page_replays)
                 logger.info("Cached %d new replays from page %d", len(new_page_replays), page)
 
-            # 4. キャッシュ境界に到達したか確認
-            if self.cache.has_reached_cache_boundary(player_id, page_replays):
-                logger.info("Reached cache boundary at page %d. Stopping incremental fetch.", page)
+            # 4. キャッシュ境界に到達したか確認（新規リプレイがない = 境界到達）
+            if not new_page_replays:
+                logger.info("No new replays found on page %d. Reached cache boundary. Stopping incremental fetch.", page)
                 break
 
             # 5. ラストページの判定（10件未満）
