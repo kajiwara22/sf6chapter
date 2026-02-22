@@ -10,12 +10,14 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+__all__ = ["get_oauth_credentials"]
+
 
 def get_oauth_credentials(
     client_secrets_file: str = "client_secrets.json",
     token_file: str = "token.pickle",
     scopes: list[str] | None = None,
-) -> Credentials:
+) -> Credentials:  # noqa: D102
     """
     OAuth2認証情報を取得
 

@@ -10,6 +10,8 @@ from googleapiclient.discovery import build
 from ..auth import get_oauth_credentials
 from ..utils.logger import get_logger
 
+__all__ = ["YouTubeChapterUpdater"]
+
 logger = get_logger()
 
 

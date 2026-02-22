@@ -8,7 +8,7 @@ Battlelog API のレスポンスをキャッシュして、重複リクエスト
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from src.utils.logger import get_logger
 
@@ -225,7 +225,7 @@ class BattlelogCacheManager:
         finally:
             conn.close()
 
-    def clear_cache(self, player_id: Optional[str] = None) -> int:
+    def clear_cache(self, player_id: str | None = None) -> int:
         """
         キャッシュをクリア
 

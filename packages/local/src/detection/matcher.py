@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from ..utils.logger import get_logger
+from .preprocessing import preprocess_for_matching
 
 if TYPE_CHECKING:
     from .result_detector import ResultScreenDetector
@@ -68,7 +69,7 @@ class TemplateMatcher:
             raise FileNotFoundError(f"Template image not found: {template_path}")
 
         # テンプレートを前処理（エッジ抽出）
-        self.template_edges = self._preprocess_for_matching(self.template)
+        self.template_edges = preprocess_for_matching(self.template)
 
         # 除外用テンプレート（Round 2, Final Round）
         self.reject_templates_edges = []
@@ -76,7 +77,7 @@ class TemplateMatcher:
             for reject_path in reject_templates:
                 reject_img = cv2.imread(reject_path, cv2.IMREAD_COLOR)
                 if reject_img is not None:
-                    reject_edges = self._preprocess_for_matching(reject_img)
+                    reject_edges = preprocess_for_matching(reject_img)
                     self.reject_templates_edges.append(reject_edges)
 
         self.threshold = threshold
@@ -90,23 +91,6 @@ class TemplateMatcher:
         self.recognize_frame_offset_alt = recognize_frame_offset_alt
         self.recognize_frame_offset_threshold = recognize_frame_offset_threshold
         self.result_detector = result_detector
-
-    @staticmethod
-    def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
-        """
-        文字検出用の前処理: エッジ抽出
-        背景の影響を除去して文字の輪郭を強調
-        """
-        # グレースケール化
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-
-        # ガウシアンブラーでノイズ除去
-        blurred = cv2.GaussianBlur(gray, (17, 17), 0)
-
-        # Cannyエッジ検出
-        edges = cv2.Canny(blurred, 50, 150)
-
-        return edges
 
     def _check_subsequent_frames(self, cap: cv2.VideoCapture, start_frame: int, num_frames: int) -> int:
         """
@@ -137,7 +121,7 @@ class TemplateMatcher:
                 search_frame = frame
 
             # フレームを前処理
-            frame_edges = self._preprocess_for_matching(search_frame)
+            frame_edges = preprocess_for_matching(search_frame)
 
             # 除外テンプレートとマッチング
             for reject_template in self.reject_templates_edges:
@@ -300,7 +284,7 @@ class TemplateMatcher:
                         search_frame = frame
 
                     # フレームを前処理（エッジ抽出）
-                    frame_edges = self._preprocess_for_matching(search_frame)
+                    frame_edges = preprocess_for_matching(search_frame)
 
                     # エッジ画像同士でマッチング
                     result = cv2.matchTemplate(frame_edges, self.template_edges, cv2.TM_CCOEFF_NORMED)

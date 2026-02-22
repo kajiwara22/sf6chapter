@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from ..utils.logger import get_logger
+from .preprocessing import preprocess_for_matching
 
 logger = get_logger()
 
@@ -63,7 +64,7 @@ class ResultScreenDetector:
             template = cv2.imread(template_path, cv2.IMREAD_COLOR)
             if template is None:
                 raise FileNotFoundError(f"Result template not found: {template_path}")
-            template_edges = self._preprocess_for_matching(template)
+            template_edges = preprocess_for_matching(template)
             self.result_templates_edges.append(template_edges)
 
         # 「Win」テキストテンプレート（複数対応）
@@ -72,39 +73,13 @@ class ResultScreenDetector:
             template = cv2.imread(template_path, cv2.IMREAD_COLOR)
             if template is None:
                 raise FileNotFoundError(f"Win template not found: {template_path}")
-            template_edges = self._preprocess_for_matching(template)
+            template_edges = preprocess_for_matching(template)
             self.win_templates_edges.append(template_edges)
 
         self.result_threshold = result_threshold
         self.win_threshold = win_threshold
         self.result_screen_search_region = result_screen_search_region
         self.win_text_search_region = win_text_search_region
-
-    @staticmethod
-    def _preprocess_for_matching(image: np.ndarray) -> np.ndarray:
-        """
-        テンプレートマッチング用の前処理：エッジ抽出
-
-        Args:
-            image: 入力画像 (BGR)
-
-        Returns:
-            エッジ抽出済みのグレースケール画像
-        """
-        # グレースケール化
-        gray = (
-            cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-            if len(image.shape) == 3
-            else image
-        )
-
-        # ガウシアンブラーでノイズ除去
-        blurred = cv2.GaussianBlur(gray, (17, 17), 0)
-
-        # Cannyエッジ検出
-        edges = cv2.Canny(blurred, 50, 150)
-
-        return edges
 
     def _has_result_screen(self, frame: np.ndarray) -> bool:
         """
@@ -123,7 +98,7 @@ class ResultScreenDetector:
         else:
             search_frame = frame
 
-        frame_edges = self._preprocess_for_matching(search_frame)
+        frame_edges = preprocess_for_matching(search_frame)
 
         # 複数テンプレートのいずれかが閾値を超えたかチェック
         max_score = 0.0
@@ -162,7 +137,7 @@ class ResultScreenDetector:
             search_frame = frame
             region_offset_x = 0
 
-        frame_edges = self._preprocess_for_matching(search_frame)
+        frame_edges = preprocess_for_matching(search_frame)
 
         # 複数テンプレートのマッチ結果を集約
         all_win_matches = np.empty((0, 2), dtype=np.int64)
