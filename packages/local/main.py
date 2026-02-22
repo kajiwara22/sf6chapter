@@ -100,43 +100,188 @@ class SF6ChapterProcessor:
         self.character_normalizer = CharacterNormalizer(aliases_file=str(aliases_path) if aliases_path.exists() else None)
         self.battlelog_matcher = BattlelogMatcher(normalizer=self.character_normalizer)
 
-        # RESULT画面検出器の初期化（設定で有効な場合）
-        if self.detection_params.result_detection.enabled:
-            # テンプレートパスを相対パスから絶対パスに変換（アプリケーションルートからの相対パス）
-            result_template_paths = [self.app_root / Path(p) for p in self.detection_params.result_detection.result_template_paths]
-            win_template_paths = [self.app_root / Path(p) for p in self.detection_params.result_detection.win_template_paths]
+        # RESULT画面検出器の初期化
+        self.result_detector = _initialize_result_screen_detector(self.app_root, self.detection_params)
+        if self.result_detector:
+            # TemplateMatcher に result_detector を設定（動画走査内で RESULT検出を統合）
+            self.matcher.result_detector = self.result_detector
 
-            # 最初の有効なテンプレートペアを使用
-            result_template_path = None
-            win_template_path = None
-            for rtp, wtp in zip(result_template_paths, win_template_paths, strict=False):
-                if rtp.exists() and wtp.exists():
-                    result_template_path = rtp
-                    win_template_path = wtp
-                    break
+    def _detect_and_recognize(
+        self, video_id: str, video_path: str, message_data: dict[str, Any], video_intermediate_dir: Path
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """
+        動画から対戦を検出し、キャラクター認識を実行
 
-            if result_template_path and win_template_path:
-                try:
-                    self.result_detector = ResultScreenDetector(
-                        result_template_paths=[str(result_template_path)],
-                        win_template_paths=[str(win_template_path)],
-                        result_threshold=self.detection_params.result_detection.result_threshold,
-                        win_threshold=self.detection_params.result_detection.win_threshold,
-                        result_screen_search_region=self.detection_params.result_detection.result_screen_search_region,
-                        win_text_search_region=self.detection_params.result_detection.win_text_search_region,
+        Returns:
+            (matches, chapters) のタプル
+        """
+        # 2. テンプレートマッチングで対戦シーンを検出
+        logger.info("[2/6] Detecting match scenes...")
+        detections = self.matcher.detect_matches(
+            video_path=video_path,
+            crop_region=self.detection_params.crop_region,
+        )
+        logger.info("Found %d matches", len(detections))
+        self._save_detection_summary(video_id, video_intermediate_dir, detections)
+
+        if not detections:
+            logger.info("No matches found, skipping video")
+            return [], []
+
+        # 3. Gemini APIでキャラクター認識
+        logger.info("[3/6] Recognizing characters...")
+        matches: list[dict[str, Any]] = []
+        chapters: list[dict[str, Any]] = []
+
+        for i, detection in enumerate(detections, 1):
+            try:
+                frame_path = video_intermediate_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
+                self.matcher.save_detection_frame(detection, str(frame_path))
+                normalized, raw = self.recognizer.recognize_from_frame(detection.frame)
+                match_id = f"{video_id}_{int(detection.timestamp)}"
+
+                match_data = {
+                    "id": match_id,
+                    "videoId": video_id,
+                    "videoTitle": message_data.get("title", ""),
+                    "videoPublishedAt": message_data.get("publishedAt", ""),
+                    "startTime": int(detection.timestamp),
+                    "player1": {
+                        "character": normalized.get("1p", "Unknown"),
+                        "characterRaw": raw.get("1p", ""),
+                        "side": "left",
+                        "result": None,
+                    },
+                    "player2": {
+                        "character": normalized.get("2p", "Unknown"),
+                        "characterRaw": raw.get("2p", ""),
+                        "side": "right",
+                        "result": None,
+                    },
+                    "detectedAt": datetime.utcnow().isoformat() + "Z",
+                    "confidence": detection.confidence,
+                    "templateMatchScore": detection.confidence,
+                    "frameTimestamp": detection.frame_number,
+                    "savedFramePath": str(frame_path),
+                }
+                matches.append(match_data)
+
+                chapter = {
+                    "startTime": int(detection.timestamp),
+                    "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
+                    "matchId": match_id,
+                    "winner_side": detection.winner_side,
+                }
+                chapters.append(chapter)
+                logger.info("  %s at %.1fs", chapter["title"], detection.timestamp)
+
+            except Exception:
+                logger.exception("Error recognizing characters for match %d", i)
+                continue
+
+        return matches, chapters
+
+    def _apply_match_results(
+        self, matches: list[dict[str, Any]], chapters_with_result: list[dict[str, Any]]
+    ) -> None:
+        """
+        マッチデータに結果情報を反映（Battlelog + RESULT検出）
+        """
+        chapter_map = {ch.get("matchId"): ch for ch in chapters_with_result}
+        for match in matches:
+            match_id = match.get("id")
+            if match_id not in chapter_map:
+                continue
+
+            chapter = chapter_map[match_id]
+
+            # 1. Battlelog マッピング結果から result を取得
+            if chapter.get("player1_result"):
+                match["player1"]["result"] = chapter.get("player1_result")
+            if chapter.get("player2_result"):
+                match["player2"]["result"] = chapter.get("player2_result")
+
+            # 2. RESULT 検出結果から result を推定
+            if match["player1"]["result"] is None:
+                winner_side = chapter.get("winner_side")
+                if winner_side:
+                    if winner_side == "player1":
+                        match["player1"]["result"] = "win"
+                        match["player2"]["result"] = "loss"
+                    elif winner_side == "player2":
+                        match["player1"]["result"] = "loss"
+                        match["player2"]["result"] = "win"
+                    logger.info(
+                        "Set result from RESULT detection for matchId=%s: winner_side=%s",
+                        match_id,
+                        winner_side,
                     )
-                    # TemplateMatcher に result_detector を設定（動画走査内で RESULT検出を統合）
-                    self.matcher.result_detector = self.result_detector
-                    logger.info("✅ ResultScreenDetector initialized with config parameters")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to initialize ResultScreenDetector: {e}")
-                    self.result_detector = None
-            else:
-                logger.warning("⚠️ Result screen templates not found, skipping ResultScreenDetector initialization")
-                self.result_detector = None
+
+    def _save_to_storage(
+        self, video_id: str, message_data: dict[str, Any],
+        chapters_with_result: list[dict[str, Any]], matches: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """
+        データを R2 またはローカルストレージに保存
+
+        Returns:
+            生成された video_data
+        """
+        video_data = {
+            "videoId": video_id,
+            "title": message_data.get("title", ""),
+            "channelId": message_data.get("channelId", ""),
+            "channelTitle": message_data.get("channelTitle", ""),
+            "publishedAt": message_data.get("publishedAt", ""),
+            "processedAt": datetime.utcnow().isoformat() + "Z",
+            "chapters": chapters_with_result,
+            "detectionStats": {
+                "totalFrames": 0,
+                "matchedFrames": len(chapters_with_result),
+            },
+        }
+
+        if self.enable_r2 and self.r2_uploader:
+            logger.info("[5/6] Uploading JSON data to R2...")
+            self.r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
+
+            # Battlelog メタデータを matches に追加
+            chapter_map = {ch.get("matchId"): ch for ch in chapters_with_result}
+            for match in matches:
+                match_id = match.get("id")
+                if match_id in chapter_map:
+                    chapter = chapter_map[match_id]
+                    match["battlelogMatched"] = chapter.get("matched", False)
+                    match["battlelogConfidence"] = chapter.get("confidence", "low")
+                    match["battlelogReplayId"] = chapter.get("replay_id")
+                    match["battlelogTimeDiff"] = chapter.get("time_difference_seconds")
+
+            # アップロード
+            for match in matches:
+                self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
+
+            logger.info("[6/6] Updating Parquet files...")
+            self.r2_uploader.update_parquet_table([video_data], "videos.parquet", video_id=video_id)
+            self.r2_uploader.update_parquet_table(matches, "matches.parquet", video_id=video_id)
         else:
-            logger.info("⚠️ Result detection disabled in config")
-            self.result_detector = None
+            logger.info("[5/6] R2 upload disabled (ENABLE_R2=false)")
+            logger.info("[6/6] Skipping Parquet update")
+
+            import json
+            output_dir = Path("./output")
+            output_dir.mkdir(exist_ok=True)
+
+            video_json_path = output_dir / f"{video_id}_video.json"
+            with open(video_json_path, "w", encoding="utf-8") as f:
+                json.dump(video_data, f, ensure_ascii=False, indent=2)
+            logger.info("   Saved video data: %s", video_json_path)
+
+            matches_json_path = output_dir / f"{video_id}_matches.json"
+            with open(matches_json_path, "w", encoding="utf-8") as f:
+                json.dump(matches, f, ensure_ascii=False, indent=2)
+            logger.info("   Saved matches data: %s", matches_json_path)
+
+        return video_data
 
     def process_video(self, message_data: dict[str, Any]) -> None:
         """
@@ -161,10 +306,7 @@ class SF6ChapterProcessor:
             logger.info("=" * 60)
             return
 
-        # 処理開始をFirestoreに記録
         self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
-
-        # 中間ファイル保存用ディレクトリを作成
         video_intermediate_dir = self.intermediate_dir / video_id
         video_intermediate_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,207 +316,31 @@ class SF6ChapterProcessor:
             video_path = self.downloader.download(video_id)
             logger.info("Downloaded: %s", video_path)
 
-            # 2. テンプレートマッチングで対戦シーンを検出
-            logger.info("[2/6] Detecting match scenes...")
-            detections = self.matcher.detect_matches(
-                video_path=video_path,
-                crop_region=self.detection_params.crop_region,
-            )
-            logger.info("Found %d matches", len(detections))
-
-            # 検出結果を中間ファイルに保存
-            self._save_detection_summary(video_id, video_intermediate_dir, detections)
-
-            if not detections:
+            # 2-3. 検出・認識
+            matches, chapters = self._detect_and_recognize(video_id, video_path, message_data, video_intermediate_dir)
+            if not matches:
                 logger.info("No matches found, skipping video")
                 return
-
-            # 3. Gemini APIでキャラクター認識
-            logger.info("[3/6] Recognizing characters...")
-            matches: list[dict[str, Any]] = []
-            chapters: list[dict[str, Any]] = []
-
-            for i, detection in enumerate(detections, 1):
-                try:
-                    # フレーム画像を保存
-                    frame_path = video_intermediate_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
-                    self.matcher.save_detection_frame(detection, str(frame_path))
-
-                    normalized, raw = self.recognizer.recognize_from_frame(detection.frame)
-
-                    match_id = f"{video_id}_{int(detection.timestamp)}"
-                    match_data = {
-                        "id": match_id,
-                        "videoId": video_id,
-                        "videoTitle": message_data.get("title", ""),
-                        "videoPublishedAt": message_data.get("publishedAt", ""),
-                        "startTime": int(detection.timestamp),
-                        "player1": {
-                            "character": normalized.get("1p", "Unknown"),
-                            "characterRaw": raw.get("1p", ""),
-                            "side": "left",
-                            "result": None,  # Battlelog マッピング後に設定
-                        },
-                        "player2": {
-                            "character": normalized.get("2p", "Unknown"),
-                            "characterRaw": raw.get("2p", ""),
-                            "side": "right",
-                            "result": None,  # Battlelog マッピング後に設定
-                        },
-                        "detectedAt": datetime.utcnow().isoformat() + "Z",
-                        "confidence": detection.confidence,
-                        "templateMatchScore": detection.confidence,
-                        "frameTimestamp": detection.frame_number,
-                        "savedFramePath": str(frame_path),  # 保存したフレーム画像のパス
-                    }
-                    matches.append(match_data)
-
-                    # チャプター情報（「第N戦」は含めない - 手動修正時の利便性のため）
-                    chapter = {
-                        "startTime": int(detection.timestamp),
-                        "title": f"{normalized.get('1p')} VS {normalized.get('2p')}",
-                        "matchId": match_id,
-                        "winner_side": detection.winner_side,
-                    }
-                    chapters.append(chapter)
-
-                    logger.info("  %s at %.1fs", chapter["title"], detection.timestamp)
-
-                except Exception:
-                    logger.exception("Error recognizing characters for match %d", i)
-                    continue
 
             # 4. YouTube チャプター更新
             logger.info("[4/6] Updating YouTube chapters...")
             self.youtube_updater.update_video_description(video_id, chapters)
 
-            # 4.5. Battlelog マッピング実行（新規、オプショナル）
+            # 4.5. Battlelog マッピング
             chapters_with_result = self._run_battlelog_matching(
                 video_id, chapters, message_data.get("publishedAt", "")
             )
 
-            # マッチデータに結果情報を反映
-            chapter_map = {
-                ch.get("matchId"): ch for ch in chapters_with_result
-            }
-            for match in matches:
-                match_id = match.get("id")
-                if match_id in chapter_map:
-                    chapter = chapter_map[match_id]
+            # マッチ結果を反映
+            self._apply_match_results(matches, chapters_with_result)
 
-                    # 1. Battlelog マッピング結果から result を取得
-                    if chapter.get("player1_result"):
-                        match["player1"]["result"] = chapter.get("player1_result")
-                    if chapter.get("player2_result"):
-                        match["player2"]["result"] = chapter.get("player2_result")
+            # 5-6. ストレージ保存
+            video_data = self._save_to_storage(video_id, message_data, chapters_with_result, matches)
 
-                    # 2. RESULT 検出結果から result を推定（Battlelog マッピングなし、または失敗時）
-                    # result がまだ None の場合のみ推定
-                    if match["player1"]["result"] is None:
-                        winner_side = chapter.get("winner_side")
-                        if winner_side:
-                            if winner_side == "player1":
-                                match["player1"]["result"] = "win"
-                                match["player2"]["result"] = "loss"
-                            elif winner_side == "player2":
-                                match["player1"]["result"] = "loss"
-                                match["player2"]["result"] = "win"
-                            logger.info(
-                                "Set result from RESULT detection for matchId=%s: winner_side=%s",
-                                match_id,
-                                winner_side,
-                            )
-
-            # 5-6. R2アップロード処理（有効な場合のみ）
-            if self.enable_r2 and self.r2_uploader:
-                # 5. JSONデータをR2にアップロード
-                logger.info("[5/6] Uploading JSON data to R2...")
-                video_data = {
-                    "videoId": video_id,
-                    "title": message_data.get("title", ""),
-                    "channelId": message_data.get("channelId", ""),
-                    "channelTitle": message_data.get("channelTitle", ""),
-                    "publishedAt": message_data.get("publishedAt", ""),
-                    "processedAt": datetime.utcnow().isoformat() + "Z",
-                    "chapters": chapters_with_result,
-                    "detectionStats": {
-                        "totalFrames": 0,  # TODO: 実際のフレーム数
-                        "matchedFrames": len(chapters),  # 最終的なチャプター数（手動修正後も正確）
-                    },
-                }
-
-                # 動画メタデータをアップロード
-                self.r2_uploader.upload_json(video_data, f"videos/{video_id}.json")
-
-                # 対戦データに Battlelog メタデータを追加（result は既に設定済み）
-                chapter_map = {
-                    ch.get("matchId"): ch for ch in chapters_with_result
-                }
-                for match in matches:
-                    match_id = match.get("id")
-                    if match_id in chapter_map:
-                        chapter = chapter_map[match_id]
-                        # Battlelog マッピング結果を match に追加
-                        match["battlelogMatched"] = chapter.get("matched", False)
-                        match["battlelogConfidence"] = chapter.get("confidence", "low")
-                        match["battlelogReplayId"] = chapter.get("replay_id")
-                        match["battlelogTimeDiff"] = chapter.get("time_difference_seconds")
-
-                # 対戦データを個別にアップロード
-                for match in matches:
-                    self.r2_uploader.upload_json(match, f"matches/{match['id']}.json")
-
-                # 6. Parquetファイルを更新（videoId単位で置換）
-                logger.info("[6/6] Updating Parquet files...")
-                self.r2_uploader.update_parquet_table(
-                    [video_data], "videos.parquet", video_id=video_id
-                )
-                self.r2_uploader.update_parquet_table(
-                    matches, "matches.parquet", video_id=video_id
-                )
-            else:
-                logger.info("[5/6] R2 upload disabled (ENABLE_R2=false)")
-                logger.info("[6/6] Skipping Parquet update")
-
-                # ローカルに保存
-                import json
-
-                output_dir = Path("./output")
-                output_dir.mkdir(exist_ok=True)
-
-                video_data = {
-                    "videoId": video_id,
-                    "title": message_data.get("title", ""),
-                    "channelId": message_data.get("channelId", ""),
-                    "channelTitle": message_data.get("channelTitle", ""),
-                    "publishedAt": message_data.get("publishedAt", ""),
-                    "processedAt": datetime.utcnow().isoformat() + "Z",
-                    "chapters": chapters_with_result,
-                    "detectionStats": {
-                        "totalFrames": 0,
-                        "matchedFrames": len(chapters_with_result),  # 最終的なチャプター数（手動修正後も正確）
-                    },
-                }
-
-                # JSONファイルとして保存
-                video_json_path = output_dir / f"{video_id}_video.json"
-                with open(video_json_path, "w", encoding="utf-8") as f:
-                    json.dump(video_data, f, ensure_ascii=False, indent=2)
-                logger.info("   Saved video data: %s", video_json_path)
-
-                # 対戦データも保存
-                matches_json_path = output_dir / f"{video_id}_matches.json"
-                with open(matches_json_path, "w", encoding="utf-8") as f:
-                    json.dump(matches, f, ensure_ascii=False, indent=2)
-                logger.info("   Saved matches data: %s", matches_json_path)
-
-            # 最終結果を中間ファイルとして保存
+            # 最終結果を保存
             self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_result)
+            self._save_detection_summary(video_id, video_intermediate_dir, [], chapters_with_result)
 
-            # detection_summary.json をRESULT検出情報で更新
-            self._save_detection_summary(video_id, video_intermediate_dir, detections, chapters_with_result)
-
-            # 処理完了をFirestoreに記録
             self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
 
             logger.info("")
@@ -388,7 +354,6 @@ class SF6ChapterProcessor:
                 logger.info("   - Saved locally to ./output/")
 
         except Exception as e:
-            # 処理失敗をFirestoreに記録
             self.firestore.update_status(video_id, FirestoreClient.STATUS_FAILED, error_message=str(e))
             logger.error("")
             logger.exception("❌ Error processing video %s", video_id)
@@ -506,6 +471,43 @@ class SF6ChapterProcessor:
         logger.info("     - %s", matches_path)
         logger.info("     - %s", chapters_path)
 
+    async def _fetch_battlelog_replays(self, player_id: str, build_id: str, auth_cookie: str):
+        """
+        Battlelog からリプレイリストを取得（キャッシング付き）
+        """
+        cache_manager = BattlelogCacheManager(db_path=self.battlelog_cache_db)
+        collector = BattlelogCollector(build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager)
+        replays = await collector.get_replay_list_incremental(player_id=player_id)
+        logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
+        return replays
+
+    def _match_chapters_with_battlelog_replays(
+        self, chapters: list[dict[str, Any]], replays: list[dict[str, Any]], video_published_at: str
+    ) -> list[dict[str, Any]]:
+        """
+        チャプターをBattlelogリプレイと照合
+        """
+        sorted_chapters = sorted(chapters, key=lambda c: c.get("startTime", 0))
+        sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
+        used_replay_ids = set()
+
+        enriched_chapters = []
+        for chapter in sorted_chapters:
+            result = self.battlelog_matcher.match_chapter_with_battlelog(
+                chapter, sorted_replays, video_published_at, used_replay_ids, tolerance_seconds=600
+            )
+            if result.get("matched") and result.get("replay_id"):
+                used_replay_ids.add(result["replay_id"])
+            enriched_chapter = {**chapter, **result}
+            enriched_chapters.append(enriched_chapter)
+
+        matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
+        logger.info(
+            f"  Matched {matched_count}/{len(enriched_chapters)} chapters "
+            f"({matched_count*100//len(enriched_chapters) if enriched_chapters else 0}%)"
+        )
+        return enriched_chapters
+
     def _run_battlelog_matching(
         self, video_id: str, chapters: list[dict[str, Any]], video_published_at: str
     ) -> list[dict[str, Any]]:
@@ -520,7 +522,6 @@ class SF6ChapterProcessor:
         Returns:
             Battlelog データを含むチャプターリスト（マッピング失敗時は元のリスト）
         """
-        # SF6_PLAYER_ID と BUCKLER_ID_COOKIE が設定されていない場合はスキップ
         if not self.sf6_player_id:
             logger.info("[4.5/6] SF6_PLAYER_ID not set, skipping Battlelog matching")
             return chapters
@@ -532,8 +533,6 @@ class SF6ChapterProcessor:
 
         try:
             logger.info("[4.5/6] Running Battlelog matching...")
-
-            # buildId を取得
             import asyncio
 
             async def get_build_id():
@@ -543,61 +542,71 @@ class SF6ChapterProcessor:
             build_id = asyncio.run(get_build_id())
             logger.info(f"  buildId: {build_id[:20]}...")
 
-            # BattlelogCollector をキャッシング付きで初期化
-            cache_manager = BattlelogCacheManager(db_path=self.battlelog_cache_db)
-            collector = BattlelogCollector(
-                build_id=build_id, auth_cookie=auth_cookie, cache=cache_manager
-            )
-
-            # 最新キャッシュ以降のリプレイを増分取得
-            async def get_all_replays():
-                return await collector.get_replay_list_incremental(
-                    player_id=self.sf6_player_id
-                )
-
-            replays = asyncio.run(get_all_replays())
-            logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
-
-            # チャプターをマッピング
-            sorted_chapters = sorted(chapters, key=lambda c: c.get("startTime", 0))
-            sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
-            used_replay_ids = set()
-
-            enriched_chapters = []
-            for chapter in sorted_chapters:
-                result = self.battlelog_matcher.match_chapter_with_battlelog(
-                    chapter,
-                    sorted_replays,
-                    video_published_at,
-                    used_replay_ids,
-                    tolerance_seconds=600,
-                )
-
-                # マッチ成功時、リプレイIDを記録（重複排除用）
-                if result.get("matched") and result.get("replay_id"):
-                    used_replay_ids.add(result["replay_id"])
-
-                # チャプターに Battlelog データを統合
-                enriched_chapter = {**chapter, **result}
-                enriched_chapters.append(enriched_chapter)
-
-            matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
-            logger.info(
-                f"  Matched {matched_count}/{len(enriched_chapters)} chapters "
-                f"({matched_count*100//len(enriched_chapters) if enriched_chapters else 0}%)"
-            )
-
-            return enriched_chapters
+            replays = asyncio.run(self._fetch_battlelog_replays(self.sf6_player_id, build_id, auth_cookie))
+            return self._match_chapters_with_battlelog_replays(chapters, replays, video_published_at)
 
         except Exception as e:
             logger.error(f"Battlelog マッピング失敗: {e}")
             logger.warning("  Proceeding without Battlelog data")
-            # フォールバック: Battlelog マッピングなしで続行
             return chapters
 
 # ====================
 # 中間ファイル管理ヘルパー関数
 # ====================
+
+
+def _initialize_result_screen_detector(
+    app_root: Path, detection_params
+) -> "ResultScreenDetector | None":
+    """
+    RESULT画面検出器を初期化（共通ロジック）
+
+    Args:
+        app_root: アプリケーションルートディレクトリ
+        detection_params: 検出パラメータオブジェクト
+
+    Returns:
+        ResultScreenDetector インスタンス、または初期化失敗時は None
+    """
+    if not detection_params.result_detection.enabled:
+        logger.info("⚠️ Result detection disabled in config")
+        return None
+
+    # テンプレートパスを相対パスから絶対パスに変換
+    result_template_paths = [
+        app_root / Path(p) for p in detection_params.result_detection.result_template_paths
+    ]
+    win_template_paths = [
+        app_root / Path(p) for p in detection_params.result_detection.win_template_paths
+    ]
+
+    # 最初の有効なテンプレートペアを使用
+    result_template_path = None
+    win_template_path = None
+    for rtp, wtp in zip(result_template_paths, win_template_paths, strict=False):
+        if rtp.exists() and wtp.exists():
+            result_template_path = rtp
+            win_template_path = wtp
+            break
+
+    if not (result_template_path and win_template_path):
+        logger.warning("⚠️ Result screen templates not found, skipping ResultScreenDetector initialization")
+        return None
+
+    try:
+        detector = ResultScreenDetector(
+            result_template_paths=[str(result_template_path)],
+            win_template_paths=[str(win_template_path)],
+            result_threshold=detection_params.result_detection.result_threshold,
+            win_threshold=detection_params.result_detection.win_threshold,
+            result_screen_search_region=detection_params.result_detection.result_screen_search_region,
+            win_text_search_region=detection_params.result_detection.win_text_search_region,
+        )
+        logger.info("✅ ResultScreenDetector initialized with config parameters")
+        return detector
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to initialize ResultScreenDetector: {e}")
+        return None
 
 
 def get_intermediate_dir(video_id: str) -> Path:
@@ -831,39 +840,8 @@ def test_detection(
     # アプリケーションルートディレクトリ
     app_root = Path(__file__).parent
 
-    # RESULT画面検出器の初期化（設定で有効な場合）
-    result_detector = None
-    if params.result_detection.enabled:
-        # テンプレートパスを相対パスから絶対パスに変換（アプリケーションルートからの相対パス）
-        result_template_paths = [app_root / path for path in params.result_detection.result_template_paths]
-        win_template_paths = [app_root / path for path in params.result_detection.win_template_paths]
-
-        # すべてのテンプレートが存在するか確認
-        all_result_exist = all(p.exists() for p in result_template_paths)
-        all_win_exist = all(p.exists() for p in win_template_paths)
-
-        if all_result_exist and all_win_exist:
-            try:
-                result_detector = ResultScreenDetector(
-                    result_template_paths=[str(p) for p in result_template_paths],
-                    win_template_paths=[str(p) for p in win_template_paths],
-                    result_threshold=params.result_detection.result_threshold,
-                    win_threshold=params.result_detection.win_threshold,
-                    result_screen_search_region=params.result_detection.result_screen_search_region,
-                    win_text_search_region=params.result_detection.win_text_search_region,
-                )
-                logger.info("✅ ResultScreenDetector initialized with config parameters")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to initialize ResultScreenDetector: {e}")
-                result_detector = None
-        else:
-            logger.warning("⚠️ Result screen templates not found, skipping ResultScreenDetector initialization")
-            logger.warning(f"   Result templates: {result_template_paths}")
-            logger.warning(f"   Win templates: {win_template_paths}")
-            result_detector = None
-    else:
-        logger.info("⚠️ Result detection disabled in config")
-        result_detector = None
+    # RESULT画面検出器の初期化
+    result_detector = _initialize_result_screen_detector(app_root, params)
 
     matcher = TemplateMatcher(
         template_path=params.template_path,
