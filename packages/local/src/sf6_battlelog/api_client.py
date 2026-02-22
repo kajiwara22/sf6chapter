@@ -338,7 +338,7 @@ class BattlelogCollector:
         self,
         player_id: str,
         language: str = "ja-jp",
-        max_pages: int = 20,
+        max_pages: int = 10,
     ) -> list[dict[str, Any]]:
         """
         最新キャッシュ以降のリプレイのみを増分取得
@@ -346,10 +346,13 @@ class BattlelogCollector:
         battlelog ページから __NEXT_DATA__ を抽出してリプレイを取得。
         最新キャッシュ以降の新しいリプレイのみを取得し、キャッシュ境界に到達したら終了。
 
+        注: Battlelog API は最大100件（10ページ × 10件/ページ）までしか返さないため、
+        max_pages は 10 に制限しています。
+
         Args:
             player_id: プレイヤーID
             language: 言語コード
-            max_pages: 最大ページ数（安全装置）
+            max_pages: 最大ページ数（デフォルト: 10、Battlelog API の上限）
 
         Returns:
             キャッシュ + 新規リプレイのマージ結果
@@ -525,9 +528,9 @@ class BattlelogCollector:
         self,
         player_id: str,
         language: str = "ja-jp",
-        max_pages: int = 20,
+        max_pages: int = 10,
     ) -> list[dict[str, Any]]:
-        """同期版get_replay_list_incremental"""
+        """同期版get_replay_list_incremental（max_pages: 10 に制限）"""
         return asyncio.run(
             self.get_replay_list_incremental(
                 player_id=player_id,
