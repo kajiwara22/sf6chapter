@@ -401,12 +401,20 @@ class BattlelogCollector:
                 if str(r.get("uploaded_at")) not in cached_uploaded_at_set
             ]
 
+            # 4. 実際にキャッシュに追加された件数
             if new_page_replays:
+                actual_cached_count = self.cache.cache_replays(player_id, new_page_replays)
                 all_new_replays.extend(new_page_replays)
-                self.cache.cache_replays(player_id, new_page_replays)
-                logger.info("Cached %d new replays from page %d", len(new_page_replays), page)
+                logger.info(
+                    "Cached %d/%d new replays from page %d (skipped %d duplicates)",
+                    actual_cached_count, len(new_page_replays), page,
+                    len(new_page_replays) - actual_cached_count
+                )
 
-            # 4. キャッシュ境界に到達したか確認（新規リプレイがない = 境界到達）
+                # キャッシュ済みセットを更新（次のページで重複判定を正確にするため）
+                cached_uploaded_at_set = self.cache.get_cached_uploaded_at_set(player_id)
+
+            # 5. キャッシュ境界に到達したか確認（新規リプレイがない = 境界到達）
             if not new_page_replays:
                 logger.info("No new replays found on page %d. Reached cache boundary. Stopping incremental fetch.", page)
                 break
