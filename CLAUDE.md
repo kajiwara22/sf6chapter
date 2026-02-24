@@ -86,6 +86,7 @@ sf6-chapter/
 - [x] Web UI 検索フィルター - Battlelog 勝敗結果対応（ADR-024）
 - [x] Battlelog API 増分取得の最適化（ADR-025）
 - [x] 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）（ADR-026）
+- [ ] PS5 自動アップロード動画のタイトル自動書き換え（ADR-027）
 
 ## 次のタスク
 
@@ -262,6 +263,7 @@ docker compose up -d
 - [024: Web UI 検索フィルター - Battlelog 勝敗結果対応](docs/adr/024-web-ui-search-filter-with-match-results.md)
 - [025: Battlelog API 増分取得の最適化](docs/adr/025-battlelog-api-incremental-fetching-optimization.md)
 - [026: 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）](docs/adr/026-result-screen-match-outcome-detection.md)
+- [027: PS5 自動アップロード動画のタイトル自動書き換え](docs/adr/027-ps5-auto-title-rename.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

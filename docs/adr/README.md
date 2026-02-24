@@ -32,6 +32,7 @@
 | [024](./024-web-ui-search-filter-with-match-results.md) | Web UI 検索フィルター - Battlelog 勝敗結果対応 | 提案 | 2026-02-17 |
 | [025](./025-battlelog-api-incremental-fetching-optimization.md) | Battlelog API 増分取得の最適化 | 採用 | 2026-02-17 |
 | [026](./026-result-screen-match-outcome-detection.md) | 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング） | 提案 | 2026-02-19 |
+| [027](./027-ps5-auto-title-rename.md) | PS5 自動アップロード動画のタイトル自動書き換え | 提案 | 2026-02-24 |
 
 ## ADRのフォーマット
 
