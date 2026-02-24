@@ -21,11 +21,13 @@ Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Sub
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import functions_framework
 import google.cloud.logging
+import pytz
 from google.cloud import firestore, pubsub_v1, secretmanager
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -227,6 +229,90 @@ def get_my_recent_videos(youtube, max_age_minutes: int = ACCEPTABLE_AGE_MINUTES)
         return []
 
 
+def is_ps5_auto_title(title: str) -> bool:
+    """PS5のデフォルトタイトル（連続した同一のひらがな3文字）判定"""
+    return bool(re.match(r'^([ぁ-ん])\1{2}$', title))
+
+
+def get_rename_title(published_at_utc: str) -> str:
+    """
+    公開日時（UTC）から JST を求め、時刻に応じてリネーム後のタイトルを決定
+
+    Args:
+        published_at_utc: YouTube APIから取得した公開日時（ISO 8601形式、UTC）
+                         例: "2025-12-04T10:30:00Z"
+
+    Returns:
+        リネーム後のタイトル
+        例: "お昼休みにスト６ 2025-12-04"
+    """
+    # UTC → JST 変換
+    dt_utc = datetime.fromisoformat(published_at_utc.replace("Z", "+00:00"))
+    jst = pytz.timezone("Asia/Tokyo")
+    dt_jst = dt_utc.astimezone(jst)
+
+    # 時刻を取得
+    hour = dt_jst.hour
+    date_str = dt_jst.strftime("%Y-%m-%d")
+
+    # 時刻帯で判定
+    if 12 <= hour < 13:
+        prefix = "お昼休みにスト６"
+    elif 18 <= hour < 22:
+        prefix = "就業後にスト６"
+    else:
+        prefix = "PS5からスト６"
+
+    return f"{prefix} {date_str}"
+
+
+def rename_video_title(youtube, video_id: str, new_title: str) -> bool:
+    """
+    YouTube Data APIでビデオタイトルを更新
+
+    Args:
+        youtube: YouTube API クライアント
+        video_id: 更新対象の動画 ID
+        new_title: 新しいタイトル
+
+    Returns:
+        成功時 True、失敗時 False
+    """
+    try:
+        # 現在のビデオ情報を取得
+        get_response = youtube.videos().list(
+            part="snippet",
+            id=video_id
+        ).execute()
+
+        if not get_response.get("items"):
+            logger.error(f"Video not found: {video_id}")
+            return False
+
+        # タイトルを更新
+        snippet = get_response["items"][0]["snippet"]
+        snippet["title"] = new_title
+
+        # 更新リクエスト実行
+        youtube.videos().update(
+            part="snippet",
+            body={
+                "id": video_id,
+                "snippet": snippet
+            }
+        ).execute()
+
+        logger.info(f"Successfully renamed video {video_id} to '{new_title}'")
+        return True
+
+    except HttpError as e:
+        logger.error(f"YouTube API error while renaming {video_id}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error renaming {video_id}: {e}")
+        return False
+
+
 def publish_to_pubsub(video_data: Dict[str, Any]) -> bool:
     """Pub/Subにメッセージを発行"""
     try:
@@ -289,7 +375,25 @@ def check_new_video(request):
 
     for video in videos:
         video_id = video["videoId"]
+        title = video["title"]
+        published_at = video["publishedAt"]
         stats["filteredVideos"] += 1
+
+        # PS5自動タイトル検出と更新
+        if is_ps5_auto_title(title):
+            logger.info(f"Detected PS5 auto-title: '{title}' for {video_id}")
+
+            # 新しいタイトルを決定
+            new_title = get_rename_title(published_at)
+
+            # YouTube APIでタイトルを更新（エラーは処理継続）
+            if rename_video_title(youtube, video_id, new_title):
+                logger.info(f"Renamed {video_id}: '{title}' → '{new_title}'")
+                # Firestore記録時に新しいタイトルを使用
+                video["title"] = new_title
+            else:
+                logger.warning(f"Failed to rename {video_id}, proceeding with original title")
+                # エラーでも処理は継続（元のタイトルで記録）
 
         # 重複チェック
         if is_video_processed(video_id):

@@ -9,6 +9,9 @@ dependencies = [
     "google-api-python-client>=2.100.0,<3.0.0",
     "google-cloud-firestore>=2.14.0,<3.0.0",
     "google-auth>=2.27.0,<3.0.0",
+    "google-cloud-logging>=3.8.0,<4.0.0",
+    "google-cloud-secret-manager>=2.16.0,<3.0.0",
+    "pytz>=2024.1",
 ]
 
 [project.optional-dependencies]
