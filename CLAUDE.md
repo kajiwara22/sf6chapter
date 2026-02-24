@@ -87,7 +87,7 @@ sf6-chapter/
 - [x] Battlelog API 増分取得の最適化（ADR-025）
 - [x] 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）（ADR-026）
 - [🔄] PS5 自動アップロード動画のタイトル自動書き換え（ADR-027） - 実装中
-- [📋] OBS ストリーミングイベント連動のYouTube動画タイトル更新（ADR-028） - 計画中
+- [x] OBS ストリーミングイベント連動のYouTube動画タイトル更新（ADR-028） - 実装完了
 
 ## 次のタスク
 
@@ -208,6 +208,36 @@ sf6-chapter/
 User: ml-tune スキルを使って、閾値分析用のNotebookを作成してください
 ```
 
+## OBS Title Updater
+
+OBSストリーミングイベント連動でYouTube動画タイトルのプレースホルダー`{DateTime}`を自動置き換えするスクリプト。
+
+### セットアップ
+
+```bash
+cd packages/obs-title-updater
+uv sync
+```
+
+### 使用方法
+
+**スタンドアロン実行**:
+```bash
+uv run python src/main.py
+```
+
+**OBSスクリプトからの呼び出し**:
+```python
+import subprocess
+
+def on_event(event):
+    if event == obs.OBS_FRONTEND_EVENT_STREAMING_STARTED:
+        script_path = "/path/to/packages/obs-title-updater/src/main.py"
+        subprocess.Popen(["/usr/bin/python3", script_path])
+```
+
+**詳細**: [packages/obs-title-updater/README.md](packages/obs-title-updater/README.md)を参照
+
 ## ローカル処理のデプロイ方法
 
 `packages/local/`は開発PC・常駐PCのどちらでも動作可能です。
@@ -265,6 +295,7 @@ docker compose up -d
 - [025: Battlelog API 増分取得の最適化](docs/adr/025-battlelog-api-incremental-fetching-optimization.md)
 - [026: 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）](docs/adr/026-result-screen-match-outcome-detection.md)
 - [027: PS5 自動アップロード動画のタイトル自動書き換え](docs/adr/027-ps5-auto-title-rename.md)
+- [028: OBS ストリーミングイベント連動のYouTube動画タイトル更新](docs/adr/028-obs-streaming-event-driven-title-update.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

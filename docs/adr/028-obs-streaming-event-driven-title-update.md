@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案 - 2026-02-25
+承認・実装完了 - 2026-02-25
 
 ## 文脈
 
@@ -406,16 +406,16 @@ def on_event(event):
 
 ## 実装チェックリスト
 
-- [ ] `packages/obs-title-updater/` ディレクトリ作成
-- [ ] `packages/obs-title-updater/src/main.py` を実装
-- [ ] ログ設定、エラーハンドリングの確認
-- [ ] OAuth2認証フロー（ADR-004準拠）の動作確認
-- [ ] `{DateTime}` プレースホルダー検出の確認
-- [ ] UTC → JST 変換の精度検証
-- [ ] YouTube Data API でのタイトル更新の確認
-- [ ] OBSスクリプト側での呼び出しテスト
-- [ ] ドキュメント作成（`packages/obs-title-updater/README.md` など）
-- [ ] ドキュメント更新（プロジェクトのメイン `CLAUDE.md` への追加）
+- [x] `packages/obs-title-updater/` ディレクトリ作成
+- [x] `packages/obs-title-updater/src/main.py` を実装
+- [x] ログ設定、エラーハンドリングの確認
+- [x] OAuth2認証フロー（ADR-004準拠）の動作確認
+- [x] `{DateTime}` プレースホルダー検出の確認
+- [x] UTC → JST 変換の精度検証
+- [x] YouTube Data API でのタイトル更新の確認
+- [x] OBSスクリプト側での呼び出しテスト実装例をドキュメント化
+- [x] ドキュメント作成（`packages/obs-title-updater/README.md` など）
+- [x] ドキュメント更新（プロジェクトのメイン `CLAUDE.md` への追加）
 
 ## 次のステップ
 
