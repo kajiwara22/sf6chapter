@@ -63,3 +63,7 @@ packages/local/intermediate/*
 packages/local/cookie/*
 test_battlelog_cache_basic.db
 battlelog_cache.db
+
+# Claude
+.claude/handovers/*.md
+.cocoindex_code/*
