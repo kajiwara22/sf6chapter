@@ -59,6 +59,7 @@ def get_latest_video_with_placeholder(youtube_service, limit: int = 50) -> dict 
             title = video["snippet"]["title"]
             if "{DateTime}" in title:
                 logger.info(f"Found video with placeholder: {video['id']} - '{title}'")
+                logger.info(video)
                 return {
                     "id": video["id"],
                     "title": title,
@@ -128,26 +129,15 @@ def update_video_title(youtube_service, video_id: str, new_title: str) -> bool:
         成功時 True、失敗時 False
     """
     try:
-        # 現在のビデオ情報を取得（snippet部分）
-        get_response = youtube_service.videos().list(
-            part="snippet",
-            id=video_id
-        ).execute()
-
-        if not get_response.get("items"):
-            logger.error(f"Video not found: {video_id}")
-            return False
-
-        # スニペット情報を取得してタイトルを更新
-        snippet = get_response["items"][0]["snippet"]
-        snippet["title"] = new_title
-
         # 更新リクエスト実行
         youtube_service.videos().update(
             part="snippet",
             body={
-                "id": video_id,
-                "snippet": snippet
+                "id": f"\"{video_id}\"",
+                "snippet": {
+                    "title": new_title,
+                    "categoryId": "20"
+                }
             }
         ).execute()
 
@@ -155,10 +145,10 @@ def update_video_title(youtube_service, video_id: str, new_title: str) -> bool:
         return True
 
     except HttpError as e:
-        logger.error(f"YouTube API error while updating {video_id}: {e}")
+        logger.exception(f"YouTube API error while updating {video_id}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error updating {video_id}: {e}")
+        logger.exception(f"Unexpected error updating {video_id}")
         return False
 
 
