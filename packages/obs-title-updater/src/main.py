@@ -58,10 +58,10 @@ def get_latest_video_with_placeholder(youtube_service, limit: int = 50) -> dict 
         for video in videos:
             title = video["snippet"]["title"]
             if "{DateTime}" in title:
-                logger.info(f"Found video with placeholder: {video['id']} - '{title}'")
-                logger.info(video)
+                video_id = video["id"]["videoId"]
+                logger.info(f"Found video with placeholder: {video_id} - '{title}'")
                 return {
-                    "id": video["id"],
+                    "id": video_id,
                     "title": title,
                     "publishedAt": video["snippet"]["publishedAt"]
                 }
@@ -133,7 +133,7 @@ def update_video_title(youtube_service, video_id: str, new_title: str) -> bool:
         youtube_service.videos().update(
             part="snippet",
             body={
-                "id": f"\"{video_id}\"",
+                "id": video_id,
                 "snippet": {
                     "title": new_title,
                     "categoryId": "20"
