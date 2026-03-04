@@ -7,8 +7,6 @@
 export interface Player {
   /** 正規化されたキャラクター名 */
   character: string;
-  /** 生のキャラクター名（OCR結果） */
-  characterRaw: string;
   /** プレイヤーの位置 */
   side: 'left' | 'right';
   /** Battlelog マッピング結果（勝敗） */

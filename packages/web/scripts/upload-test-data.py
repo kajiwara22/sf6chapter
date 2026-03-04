@@ -59,12 +59,10 @@ def create_test_data():
         # 構造体として定義
         data["player1"].append({
             "character": player1_char,
-            "characterRaw": player1_char,
             "side": "left",
         })
         data["player2"].append({
             "character": player2_char,
-            "characterRaw": player2_char,
             "side": "right",
         })
 
@@ -89,7 +87,6 @@ def main():
     # PyArrow Schemaを定義
     player_struct = pa.struct([
         ("character", pa.string()),
-        ("characterRaw", pa.string()),
         ("side", pa.string()),
     ])
 

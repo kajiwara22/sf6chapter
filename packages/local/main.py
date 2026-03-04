@@ -1111,6 +1111,34 @@ def test_r2_upload(
             for ch in chapters_raw
         ]
 
+        # chapters.json の title から matches の character を上書き（ADR-029）
+        # chapters.json を手動修正した場合、matches.json にもキャラクター名を反映する
+        chapter_by_match_id = {
+            ch.get("matchId") or f"{video_id}_{int(ch['startTime'])}": ch
+            for ch in chapters
+        }
+        for match in matches:
+            match_id = match.get("id")
+            if match_id in chapter_by_match_id:
+                chapter = chapter_by_match_id[match_id]
+                title = chapter.get("title", "")
+                # "A VS B" 形式をパース
+                parts = title.split(" VS ")
+                if len(parts) == 2:
+                    ch_p1 = parts[0].strip()
+                    ch_p2 = parts[1].strip()
+                    if ch_p1 and ch_p2:
+                        old_p1 = match.get("player1", {}).get("character", "")
+                        old_p2 = match.get("player2", {}).get("character", "")
+                        if ch_p1 != old_p1 or ch_p2 != old_p2:
+                            logger.info(
+                                "Overriding character from chapters.json for matchId=%s: "
+                                "%s VS %s → %s VS %s",
+                                match_id, old_p1, old_p2, ch_p1, ch_p2,
+                            )
+                            match["player1"]["character"] = ch_p1
+                            match["player2"]["character"] = ch_p2
+
         # 中間ファイルから読み込んだmatchesのvideoTitleとvideoPublishedAtを最新情報で更新
         # result フィールドが存在しない場合は初期化
         for match in matches:

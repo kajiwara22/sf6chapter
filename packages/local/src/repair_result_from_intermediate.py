@@ -155,7 +155,6 @@ class ResultRepair:
         # スキーマを定義
         player_struct = pa.struct([
             pa.field("character", pa.string()),
-            pa.field("characterRaw", pa.string()),
             pa.field("result", pa.string(), nullable=True),
             pa.field("side", pa.string()),
         ])
@@ -260,7 +259,6 @@ class ResultRepair:
         # スキーマを定義
         player_struct = pa.struct([
             pa.field("character", pa.string()),
-            pa.field("characterRaw", pa.string()),
             pa.field("result", pa.string(), nullable=True),
             pa.field("side", pa.string()),
         ])

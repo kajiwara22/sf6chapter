@@ -37,10 +37,8 @@ export interface MatchRow {
   startTime: bigint | number;
   endTime: bigint | number | null;
   player1_character: string;
-  player1_characterRaw: string;
   player1_side: string;
   player2_character: string;
-  player2_characterRaw: string;
   player2_side: string;
   detectedAt: string;
   confidence: number;

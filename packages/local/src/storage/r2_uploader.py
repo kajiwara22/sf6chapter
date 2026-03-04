@@ -94,7 +94,6 @@ class R2Uploader:
         """
         player_struct = pa.struct([
             pa.field("character", pa.string()),
-            pa.field("characterRaw", pa.string()),
             pa.field("result", pa.string(), nullable=True),  # "win" | "loss" | None
             pa.field("side", pa.string()),
         ])
