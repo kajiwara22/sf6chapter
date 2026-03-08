@@ -67,3 +67,4 @@ battlelog_cache.db
 # Claude
 .claude/handovers/*.md
 .cocoindex_code/*
+battlelog_replays.parquet
