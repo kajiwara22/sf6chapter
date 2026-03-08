@@ -334,6 +334,13 @@ class SF6ChapterProcessor:
             # マッチ結果を反映
             self._apply_match_results(matches, chapters_with_result)
 
+            # 4.6. Battlelog Parquet 更新（キャッシュ更新後に自動実行）
+            if self.sf6_player_id:
+                _update_battlelog_parquet(
+                    battlelog_cache_db=self.battlelog_cache_db,
+                    r2_uploader=self.r2_uploader,
+                )
+
             # 5-6. ストレージ保存
             video_data = self._save_to_storage(video_id, message_data, chapters_with_result, matches)
 
@@ -549,6 +556,64 @@ class SF6ChapterProcessor:
             logger.error(f"Battlelog マッピング失敗: {e}")
             logger.warning("  Proceeding without Battlelog data")
             return chapters
+
+# ====================
+# Battlelog Parquet パイプライン
+# ====================
+
+
+def _update_battlelog_parquet(
+    battlelog_cache_db: str,
+    r2_uploader: "R2Uploader | None",
+    output_dir: Path = Path("./output"),
+) -> None:
+    """
+    Battlelog キャッシュを Parquet に変換し、R2 にアップロードする
+
+    キャッシュ更新後に呼び出すことで、Web UI のマッチアップチャートを最新化する。
+    失敗してもメインフローをブロックしない。
+
+    Args:
+        battlelog_cache_db: SQLite キャッシュ DB のパス
+        r2_uploader: R2Uploader インスタンス（None の場合はローカル保存のみ）
+        output_dir: Parquet ファイルの出力先ディレクトリ
+    """
+    try:
+        from scripts.convert_battlelog_to_parquet import (
+            convert_battlelog_to_parquet,
+            get_battlelog_replays_schema,
+        )
+
+        parquet_path = output_dir / "battlelog_replays.parquet"
+        logger.info("Battlelog Parquet 更新: %s → %s", battlelog_cache_db, parquet_path)
+
+        count = convert_battlelog_to_parquet(
+            db_path=battlelog_cache_db,
+            output_path=str(parquet_path),
+        )
+
+        if count == 0:
+            logger.warning("Battlelog Parquet: 変換対象のレコードがありません")
+            return
+
+        logger.info("Battlelog Parquet: %d 件を変換しました", count)
+
+        if r2_uploader:
+            import pyarrow.parquet as pq
+
+            table = pq.read_table(str(parquet_path))
+            r2_uploader.upload_parquet(
+                table.to_pylist(),
+                "battlelog_replays.parquet",
+                schema=get_battlelog_replays_schema(),
+            )
+            logger.info("Battlelog Parquet: R2 にアップロードしました (%d rows)", count)
+        else:
+            logger.info("Battlelog Parquet: ローカルに保存しました: %s", parquet_path)
+
+    except Exception:
+        logger.exception("Battlelog Parquet 更新に失敗しました（メインフローは継続します）")
+
 
 # ====================
 # 中間ファイル管理ヘルパー関数
@@ -1361,6 +1426,13 @@ def test_r2_upload(
         logger.info("[5/6] Skipping R2 upload (disabled)")
         logger.info("[6/6] Skipping Parquet update (disabled)")
         logger.info("✅ Result fields have been processed locally")
+
+    # Battlelog Parquet 更新（キャッシュ更新後に自動実行）
+    if sf6_player_id:
+        _update_battlelog_parquet(
+            battlelog_cache_db=battlelog_cache_db,
+            r2_uploader=r2_uploader,
+        )
 
     return video_data, matches
 

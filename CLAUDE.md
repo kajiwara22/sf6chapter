@@ -298,6 +298,7 @@ docker compose up -d
 - [028: OBS ストリーミングイベント連動のYouTube動画タイトル更新](docs/adr/028-obs-streaming-event-driven-title-update.md)
 - [029: chapters.json 手動修正のR2反映とParquetスキーマ簡素化](docs/adr/029-chapters-json-correction-and-parquet-schema-simplification.md)
 - [030: Battlelogキャッシュデータを活用したマッチアップチャート機能](docs/adr/030-matchup-chart-from-battlelog-cache.md)
+- [031: Battlelog Parquet 変換・アップロードの main.py パイプライン統合](docs/adr/031-battlelog-parquet-pipeline-integration.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
