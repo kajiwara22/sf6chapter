@@ -26,6 +26,22 @@ export const DOM_IDS = {
   RESULTS: 'results',
   NO_RESULTS: 'no-results',
   STATS: 'stats',
+  // タブナビゲーション
+  TAB_SEARCH: 'tab-search',
+  TAB_MATCHUP: 'tab-matchup',
+  VIEW_SEARCH: 'view-search',
+  VIEW_MATCHUP: 'view-matchup',
+  // マッチアップチャート
+  MATCHUP_FORM: 'matchup-form',
+  MATCHUP_DATE_FROM: 'matchup-date-from',
+  MATCHUP_TIME_FROM: 'matchup-time-from',
+  MATCHUP_DATE_TO: 'matchup-date-to',
+  MATCHUP_TIME_TO: 'matchup-time-to',
+  MATCHUP_BATTLE_TYPE: 'matchup-battle-type',
+  MATCHUP_MY_CHARACTER: 'matchup-my-character',
+  MATCHUP_CHART: 'matchup-chart',
+  MATCHUP_LOADING: 'matchup-loading',
+  MATCHUP_ERROR: 'matchup-error',
 } as const;
 
 /** クエリ結果の行 */
@@ -55,4 +71,14 @@ export interface StatsRow {
 export interface CharacterCountRow {
   character: string;
   count: bigint | number;
+}
+
+/** マッチアップチャートのDuckDBクエリ結果行 */
+export interface MatchupChartQueryRow {
+  opponent_character: string;
+  opponent_input_type: number | bigint;
+  total: number | bigint;
+  wins: number | bigint;
+  losses: number | bigint;
+  draws: number | bigint;
 }

@@ -98,6 +98,34 @@ api.get('/data/index/videos.parquet', async (context) => {
 });
 
 /**
+ * GET /api/data/index/battlelog_replays.parquet
+ * Battlelog Parquetファイルの Presigned URL を返却
+ */
+api.get('/data/index/battlelog_replays.parquet', async (context) => {
+  try {
+    const { R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_BUCKET_NAME,R2_SECRET_ACCESS_KEY } = env(context)
+    const s3Client = createS3Client(R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY);
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: 'battlelog_replays.parquet',
+    });
+
+    const expiresIn = 3600; // 1時間
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+    const response: PresignedUrlResponse = {
+      url,
+      expiresIn,
+    };
+
+    return context.json(response);
+  } catch (error) {
+    console.error('Failed to generate presigned URL for battlelog_replays.parquet:', error);
+    return context.json({ error: 'Failed to generate presigned URL' }, 500);
+  }
+});
+
+/**
  * GET /api/data/videos/:filename
  * 生JSONファイルを取得（デバッグ用）- 従来通りR2 Bindingから取得
  */

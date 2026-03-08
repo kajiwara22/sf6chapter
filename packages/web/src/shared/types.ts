@@ -131,6 +131,44 @@ export interface PresignedUrlResponse {
   expiresIn: number;
 }
 
+/** マッチアップチャートの1行 */
+export interface MatchupChartRow {
+  /** 対戦相手キャラクター名 */
+  opponentCharacter: string;
+  /** 対戦相手の入力タイプ（0=クラシック, 1=モダン） */
+  opponentInputType: number;
+  /** 入力タイプ名 */
+  opponentInputTypeName: string;
+  /** 総対戦数 */
+  total: number;
+  /** 勝利数 */
+  wins: number;
+  /** 敗北数 */
+  losses: number;
+  /** 引き分け数 */
+  draws: number;
+  /** 勝率 (0-100) */
+  winRate: number;
+}
+
+/** マッチアップチャートのフィルター */
+export interface MatchupChartFilters {
+  /** 期間（開始） YYYY-MM-DD */
+  dateFrom?: string;
+  /** 期間（終了） YYYY-MM-DD */
+  dateTo?: string;
+  /** 開始時刻 HH:MM（JSTで指定） */
+  timeFrom?: string;
+  /** 終了時刻 HH:MM（JSTで指定） */
+  timeTo?: string;
+  /** マッチタイプ（1=Ranked, 3=BattleHub, 4=CustomRoom） */
+  battleType?: number;
+  /** 自キャラクター名 */
+  myCharacter?: string;
+  /** 対戦相手入力タイプ（0=クラシック, 1=モダン） */
+  opponentInputType?: number;
+}
+
 /** ヘルスチェックレスポンス */
 export interface HealthResponse {
   status: 'ok' | 'error';

@@ -59,6 +59,15 @@ pages.get('/', (c) => {
           </header>
 
           <main class="main">
+            <!-- タブナビゲーション -->
+            <nav class="tab-nav">
+              <button id="tab-search" class="tab-btn tab-btn-active" data-view="view-search">対戦検索</button>
+              <button id="tab-matchup" class="tab-btn" data-view="view-matchup">マッチアップ</button>
+            </nav>
+
+            <!-- ========== 対戦検索ビュー ========== -->
+            <div id="view-search" class="tab-view tab-view-active">
+
             <!-- 検索セクション -->
             <section class="search-section">
               <form id="search-form" class="search-form">
@@ -67,7 +76,6 @@ pages.get('/', (c) => {
                     <label for="character-select">キャラクター1</label>
                     <select id="character-select" name="character">
                       <option value="">すべて</option>
-                      <!-- DuckDB-WASMで動的に生成 -->
                     </select>
                   </div>
 
@@ -75,7 +83,6 @@ pages.get('/', (c) => {
                     <label for="character-select-2">キャラクター2（オプション）</label>
                     <select id="character-select-2" name="character2">
                       <option value="">指定しない</option>
-                      <!-- DuckDB-WASMで動的に生成 -->
                     </select>
                   </div>
 
@@ -139,7 +146,6 @@ pages.get('/', (c) => {
             <!-- 統計情報 -->
             <section class="stats-section">
               <div id="stats" class="stats-grid">
-                <!-- JavaScriptで動的に挿入 -->
               </div>
             </section>
 
@@ -147,12 +153,83 @@ pages.get('/', (c) => {
             <section class="results-section">
               <h2 class="section-title">対戦一覧</h2>
               <div id="results" class="results-grid">
-                <!-- JavaScriptで動的に挿入 -->
               </div>
               <div id="no-results" class="status-message" style="display: none;">
                 検索結果がありません
               </div>
             </section>
+
+            </div><!-- /view-search -->
+
+            <!-- ========== マッチアップチャートビュー ========== -->
+            <div id="view-matchup" class="tab-view">
+
+            <!-- マッチアップフィルター -->
+            <section class="search-section">
+              <form id="matchup-form" class="search-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="matchup-my-character">自キャラクター</label>
+                    <select id="matchup-my-character" name="myCharacter">
+                      <option value="">すべて</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="matchup-battle-type">マッチタイプ</label>
+                    <select id="matchup-battle-type" name="battleType">
+                      <option value="0">All</option>
+                      <option value="1">Ranked</option>
+                      <option value="3">Battle Hub</option>
+                      <option value="4">Custom Room</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="matchup-date-from">期間（開始）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="matchup-date-from" name="dateFrom" />
+                      <input type="time" id="matchup-time-from" name="timeFrom" />
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="matchup-date-to">期間（終了）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="matchup-date-to" name="dateTo" />
+                      <input type="time" id="matchup-time-to" name="timeTo" />
+                    </div>
+                  </div>
+
+                  <div class="form-group form-group-button">
+                    <button type="submit" class="btn-search">
+                      集計
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <!-- マッチアップチャート ステータス -->
+            <section class="status-section">
+              <div id="matchup-loading" class="status-message status-loading" style="display: none;">
+                <span class="spinner"></span>
+                集計中...
+              </div>
+              <div id="matchup-error" class="status-message status-error" style="display: none;"></div>
+            </section>
+
+            <!-- マッチアップチャート -->
+            <section class="matchup-section">
+              <h2 class="section-title">マッチアップチャート</h2>
+              <div id="matchup-chart">
+              </div>
+            </section>
+
+            </div><!-- /view-matchup -->
+
           </main>
 
           <footer class="footer">

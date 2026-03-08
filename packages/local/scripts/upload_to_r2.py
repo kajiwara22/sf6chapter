@@ -4,8 +4,10 @@
 
 Usage:
     python scripts/upload_to_r2.py
+    python scripts/upload_to_r2.py --battlelog  # Battlelog Parquetのみアップロード
 """
 
+import argparse
 import json
 import os
 import sys
@@ -63,8 +65,41 @@ def load_json_files(output_dir: Path) -> tuple[list[dict], list[dict]]:
     return videos, matches
 
 
+def upload_battlelog_parquet(uploader: R2Uploader, output_dir: Path) -> bool:
+    """
+    Battlelog Parquetファイルを R2 にアップロード
+
+    Returns:
+        アップロード成功時 True
+    """
+    parquet_path = output_dir / "battlelog_replays.parquet"
+
+    if not parquet_path.exists():
+        print(f"⚠️ Battlelog Parquet not found: {parquet_path}")
+        print("   Run 'python scripts/convert_battlelog_to_parquet.py' first")
+        return False
+
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(str(parquet_path))
+    row_count = table.num_rows
+
+    print(f"⬆️  Uploading battlelog_replays.parquet ({row_count} rows)...")
+    uploader.upload_parquet(table.to_pylist(), "battlelog_replays.parquet")
+    print(f"   ✅ Uploaded battlelog_replays.parquet ({row_count} rows)")
+    return True
+
+
 def main():
     """メイン処理"""
+    parser = argparse.ArgumentParser(description="R2へのデータアップロード")
+    parser.add_argument(
+        "--battlelog",
+        action="store_true",
+        help="Battlelog Parquetのみアップロード",
+    )
+    args = parser.parse_args()
+
     # 環境変数確認
     required_vars = ["R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
@@ -76,6 +111,24 @@ def main():
 
     # 出力ディレクトリ
     output_dir = project_root / "output"
+
+    # R2 Uploader初期化
+    print("🔧 Initializing R2 Uploader...")
+    uploader = R2Uploader()
+
+    # --battlelog モード: Battlelog Parquetのみアップロード
+    if args.battlelog:
+        if not output_dir.exists():
+            print(f"❌ Output directory not found: {output_dir}")
+            sys.exit(1)
+
+        success = upload_battlelog_parquet(uploader, output_dir)
+        if not success:
+            sys.exit(1)
+        print("\n🎉 Battlelog upload completed!")
+        return
+
+    # 通常モード: JSON + matches Parquet のアップロード
     if not output_dir.exists():
         print(f"❌ Output directory not found: {output_dir}")
         sys.exit(1)
@@ -89,10 +142,6 @@ def main():
         sys.exit(1)
 
     print(f"✅ Loaded {len(videos)} videos and {len(matches)} matches")
-
-    # R2 Uploader初期化
-    print("🔧 Initializing R2 Uploader...")
-    uploader = R2Uploader()
 
     # ビデオデータをJSONとしてアップロード
     if videos:
@@ -109,6 +158,9 @@ def main():
         print("⬆️  Uploading matches.parquet...")
         uploader.upload_parquet(matches, "matches.parquet")
         print(f"   ✅ Uploaded matches.parquet ({len(matches)} matches)")
+
+    # Battlelog Parquetがあればそれもアップロード
+    upload_battlelog_parquet(uploader, output_dir)
 
     print("\n🎉 Upload completed successfully!")
     print(f"  - Videos: {len(videos)}")

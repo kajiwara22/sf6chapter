@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow } from './types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow } from '@shared/types';
 
 let instance: DuckDBInstance | null = null;
 
@@ -101,6 +101,34 @@ export async function loadParquetData(): Promise<void> {
   `);
 
   console.log('[DuckDB] Parquet data loaded (matches table)');
+}
+
+/**
+ * Battlelog Parquetファイルをロード
+ */
+export async function loadBattlelogParquetData(): Promise<void> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  console.log('[DuckDB] Loading Battlelog Parquet data...');
+
+  // 1. APIからPresigned URLを取得
+  const presignedUrl = await getPresignedUrl('/api/data/index/battlelog_replays.parquet');
+
+  // 2. Presigned URLからParquetデータをダウンロード
+  const parquetData = await downloadParquet(presignedUrl);
+
+  // 3. DuckDBに登録
+  await instance.db.registerFileBuffer('battlelog_replays.parquet', new Uint8Array(parquetData));
+
+  // 4. battlelog_replaysテーブルを作成
+  await instance.conn.query(`
+    CREATE TABLE IF NOT EXISTS battlelog_replays AS
+    SELECT * FROM read_parquet('battlelog_replays.parquet')
+  `);
+
+  console.log('[DuckDB] Battlelog Parquet data loaded (battlelog_replays table)');
 }
 
 /**
@@ -337,6 +365,166 @@ export async function getCharacters(): Promise<string[]> {
       SELECT DISTINCT player2.character as character FROM matches
     )
     SELECT character FROM all_characters ORDER BY character
+  `);
+
+  const rows = result.toArray() as unknown as { character: string }[];
+  return rows.map((row) => row.character);
+}
+
+/** 自分のプレイヤーID */
+const MY_PLAYER_ID = 1319673732;
+
+/** 入力タイプ名のマッピング */
+const INPUT_TYPE_NAMES: Record<number, string> = {
+  0: 'Classic',
+  1: 'Modern',
+};
+
+/**
+ * JSTの日付・時刻文字列をUTCタイムスタンプに変換（Battlelog用）
+ * Battlelogの uploaded_at は UTCのTIMESTAMP型
+ * @param dateStr JSTの日付文字列（例: "2026-01-14"）
+ * @param timeStr JSTの時刻文字列（例: "14:30"）省略時はisEndOfDayで決定
+ * @param isEndOfDay timeStr省略時: trueなら23:59:59 JST、falseなら00:00:00 JST
+ */
+function convertJstDateTimeToTimestamp(dateStr: string, isEndOfDay: boolean, timeStr?: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  let hours: number;
+  let minutes: number;
+  let seconds: number;
+
+  if (timeStr) {
+    // 時刻指定あり
+    const parts = timeStr.split(':').map(Number);
+    hours = parts[0];
+    minutes = parts[1];
+    seconds = isEndOfDay ? 59 : 0;
+  } else {
+    // 時刻指定なし: 従来通りの挙動
+    hours = isEndOfDay ? 23 : 0;
+    minutes = isEndOfDay ? 59 : 0;
+    seconds = isEndOfDay ? 59 : 0;
+  }
+
+  // JSTからUTCに変換（-9時間）
+  const jstDate = new Date(year, month - 1, day, hours, minutes, seconds);
+  const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
+  const utcYear = utcDate.getUTCFullYear();
+  const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+  const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
+  const utcHours = String(utcDate.getUTCHours()).padStart(2, '0');
+  const utcMinutes = String(utcDate.getUTCMinutes()).padStart(2, '0');
+  const utcSeconds = String(utcDate.getUTCSeconds()).padStart(2, '0');
+  return `${utcYear}-${utcMonth}-${utcDay} ${utcHours}:${utcMinutes}:${utcSeconds}`;
+}
+
+/**
+ * マッチアップチャートを集計
+ */
+export async function queryMatchupChart(filters: MatchupChartFilters): Promise<MatchupChartRow[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  // 期間フィルター
+  if (filters.dateFrom) {
+    const utcFrom = convertJstDateTimeToTimestamp(filters.dateFrom, false, filters.timeFrom);
+    conditions.push(`uploaded_at >= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcFrom);
+  }
+
+  if (filters.dateTo) {
+    const utcTo = convertJstDateTimeToTimestamp(filters.dateTo, true, filters.timeTo);
+    conditions.push(`uploaded_at <= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcTo);
+  }
+
+  // マッチタイプフィルター
+  if (filters.battleType !== undefined && filters.battleType > 0) {
+    conditions.push(`battle_type = $${params.length + 1}`);
+    params.push(filters.battleType);
+  }
+
+  // 自キャラクターフィルター
+  if (filters.myCharacter) {
+    conditions.push(`(
+      (p1_short_id = ${MY_PLAYER_ID} AND p1_character_name = $${params.length + 1})
+      OR
+      (p2_short_id = ${MY_PLAYER_ID} AND p2_character_name = $${params.length + 1})
+    )`);
+    params.push(filters.myCharacter);
+  }
+
+  const whereClause = conditions.length > 0
+    ? `WHERE ${conditions.join(' AND ')}`
+    : '';
+
+  const query = `
+    SELECT
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p2_character_name
+           ELSE p1_character_name END AS opponent_character,
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p2_input_type
+           ELSE p1_input_type END AS opponent_input_type,
+      COUNT(*) AS total,
+      SUM(CASE WHEN (p1_short_id = ${MY_PLAYER_ID} AND match_result = 'win')
+                OR (p2_short_id = ${MY_PLAYER_ID} AND match_result = 'loss')
+           THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN (p1_short_id = ${MY_PLAYER_ID} AND match_result = 'loss')
+                OR (p2_short_id = ${MY_PLAYER_ID} AND match_result = 'win')
+           THEN 1 ELSE 0 END) AS losses,
+      SUM(CASE WHEN match_result = 'draw' THEN 1 ELSE 0 END) AS draws
+    FROM battlelog_replays
+    ${whereClause}
+    GROUP BY opponent_character, opponent_input_type
+    ORDER BY total DESC
+  `;
+
+  console.log('[DuckDB] Executing matchup chart query with params:', params);
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(...params);
+  await stmt.close();
+
+  const rows = result.toArray() as unknown as MatchupChartQueryRow[];
+
+  return rows.map((row) => {
+    const total = Number(row.total);
+    const wins = Number(row.wins);
+    const losses = Number(row.losses);
+    const draws = Number(row.draws);
+    const inputType = Number(row.opponent_input_type);
+
+    return {
+      opponentCharacter: row.opponent_character,
+      opponentInputType: inputType,
+      opponentInputTypeName: INPUT_TYPE_NAMES[inputType] || String(inputType),
+      total,
+      wins,
+      losses,
+      draws,
+      winRate: total > 0 ? Math.round((wins / total) * 1000) / 10 : 0,
+    };
+  });
+}
+
+/**
+ * Battlelogに含まれるキャラクター一覧を取得（自分が使ったキャラ）
+ */
+export async function getBattlelogMyCharacters(): Promise<string[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const result = await instance.conn.query(`
+    WITH my_characters AS (
+      SELECT DISTINCT p1_character_name AS character FROM battlelog_replays WHERE p1_short_id = ${MY_PLAYER_ID}
+      UNION
+      SELECT DISTINCT p2_character_name AS character FROM battlelog_replays WHERE p2_short_id = ${MY_PLAYER_ID}
+    )
+    SELECT character FROM my_characters ORDER BY character
   `);
 
   const rows = result.toArray() as unknown as { character: string }[];

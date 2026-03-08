@@ -215,6 +215,21 @@ body {
   justify-content: flex-end;
 }
 
+.date-time-group {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.date-time-group input[type="date"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.date-time-group input[type="time"] {
+  flex: 0 0 auto;
+  width: 110px;
+}
+
 .btn-search {
   background: linear-gradient(135deg, var(--color-primary) 0%, #cc3333 100%);
   border: none;
@@ -557,6 +572,209 @@ body {
 }
 
 /* ========================================
+   タブナビゲーション
+   ======================================== */
+.tab-nav {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xl);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-xs);
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  letter-spacing: 0.05em;
+  padding: var(--space-sm) var(--space-lg);
+  text-transform: uppercase;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.tab-btn:hover {
+  color: var(--color-text-secondary);
+}
+
+.tab-btn-active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.tab-view {
+  display: none;
+}
+
+.tab-view-active {
+  display: block;
+}
+
+/* ========================================
+   マッチアップチャート
+   ======================================== */
+.matchup-section {
+  margin-bottom: var(--space-xl);
+}
+
+.matchup-table {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-collapse: collapse;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  width: 100%;
+}
+
+.matchup-table th,
+.matchup-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-sm) var(--space-md);
+  text-align: center;
+}
+
+.matchup-table th {
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.matchup-table td.matchup-character {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-align: left;
+}
+
+.matchup-table td.matchup-input-type {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.matchup-row-character {
+  background: var(--color-bg-card);
+}
+
+.matchup-row-detail {
+  background: var(--color-bg-elevated);
+}
+
+.matchup-row-detail td.matchup-input-type {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.matchup-row-total {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+.matchup-row-total td {
+  border-bottom: none;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.matchup-wins {
+  color: var(--color-success);
+}
+
+.matchup-losses {
+  color: var(--color-error);
+}
+
+.matchup-draws {
+  color: var(--color-text-muted);
+}
+
+.winrate-high {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.winrate-mid {
+  color: var(--color-warning);
+}
+
+.winrate-low {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.matchup-empty {
+  color: var(--color-text-muted);
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+/* ========================================
+   入力タイプバッジ（Classic / Modern）
+   ======================================== */
+.input-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+/* クラシック: 紫の六角形に白「C」 */
+.input-badge-classic {
+  background: linear-gradient(135deg, #9b30ff 0%, #7b1fa2 50%, #6a1b9a 100%);
+  color: #f0e0ff;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  width: 26px;
+  height: 26px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* モダン: オレンジの四角に白「M」 */
+.input-badge-modern {
+  background: linear-gradient(135deg, #ff8f00 0%, #e65100 50%, #bf360c 100%);
+  color: #fff5e0;
+  border-radius: 3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* ========================================
+   Battlelog バッジ
+   ======================================== */
+.battlelog-badge {
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.confidence-high {
+  background: rgba(74, 222, 128, 0.2);
+  color: var(--color-success);
+}
+
+.confidence-medium {
+  background: rgba(251, 191, 36, 0.2);
+  color: var(--color-warning);
+}
+
+.confidence-low {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--color-error);
+}
+
+/* ========================================
    レスポンシブ
    ======================================== */
 @media (max-width: 768px) {
@@ -582,5 +800,23 @@ body {
 
   .player-character {
     font-size: 1rem;
+  }
+
+  .matchup-table {
+    font-size: 0.875rem;
+  }
+
+  .matchup-table th,
+  .matchup-table td {
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .matchup-table td.matchup-character {
+    font-size: 0.875rem;
+  }
+
+  .tab-btn {
+    font-size: 1rem;
+    padding: var(--space-sm) var(--space-md);
   }
 }
