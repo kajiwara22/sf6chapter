@@ -297,6 +297,7 @@ docker compose up -d
 - [027: PS5 自動アップロード動画のタイトル自動書き換え](docs/adr/027-ps5-auto-title-rename.md)
 - [028: OBS ストリーミングイベント連動のYouTube動画タイトル更新](docs/adr/028-obs-streaming-event-driven-title-update.md)
 - [029: chapters.json 手動修正のR2反映とParquetスキーマ簡素化](docs/adr/029-chapters-json-correction-and-parquet-schema-simplification.md)
+- [030: Battlelogキャッシュデータを活用したマッチアップチャート機能](docs/adr/030-matchup-chart-from-battlelog-cache.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
