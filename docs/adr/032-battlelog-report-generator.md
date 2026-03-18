@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案 - 2026-03-18
+承認・実装完了 - 2026-03-18
 
 ## 文脈
 
@@ -233,11 +233,11 @@ ORDER BY uploaded_at ASC
 
 ## 実装チェックリスト
 
-- [ ] `packages/report-generator/` パッケージ作成（pyproject.toml, src/）
-- [ ] R2クライアント実装（S3互換API、Parquetダウンロード）
-- [ ] DuckDBクエリ実装（マッチアップ集計、LP推移）
-- [ ] Markdownフォーマッタ実装
-- [ ] CLIインターフェース実装（argparse）
-- [ ] 前月比較オプション実装（`--compare-prev`）
-- [ ] 出力ディレクトリの.gitignore設定
-- [ ] 動作確認（実データでのテスト）
+- [x] `packages/report-generator/` パッケージ作成（pyproject.toml, src/）
+- [x] R2クライアント実装（S3互換API、Parquetダウンロード）
+- [x] DuckDBクエリ実装（マッチアップ集計、LP推移）
+- [x] Markdownフォーマッタ実装
+- [x] CLIインターフェース実装（argparse）
+- [x] 前月比較オプション実装（`--compare-prev`）
+- [x] 出力ディレクトリの.gitignore設定
+- [x] 動作確認（実データでのテスト）
