@@ -18,7 +18,7 @@ app_root = Path(__file__).parent
 sys.path.insert(0, str(app_root))
 
 from src.battlelog_matcher import BattlelogMatcher, CharacterNormalizer
-from src.character import CharacterRecognizer
+from src.character import UNKNOWN_CHARACTER, CharacterRecognizer
 from src.detection import (
     MatchDetection,
     ResultScreenDetector,
@@ -28,7 +28,7 @@ from src.detection import (
 )
 from src.firestore import FirestoreClient
 from src.pubsub import PubSubSubscriber
-from src.sf6_battlelog import BattlelogCollector, BattlelogCacheManager, BattlelogSiteClient
+from src.sf6_battlelog import BattlelogCacheManager, BattlelogCollector, BattlelogSiteClient
 from src.storage import R2Uploader
 from src.utils.logger import setup_logger
 from src.video import VideoDownloader
@@ -515,6 +515,138 @@ class SF6ChapterProcessor:
         )
         return enriched_chapters
 
+    def _rerecognize_unmatched_chapters(
+        self,
+        chapters_with_result: list[dict[str, Any]],
+        replays: list[dict[str, Any]],
+        video_published_at: str,
+        video_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Battlelog未マッチチャプターに対して画像前処理+再認識を実施（ADR-033）
+
+        トリガー条件（すべて満たす）:
+        1. matched == False
+        2. キャラクター名が有効（UNKNOWN_CHARACTER でない）
+        3. 対応するフレーム画像が中間ファイルに存在する
+
+        Args:
+            chapters_with_result: Battlelogマッチング済みチャプターリスト
+            replays: Battlelogリプレイリスト（再マッチング用）
+            video_published_at: 動画公開日時（ISO 8601）
+            video_id: YouTube動画ID
+
+        Returns:
+            再認識結果を反映したチャプターリスト
+        """
+        video_intermediate_dir = self.intermediate_dir / video_id
+        rerecognition_method = "negative"
+
+        # 再認識で使用済みのreplay_idを収集（既にマッチ済みのもの）
+        used_replay_ids = {
+            ch["replay_id"] for ch in chapters_with_result
+            if ch.get("matched") and ch.get("replay_id")
+        }
+        sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
+
+        rerecognized_count = 0
+        rematch_success_count = 0
+
+        for i, chapter in enumerate(chapters_with_result):
+            # トリガー条件1: matched == False
+            if chapter.get("matched", False):
+                continue
+
+            title = chapter.get("title", "")
+            start_time = chapter.get("startTime", 0)
+
+            # トリガー条件2: 有効なキャラクター名が含まれている
+            if UNKNOWN_CHARACTER in title:
+                continue
+
+            # トリガー条件3: フレーム画像が存在する
+            # フレーム画像のパスを検索（frame_{index}_{timestamp}s.png 形式）
+            frame_path = self._find_frame_image(video_intermediate_dir, start_time)
+            if not frame_path:
+                logger.debug("  再認識スキップ %ds: フレーム画像なし", start_time)
+                continue
+
+            # フレーム画像を読み込み
+            import cv2  # main.pyではcv2を通常使わないためローカルインポート
+            frame = cv2.imread(str(frame_path))
+            if frame is None:
+                logger.warning("  再認識スキップ %ds: フレーム画像読み込み失敗: %s", start_time, frame_path)
+                continue
+
+            # 前処理適用+Gemini API再認識
+            try:
+                normalized, _raw = self.recognizer.recognize_with_preprocessing(
+                    frame, method=rerecognition_method
+                )
+            except Exception:
+                logger.exception("  再認識失敗 %ds", start_time)
+                continue
+
+            rerecognized_count += 1
+            new_title = f"{normalized.get('1p')} VS {normalized.get('2p')}"
+
+            # 認識結果が元と同じなら改善なし
+            if new_title == title:
+                logger.info("  再認識 %ds: 結果同一 (%s) → スキップ", start_time, title)
+                continue
+
+            logger.info("  再認識 %ds: %s → %s", start_time, title, new_title)
+
+            # Battlelog再マッチング
+            rerecognized_chapter = {**chapter, "title": new_title}
+            result = self.battlelog_matcher.match_chapter_with_battlelog(
+                rerecognized_chapter, sorted_replays, video_published_at,
+                used_replay_ids, tolerance_seconds=600,
+            )
+
+            if result.get("matched"):
+                # 再マッチ成功: チャプター情報を更新
+                rematch_success_count += 1
+                if result.get("replay_id"):
+                    used_replay_ids.add(result["replay_id"])
+
+                chapters_with_result[i] = {
+                    **chapter,
+                    **result,
+                    "title": new_title,
+                    "rerecognized": True,
+                    "original_title": title,
+                    "rerecognition_method": rerecognition_method,
+                }
+                logger.info("  再マッチ成功 %ds: %s (replay_id=%s)", start_time, new_title, result.get("replay_id"))
+            else:
+                # 再マッチ失敗: 元のデータを維持（再認識の事実だけ記録）
+                logger.info("  再マッチ失敗 %ds: %s → 元のデータを維持", start_time, new_title)
+
+        if rerecognized_count > 0:
+            logger.info(
+                "  再認識結果: %d件実施, %d件再マッチ成功",
+                rerecognized_count, rematch_success_count,
+            )
+
+        return chapters_with_result
+
+    def _find_frame_image(self, video_intermediate_dir: Path, start_time: int) -> Path | None:
+        """
+        中間ファイルからフレーム画像を検索
+
+        Args:
+            video_intermediate_dir: 動画の中間ファイルディレクトリ
+            start_time: チャプターの開始時刻（秒）
+
+        Returns:
+            フレーム画像のパス、存在しない場合はNone
+        """
+        # frame_{index:03d}_{timestamp}s.png のパターンで検索
+        for frame_file in video_intermediate_dir.glob(f"frame_*_{start_time}s.png"):
+            return frame_file
+        return None
+
     def _run_battlelog_matching(
         self, video_id: str, chapters: list[dict[str, Any]], video_published_at: str
     ) -> list[dict[str, Any]]:
@@ -550,7 +682,17 @@ class SF6ChapterProcessor:
             logger.info(f"  buildId: {build_id[:20]}...")
 
             replays = asyncio.run(self._fetch_battlelog_replays(self.sf6_player_id, build_id, auth_cookie))
-            return self._match_chapters_with_battlelog_replays(chapters, replays, video_published_at)
+            chapters_with_result = self._match_chapters_with_battlelog_replays(chapters, replays, video_published_at)
+
+            # ADR-033: 未マッチチャプターに対して画像前処理+再認識を実施
+            unmatched_count = sum(1 for c in chapters_with_result if not c.get("matched", False))
+            if unmatched_count > 0:
+                logger.info("[4.5.1/6] Running rerecognition for %d unmatched chapters...", unmatched_count)
+                chapters_with_result = self._rerecognize_unmatched_chapters(
+                    chapters_with_result, replays, video_published_at, video_id,
+                )
+
+            return chapters_with_result
 
         except Exception as e:
             logger.error(f"Battlelog マッピング失敗: {e}")

@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案（Proposed） - 2026-03-20
+承認（Accepted） - 2026-03-20（事前検証完了: ネガポジ反転を採用）
 
 ## 文脈
 
@@ -101,6 +101,31 @@ Battlelogマッチング後に、**未マッチかつキャラクター名が認
 | ネガポジ反転 | 画像全体の反転 | 背景と文字の関係を逆転 |
 
 **事前検証方法**: 認識失敗が確認されている `aUZZB4Jt-h0` の227s, 2152s, 2292sのフレーム画像を使用し、各手法で前処理後にGemini APIで認識精度を比較する。
+
+### 事前検証結果（2026-03-20実施）
+
+6フレーム（4動画）× 6手法で検証を実施。検証Notebook: `packages/local/notebooks/rerecognition_preprocessing_evaluation.ipynb`
+
+**検証対象**:
+- `aUZZB4Jt-h0`: 227s (ALEX→JAMIE), 2152s (JP→JAMIE), 2292s (JP→JAMIE)
+- `QTqK4AD0ivY`: 2122s (JP→JAMIE)
+- `hn0O8X3blIg`: 2071s (MAI→JAMIE)
+- `c2TUszgtjao`: 31s (DHALSIM→JAMIE)
+
+| 手法 | 正解率 | 改善件数 |
+|------|--------|---------|
+| **ネガポジ反転** | **83.3% (5/6)** | **5件** |
+| CLAHE | 50.0% (3/6) | 3件 |
+| LAB CLAHE | 50.0% (3/6) | 3件 |
+| Unsharp Mask | 33.3% (2/6) | 2件 |
+| Adaptive Threshold | 0.0% (0/6) | 0件 |
+| 元画像（前処理なし） | 0.0% (0/6) | 0件 |
+
+**選定結果**: **ネガポジ反転（`cv2.bitwise_not`）** を再認識の前処理手法として採用。
+
+**補足**:
+- Adaptive Thresholdは視覚的には文字が最も明瞭だが、Gemini APIは白黒二値化画像の認識が苦手（EDやGUILEへの誤認識が頻発）
+- ネガポジ反転は実装が最もシンプル（1行）で、処理コストも最小
 
 ### 再認識結果の判定
 

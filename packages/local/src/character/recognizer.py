@@ -189,6 +189,28 @@ class CharacterRecognizer:
 
         return normalized_result, raw_result
 
+    def recognize_with_preprocessing(
+        self,
+        frame: np.ndarray,
+        method: str = "negative",
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """
+        前処理を適用してからキャラクターを再認識（ADR-033）
+
+        Battlelogマッチング失敗時に、画像前処理を適用して認識精度を改善する。
+
+        Args:
+            frame: OpenCV形式のフレーム（BGR）
+            method: 前処理手法名（デフォルト: "negative"）
+
+        Returns:
+            (正規化済み結果, 生の認識結果)のタプル
+        """
+        from ..detection.preprocessing import preprocess_for_recognition
+
+        preprocessed = preprocess_for_recognition(frame, method=method)
+        return self.recognize_from_frame(preprocessed)
+
     def recognize_batch(
         self,
         frames: list[np.ndarray],
