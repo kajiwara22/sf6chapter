@@ -184,6 +184,7 @@ sf6-chapter/
 - **Node.js**: pnpm使用
 - **Cloudflare**: wrangler CLI使用、Pages Functionsで実装
 - **GCP**: gcloud CLI使用
+- **環境変数**: miseを使用して管理（`.env`ファイルは使用しない）
 - **設計方針**: Cloudflare Workersへの将来的な移行を想定し、Pages固有機能への依存を最小化（詳細: [ADR-009](docs/adr/009-cloudflare-pages-to-workers-migration-strategy.md)）
 
 ## カスタムスキル
