@@ -88,6 +88,11 @@ sf6-chapter/
 - [x] 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）（ADR-026）
 - [🔄] PS5 自動アップロード動画のタイトル自動書き換え（ADR-027） - 実装中
 - [x] OBS ストリーミングイベント連動のYouTube動画タイトル更新（ADR-028） - 実装完了
+- [x] chapters.json 手動修正のR2反映とParquetスキーマ簡素化（ADR-029）
+- [x] Battlelogキャッシュデータを活用したマッチアップチャート機能（ADR-030）
+- [x] Battlelog Parquet 変換・アップロードの main.py パイプライン統合（ADR-031）
+- [x] Battlelog レポート生成ツール（AI分析連携用テキスト出力）（ADR-032）
+- [x] Battlelog未マッチ時の画像前処理による再認識（ADR-033）
 
 ## 次のタスク
 

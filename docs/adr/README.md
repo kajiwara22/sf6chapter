@@ -37,6 +37,8 @@
 | [029](./029-chapters-json-correction-and-parquet-schema-simplification.md) | chapters.json 手動修正のR2反映とParquetスキーマ簡素化 | 提案 | 2026-03-04 |
 | [030](./030-matchup-chart-from-battlelog-cache.md) | Battlelogキャッシュデータを活用したマッチアップチャート機能 | 提案 | 2026-03-08 |
 | [031](./031-battlelog-parquet-pipeline-integration.md) | Battlelog Parquet 変換・アップロードの main.py パイプライン統合 | 提案 | 2026-03-08 |
+| [032](./032-battlelog-report-generator.md) | Battlelog レポート生成ツール（AI分析連携用テキスト出力） | 採用 | 2026-03-18 |
+| [033](./033-rerecognition-with-image-preprocessing.md) | Battlelog未マッチ時の画像前処理による再認識 | 採用 | 2026-03-20 |
 
 ## ADRのフォーマット
 

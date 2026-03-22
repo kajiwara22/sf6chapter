@@ -247,6 +247,15 @@ pnpm deploy
 | [022](docs/adr/022-battlelog-api-caching-with-sqlite.md) | Battlelog API キャッシング機構（SQLite） |
 | [023](docs/adr/023-battlelog-data-integration-with-parquet-search.md) | Battlelogデータ統合とParquet Web検索機能の実装 |
 | [024](docs/adr/024-web-ui-search-filter-with-match-results.md) | Web UI 検索フィルター - Battlelog 勝敗結果対応 |
+| [025](docs/adr/025-battlelog-api-incremental-fetching-optimization.md) | Battlelog API 増分取得の最適化 |
+| [026](docs/adr/026-result-screen-match-outcome-detection.md) | 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング） |
+| [027](docs/adr/027-ps5-auto-title-rename.md) | PS5 自動アップロード動画のタイトル自動書き換え |
+| [028](docs/adr/028-obs-streaming-event-driven-title-update.md) | OBS ストリーミングイベント連動のYouTube動画タイトル更新 |
+| [029](docs/adr/029-chapters-json-correction-and-parquet-schema-simplification.md) | chapters.json 手動修正のR2反映とParquetスキーマ簡素化 |
+| [030](docs/adr/030-matchup-chart-from-battlelog-cache.md) | Battlelogキャッシュデータを活用したマッチアップチャート機能 |
+| [031](docs/adr/031-battlelog-parquet-pipeline-integration.md) | Battlelog Parquet 変換・アップロードの main.py パイプライン統合 |
+| [032](docs/adr/032-battlelog-report-generator.md) | Battlelog レポート生成ツール（AI分析連携用テキスト出力） |
+| [033](docs/adr/033-rerecognition-with-image-preprocessing.md) | Battlelog未マッチ時の画像前処理による再認識 |
 
 ## 認証方式
 
