@@ -9,19 +9,26 @@ YouTube Data APIから最新の動画を取得し、
 タイトルプレースホルダー {DateTime} をYYYY/MM/DD形式の日付に置き換える
 """
 
-import logging
+from logging import getLogger, config
+
+
 import sys
 from datetime import datetime
 
 import pytz
+import time
+import json
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from oauth import get_oauth_credentials
 
 # ログ設定
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+
+with open('log_config.json', 'r') as f:
+    log_conf = json.load(f)
+config.dictConfig(log_conf)
+logger = getLogger(__name__)
 
 
 def get_latest_video_with_placeholder(youtube_service, limit: int = 50) -> dict | None:
@@ -148,6 +155,8 @@ def main(token_path: str | None = None, client_secrets_path: str | None = None, 
     Returns:
         成功時 0、失敗時 1
     """
+    logger.info("配信が完了後タイトルが更新できるようになるまで３分待ちます。")
+    time.sleep(180)
     try:
         # OAuth2認証を実行
         credentials = get_oauth_credentials(
