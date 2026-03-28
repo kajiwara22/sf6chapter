@@ -155,8 +155,7 @@ def main(token_path: str | None = None, client_secrets_path: str | None = None, 
     Returns:
         成功時 0、失敗時 1
     """
-    logger.info("配信が完了後タイトルが更新できるようになるまで３分待ちます。")
-    time.sleep(180)
+    logger.info("Starting title update process")
     try:
         # OAuth2認証を実行
         credentials = get_oauth_credentials(
@@ -169,30 +168,39 @@ def main(token_path: str | None = None, client_secrets_path: str | None = None, 
         youtube = build("youtube", "v3", credentials=credentials)
         logger.info("YouTube API client initialized")
 
-        # 最新動画から {DateTime} プレースホルダーを検索
-        video_info = get_latest_video_with_placeholder(youtube, limit=search_limit)
+        # 1分待って処理を試みる流れを3回繰り返す
+        for attempt in range(1, 4):
+            logger.info(f"配信が完了後タイトルが更新できるようになるまで{attempt}回目の1分待ちます。")
+            time.sleep(60)
 
-        if not video_info:
-            logger.info("No action needed: no video with {DateTime} placeholder found")
-            return 0
+            # 最新動画から {DateTime} プレースホルダーを検索
+            video_info = get_latest_video_with_placeholder(youtube, limit=search_limit)
 
-        # 公開日時をJST準拠のYYYY/MM/DD形式に変換
-        date_str = convert_published_at_to_jst_date(video_info["publishedAt"])
-        if not date_str:
-            logger.error("Failed to convert date")
-            return 1
+            if not video_info:
+                logger.info("No action needed: no video with {DateTime} placeholder found")
+                continue
 
-        # タイトル内の {DateTime} を置き換え
-        new_title = replace_placeholder_in_title(video_info["title"], date_str)
-        logger.info(f"Replacing title: '{video_info['title']}' → '{new_title}'")
+            # 公開日時をJST準拠のYYYY/MM/DD形式に変換
+            date_str = convert_published_at_to_jst_date(video_info["publishedAt"])
+            if not date_str:
+                logger.error("Failed to convert date")
+                continue
 
-        # YouTube APIでタイトルを更新
-        if update_video_title(youtube, video_info["id"], new_title):
-            logger.info("Title update completed successfully")
-            return 0
-        else:
-            logger.error("Title update failed")
-            return 1
+            # タイトル内の {DateTime} を置き換え
+            new_title = replace_placeholder_in_title(video_info["title"], date_str)
+            logger.info(f"Replacing title: '{video_info['title']}' → '{new_title}'")
+
+            # YouTube APIでタイトルを更新
+            if update_video_title(youtube, video_info["id"], new_title):
+                logger.info("Title update completed successfully")
+                return 0
+            else:
+                logger.error("Title update failed")
+                continue
+
+        # 3回失敗したらエラー
+        logger.error("All attempts failed")
+        return 1
 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
