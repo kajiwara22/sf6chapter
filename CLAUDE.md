@@ -86,7 +86,7 @@ sf6-chapter/
 - [x] Web UI 検索フィルター - Battlelog 勝敗結果対応（ADR-024）
 - [x] Battlelog API 増分取得の最適化（ADR-025）
 - [x] 対戦動画からの勝敗検出（RESULT 画面テンプレートマッチング）（ADR-026）
-- [🔄] PS5 自動アップロード動画のタイトル自動書き換え（ADR-027） - 実装中
+- [x] PS5 自動アップロード動画のタイトル自動書き換え（ADR-027） - 実装中
 - [x] OBS ストリーミングイベント連動のYouTube動画タイトル更新（ADR-028） - 実装完了
 - [x] chapters.json 手動修正のR2反映とParquetスキーマ簡素化（ADR-029）
 - [x] Battlelogキャッシュデータを活用したマッチアップチャート機能（ADR-030）
