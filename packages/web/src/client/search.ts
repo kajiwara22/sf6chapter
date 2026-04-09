@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow } from './types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow } from '@shared/types';
 
 let instance: DuckDBInstance | null = null;
 
@@ -525,6 +525,155 @@ export async function getBattlelogMyCharacters(): Promise<string[]> {
       SELECT DISTINCT p2_character_name AS character FROM battlelog_replays WHERE p2_short_id = ${MY_PLAYER_ID}
     )
     SELECT character FROM my_characters ORDER BY character
+  `);
+
+  const rows = result.toArray() as unknown as { character: string }[];
+  return rows.map((row) => row.character);
+}
+
+/** 1ページあたりの件数 */
+const MATCH_HISTORY_PAGE_SIZE = 20;
+
+/**
+ * 対戦履歴を取得
+ */
+export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<MatchHistoryRow[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  // 期間フィルター
+  if (filters.dateFrom) {
+    const utcFrom = convertJstDateTimeToTimestamp(filters.dateFrom, false, filters.timeFrom);
+    conditions.push(`b.uploaded_at >= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcFrom);
+  }
+
+  if (filters.dateTo) {
+    const utcTo = convertJstDateTimeToTimestamp(filters.dateTo, true, filters.timeTo);
+    conditions.push(`b.uploaded_at <= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcTo);
+  }
+
+  // マッチタイプフィルター
+  if (filters.battleType !== undefined && filters.battleType > 0) {
+    conditions.push(`b.battle_type = $${params.length + 1}`);
+    params.push(filters.battleType);
+  }
+
+  // 自キャラクターフィルター（CASE WHENで統一後にフィルター）
+  if (filters.myCharacter) {
+    conditions.push(`(
+      (b.p1_short_id = ${MY_PLAYER_ID} AND b.p1_character_name = $${params.length + 1})
+      OR
+      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_character_name = $${params.length + 1})
+    )`);
+    params.push(filters.myCharacter);
+  }
+
+  // 自入力タイプフィルター
+  if (filters.myInputType !== undefined) {
+    conditions.push(`(
+      (b.p1_short_id = ${MY_PLAYER_ID} AND b.p1_input_type = $${params.length + 1})
+      OR
+      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_input_type = $${params.length + 1})
+    )`);
+    params.push(filters.myInputType);
+  }
+
+  // 相手キャラクターフィルター
+  if (filters.opponentCharacter) {
+    conditions.push(`(
+      (b.p1_short_id = ${MY_PLAYER_ID} AND b.p2_character_name = $${params.length + 1})
+      OR
+      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_character_name = $${params.length + 1})
+    )`);
+    params.push(filters.opponentCharacter);
+  }
+
+  // 相手入力タイプフィルター
+  if (filters.opponentInputType !== undefined) {
+    conditions.push(`(
+      (b.p1_short_id = ${MY_PLAYER_ID} AND b.p2_input_type = $${params.length + 1})
+      OR
+      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_input_type = $${params.length + 1})
+    )`);
+    params.push(filters.opponentInputType);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const page = filters.page ?? 0;
+  const offset = page * MATCH_HISTORY_PAGE_SIZE;
+
+  const query = `
+    SELECT
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_character_name
+           ELSE b.p2_character_name END AS my_character,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_input_type
+           ELSE b.p2_input_type END AS my_input_type,
+      CASE WHEN (b.p1_short_id = ${MY_PLAYER_ID} AND b.match_result = 'win')
+                OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.match_result = 'loss')
+           THEN 'win'
+           WHEN b.match_result = 'draw' THEN 'draw'
+           ELSE 'loss' END AS result,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_fighter_id
+           ELSE b.p1_fighter_id END AS opponent_name,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_character_name
+           ELSE b.p1_character_name END AS opponent_character,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_input_type
+           ELSE b.p1_input_type END AS opponent_input_type,
+      b.battle_type_name,
+      b.replay_id,
+      b.uploaded_at,
+      m.videoId AS video_id,
+      m.startTime AS start_time
+    FROM battlelog_replays b
+    LEFT JOIN matches m ON b.replay_id = m.battlelogReplayId
+    ${whereClause}
+    ORDER BY b.uploaded_at DESC
+    LIMIT ${MATCH_HISTORY_PAGE_SIZE} OFFSET ${offset}
+  `;
+
+  console.log('[DuckDB] Executing match history query with params:', params);
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(...params);
+  await stmt.close();
+
+  const rows = result.toArray() as unknown as MatchHistoryQueryRow[];
+
+  return rows.map((row) => ({
+    myCharacter: row.my_character,
+    myInputType: Number(row.my_input_type),
+    result: row.result as 'win' | 'loss' | 'draw',
+    opponentName: row.opponent_name,
+    opponentCharacter: row.opponent_character,
+    opponentInputType: Number(row.opponent_input_type),
+    battleTypeName: row.battle_type_name,
+    replayId: row.replay_id,
+    uploadedAt: String(row.uploaded_at),  // DuckDBのTIMESTAMPはUnixミリ秒の数値で返る
+    videoId: row.video_id ?? null,
+    startTime: row.start_time != null ? Number(row.start_time) : null,
+  }));
+}
+
+/**
+ * 対戦履歴のキャラクター一覧を取得（相手キャラ）
+ */
+export async function getMatchHistoryOpponentCharacters(): Promise<string[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const result = await instance.conn.query(`
+    WITH opponent_chars AS (
+      SELECT DISTINCT p2_character_name AS character FROM battlelog_replays WHERE p1_short_id = ${MY_PLAYER_ID}
+      UNION
+      SELECT DISTINCT p1_character_name AS character FROM battlelog_replays WHERE p2_short_id = ${MY_PLAYER_ID}
+    )
+    SELECT character FROM opponent_chars ORDER BY character
   `);
 
   const rows = result.toArray() as unknown as { character: string }[];

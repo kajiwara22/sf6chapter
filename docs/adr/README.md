@@ -39,6 +39,7 @@
 | [031](./031-battlelog-parquet-pipeline-integration.md) | Battlelog Parquet 変換・アップロードの main.py パイプライン統合 | 提案 | 2026-03-08 |
 | [032](./032-battlelog-report-generator.md) | Battlelog レポート生成ツール（AI分析連携用テキスト出力） | 採用 | 2026-03-18 |
 | [033](./033-rerecognition-with-image-preprocessing.md) | Battlelog未マッチ時の画像前処理による再認識 | 採用 | 2026-03-20 |
+| [034](./034-match-history-page-with-youtube-links.md) | 対戦結果一覧ページの実装（SFBUFFライク + YouTubeリンク統合） | 提案 | 2026-04-09 |
 
 ## ADRのフォーマット
 
