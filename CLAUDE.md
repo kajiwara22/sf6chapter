@@ -93,6 +93,7 @@ sf6-chapter/
 - [x] Battlelog Parquet 変換・アップロードの main.py パイプライン統合（ADR-031）
 - [x] Battlelog レポート生成ツール（AI分析連携用テキスト出力）（ADR-032）
 - [x] Battlelog未マッチ時の画像前処理による再認識（ADR-033）
+- [x] 対戦結果一覧ページの実装（SFBUFFライク + YouTubeリンク統合）（ADR-034）
 
 ## 次のタスク
 

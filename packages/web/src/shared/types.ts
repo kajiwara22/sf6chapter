@@ -169,6 +169,56 @@ export interface MatchupChartFilters {
   opponentInputType?: number;
 }
 
+/** 対戦履歴の1行 */
+export interface MatchHistoryRow {
+  /** 自キャラクター名 */
+  myCharacter: string;
+  /** 自入力タイプ（0=クラシック, 1=モダン） */
+  myInputType: number;
+  /** 勝敗（自分視点） */
+  result: 'win' | 'loss' | 'draw';
+  /** 相手プレイヤーID（fighter_id） */
+  opponentName: string;
+  /** 相手キャラクター名 */
+  opponentCharacter: string;
+  /** 相手入力タイプ（0=クラシック, 1=モダン） */
+  opponentInputType: number;
+  /** ゲームモード名 */
+  battleTypeName: string;
+  /** リプレイID */
+  replayId: string;
+  /** 試合日時 (ISO8601) */
+  uploadedAt: string;
+  /** YouTube動画ID（JOINで取得、NULLの場合あり） */
+  videoId: string | null;
+  /** YouTube開始時間（秒）（JOINで取得、NULLの場合あり） */
+  startTime: number | null;
+}
+
+/** 対戦履歴のフィルター */
+export interface MatchHistoryFilters {
+  /** 自キャラクター名 */
+  myCharacter?: string;
+  /** 自入力タイプ（0=クラシック, 1=モダン） */
+  myInputType?: number;
+  /** 相手キャラクター名 */
+  opponentCharacter?: string;
+  /** 相手入力タイプ（0=クラシック, 1=モダン） */
+  opponentInputType?: number;
+  /** ゲームモード（battle_type） */
+  battleType?: number;
+  /** 期間（開始）YYYY-MM-DD */
+  dateFrom?: string;
+  /** 期間（終了）YYYY-MM-DD */
+  dateTo?: string;
+  /** 開始時刻 HH:MM（JSTで指定） */
+  timeFrom?: string;
+  /** 終了時刻 HH:MM（JSTで指定） */
+  timeTo?: string;
+  /** ページ番号（0始まり） */
+  page?: number;
+}
+
 /** ヘルスチェックレスポンス */
 export interface HealthResponse {
   status: 'ok' | 'error';

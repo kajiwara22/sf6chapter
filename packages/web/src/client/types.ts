@@ -42,6 +42,23 @@ export const DOM_IDS = {
   MATCHUP_CHART: 'matchup-chart',
   MATCHUP_LOADING: 'matchup-loading',
   MATCHUP_ERROR: 'matchup-error',
+  // 対戦履歴
+  TAB_HISTORY: 'tab-history',
+  VIEW_HISTORY: 'view-history',
+  HISTORY_FORM: 'history-form',
+  HISTORY_MY_CHARACTER: 'history-my-character',
+  HISTORY_MY_INPUT_TYPE: 'history-my-input-type',
+  HISTORY_OPPONENT_CHARACTER: 'history-opponent-character',
+  HISTORY_OPPONENT_INPUT_TYPE: 'history-opponent-input-type',
+  HISTORY_BATTLE_TYPE: 'history-battle-type',
+  HISTORY_DATE_FROM: 'history-date-from',
+  HISTORY_TIME_FROM: 'history-time-from',
+  HISTORY_DATE_TO: 'history-date-to',
+  HISTORY_TIME_TO: 'history-time-to',
+  HISTORY_TABLE: 'history-table',
+  HISTORY_LOADING: 'history-loading',
+  HISTORY_ERROR: 'history-error',
+  HISTORY_PAGINATION: 'history-pagination',
 } as const;
 
 /** クエリ結果の行 */
@@ -81,4 +98,19 @@ export interface MatchupChartQueryRow {
   wins: number | bigint;
   losses: number | bigint;
   draws: number | bigint;
+}
+
+/** 対戦履歴のDuckDBクエリ結果行 */
+export interface MatchHistoryQueryRow {
+  my_character: string;
+  my_input_type: number | bigint;
+  result: string;
+  opponent_name: string;
+  opponent_character: string;
+  opponent_input_type: number | bigint;
+  battle_type_name: string;
+  replay_id: string;
+  uploaded_at: string;
+  video_id: string | null;
+  start_time: number | bigint | null;
 }

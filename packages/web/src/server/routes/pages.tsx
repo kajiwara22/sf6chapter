@@ -63,6 +63,7 @@ pages.get('/', (c) => {
             <nav class="tab-nav">
               <button id="tab-search" class="tab-btn tab-btn-active" data-view="view-search">対戦検索</button>
               <button id="tab-matchup" class="tab-btn" data-view="view-matchup">マッチアップ</button>
+              <button id="tab-history" class="tab-btn" data-view="view-history">対戦履歴</button>
             </nav>
 
             <!-- ========== 対戦検索ビュー ========== -->
@@ -229,6 +230,100 @@ pages.get('/', (c) => {
             </section>
 
             </div><!-- /view-matchup -->
+
+            <!-- ========== 対戦履歴ビュー ========== -->
+            <div id="view-history" class="tab-view">
+
+            <!-- 対戦履歴フィルター -->
+            <section class="search-section">
+              <form id="history-form" class="search-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="history-my-character">自キャラクター</label>
+                    <select id="history-my-character" name="myCharacter">
+                      <option value="">すべて</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="history-my-input-type">自操作タイプ</label>
+                    <select id="history-my-input-type" name="myInputType">
+                      <option value="">すべて</option>
+                      <option value="0">Classic</option>
+                      <option value="1">Modern</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="history-opponent-character">相手キャラクター</label>
+                    <select id="history-opponent-character" name="opponentCharacter">
+                      <option value="">すべて</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="history-opponent-input-type">相手操作タイプ</label>
+                    <select id="history-opponent-input-type" name="opponentInputType">
+                      <option value="">すべて</option>
+                      <option value="0">Classic</option>
+                      <option value="1">Modern</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="history-battle-type">マッチタイプ</label>
+                    <select id="history-battle-type" name="battleType">
+                      <option value="0">All</option>
+                      <option value="1">Ranked</option>
+                      <option value="3">Battle Hub</option>
+                      <option value="4">Custom Room</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="history-date-from">期間（開始）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="history-date-from" name="dateFrom" />
+                      <input type="time" id="history-time-from" name="timeFrom" />
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="history-date-to">期間（終了）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="history-date-to" name="dateTo" />
+                      <input type="time" id="history-time-to" name="timeTo" />
+                    </div>
+                  </div>
+
+                  <div class="form-group form-group-button">
+                    <button type="submit" class="btn-search">
+                      絞り込み
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <!-- 対戦履歴 ステータス -->
+            <section class="status-section">
+              <div id="history-loading" class="status-message status-loading" style="display: none;">
+                <span class="spinner"></span>
+                読み込み中...
+              </div>
+              <div id="history-error" class="status-message status-error" style="display: none;"></div>
+            </section>
+
+            <!-- 対戦履歴テーブル -->
+            <section class="history-section">
+              <h2 class="section-title">対戦履歴</h2>
+              <div id="history-table"></div>
+              <div id="history-pagination"></div>
+            </section>
+
+            </div><!-- /view-history -->
 
           </main>
 

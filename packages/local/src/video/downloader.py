@@ -102,12 +102,14 @@ class VideoDownloader:
         Returns:
             既存ファイルのパス（存在しない場合はNone）
         """
-        # パターン: *[video_id].ext
-        for ext in ["mp4", "webm", "mkv"]:
-            pattern = f"*[{video_id}].{ext}"
-            matches = list(self.download_dir.glob(pattern))
-            if matches:
-                return matches[0]
+        # globのcharacter class解釈を避けるため、ファイル一覧を手動でスキャン
+        for file_path in self.download_dir.iterdir():
+            if file_path.is_file():
+                # ファイル名が YYYYMMDD[video_id].ext の形式であることを確認
+                file_name = file_path.name
+                # video_idが[...]で囲まれているか確認
+                if f"[{video_id}]" in file_name:
+                    return file_path
         return None
 
     def get_video_info(self, video_id: str) -> dict[str, Any]:
