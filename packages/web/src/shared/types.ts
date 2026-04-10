@@ -171,27 +171,27 @@ export interface MatchupChartFilters {
 
 /** 対戦履歴の1行 */
 export interface MatchHistoryRow {
-  /** 自キャラクター名 */
+  /** 自キャラクター名（Battlelog or matches由来） */
   myCharacter: string;
-  /** 自入力タイプ（0=クラシック, 1=モダン） */
-  myInputType: number;
-  /** 勝敗（自分視点） */
-  result: 'win' | 'loss' | 'draw';
-  /** 相手プレイヤーID（fighter_id） */
-  opponentName: string;
-  /** 相手キャラクター名 */
+  /** 自入力タイプ（0=クラシック, 1=モダン）。YouTube側のみの場合はnull */
+  myInputType: number | null;
+  /** 勝敗（自分視点）。YouTube側のみでresultがない場合はnull */
+  result: 'win' | 'loss' | 'draw' | null;
+  /** 相手プレイヤーID（fighter_id）。YouTube側のみの場合はnull */
+  opponentName: string | null;
+  /** 相手キャラクター名（Battlelog or matches由来） */
   opponentCharacter: string;
-  /** 相手入力タイプ（0=クラシック, 1=モダン） */
-  opponentInputType: number;
-  /** ゲームモード名 */
-  battleTypeName: string;
-  /** リプレイID */
-  replayId: string;
-  /** 試合日時 (ISO8601) */
+  /** 相手入力タイプ（0=クラシック, 1=モダン）。YouTube側のみの場合はnull */
+  opponentInputType: number | null;
+  /** ゲームモード名。YouTube側のみの場合はnull */
+  battleTypeName: string | null;
+  /** リプレイID。YouTube側のみの場合はnull */
+  replayId: string | null;
+  /** 試合日時（Battlelog uploaded_at or matches videoPublishedAt） */
   uploadedAt: string;
-  /** YouTube動画ID（JOINで取得、NULLの場合あり） */
+  /** YouTube動画ID（NULLの場合あり） */
   videoId: string | null;
-  /** YouTube開始時間（秒）（JOINで取得、NULLの場合あり） */
+  /** YouTube開始時間（秒）（NULLの場合あり） */
   startTime: number | null;
 }
 

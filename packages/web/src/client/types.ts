@@ -103,13 +103,13 @@ export interface MatchupChartQueryRow {
 /** 対戦履歴のDuckDBクエリ結果行 */
 export interface MatchHistoryQueryRow {
   my_character: string;
-  my_input_type: number | bigint;
-  result: string;
-  opponent_name: string;
+  my_input_type: number | bigint | null;
+  result: string | null;
+  opponent_name: string | null;
   opponent_character: string;
-  opponent_input_type: number | bigint;
-  battle_type_name: string;
-  replay_id: string;
+  opponent_input_type: number | bigint | null;
+  battle_type_name: string | null;
+  replay_id: string | null;
   uploaded_at: string;
   video_id: string | null;
   start_time: number | bigint | null;

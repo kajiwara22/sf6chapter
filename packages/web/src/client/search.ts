@@ -545,61 +545,59 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
   const conditions: string[] = [];
   const params: unknown[] = [];
 
-  // 期間フィルター
+  // 期間フィルター（COALESCE後の sort_time に対して適用）
   if (filters.dateFrom) {
     const utcFrom = convertJstDateTimeToTimestamp(filters.dateFrom, false, filters.timeFrom);
-    conditions.push(`b.uploaded_at >= $${params.length + 1}::TIMESTAMP`);
+    conditions.push(`COALESCE(b.uploaded_at, m.videoPublishedAt::TIMESTAMP) >= $${params.length + 1}::TIMESTAMP`);
     params.push(utcFrom);
   }
 
   if (filters.dateTo) {
     const utcTo = convertJstDateTimeToTimestamp(filters.dateTo, true, filters.timeTo);
-    conditions.push(`b.uploaded_at <= $${params.length + 1}::TIMESTAMP`);
+    conditions.push(`COALESCE(b.uploaded_at, m.videoPublishedAt::TIMESTAMP) <= $${params.length + 1}::TIMESTAMP`);
     params.push(utcTo);
   }
 
-  // マッチタイプフィルター
+  // マッチタイプフィルター（Battlelog側のみ）
   if (filters.battleType !== undefined && filters.battleType > 0) {
     conditions.push(`b.battle_type = $${params.length + 1}`);
     params.push(filters.battleType);
   }
 
-  // 自キャラクターフィルター（CASE WHENで統一後にフィルター）
+  // 自キャラクターフィルター（Battlelog or matches）
   if (filters.myCharacter) {
     conditions.push(`(
       (b.p1_short_id = ${MY_PLAYER_ID} AND b.p1_character_name = $${params.length + 1})
-      OR
-      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_character_name = $${params.length + 1})
+      OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_character_name = $${params.length + 1})
+      OR (b.replay_id IS NULL AND m.player1.character = $${params.length + 1})
     )`);
     params.push(filters.myCharacter);
   }
 
-  // 自入力タイプフィルター
+  // 自入力タイプフィルター（Battlelog側のみ）
   if (filters.myInputType !== undefined) {
     conditions.push(`(
       (b.p1_short_id = ${MY_PLAYER_ID} AND b.p1_input_type = $${params.length + 1})
-      OR
-      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_input_type = $${params.length + 1})
+      OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.p2_input_type = $${params.length + 1})
     )`);
     params.push(filters.myInputType);
   }
 
-  // 相手キャラクターフィルター
+  // 相手キャラクターフィルター（Battlelog or matches）
   if (filters.opponentCharacter) {
     conditions.push(`(
       (b.p1_short_id = ${MY_PLAYER_ID} AND b.p2_character_name = $${params.length + 1})
-      OR
-      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_character_name = $${params.length + 1})
+      OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_character_name = $${params.length + 1})
+      OR (b.replay_id IS NULL AND m.player2.character = $${params.length + 1})
     )`);
     params.push(filters.opponentCharacter);
   }
 
-  // 相手入力タイプフィルター
+  // 相手入力タイプフィルター（Battlelog側のみ）
   if (filters.opponentInputType !== undefined) {
     conditions.push(`(
       (b.p1_short_id = ${MY_PLAYER_ID} AND b.p2_input_type = $${params.length + 1})
-      OR
-      (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_input_type = $${params.length + 1})
+      OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.p1_input_type = $${params.length + 1})
     )`);
     params.push(filters.opponentInputType);
   }
@@ -608,32 +606,47 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
   const page = filters.page ?? 0;
   const offset = page * MATCH_HISTORY_PAGE_SIZE;
 
+  // FULL OUTER JOIN: Battlelog側のみ、matches側のみ、両方ある行すべてを返す
+  // matches側のみの場合は player1 を「自分」、player2 を「相手」として扱う
   const query = `
     SELECT
-      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_character_name
-           ELSE b.p2_character_name END AS my_character,
+      COALESCE(
+        CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_character_name
+             WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p2_character_name
+             ELSE NULL END,
+        m.player1.character
+      ) AS my_character,
       CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_input_type
-           ELSE b.p2_input_type END AS my_input_type,
-      CASE WHEN (b.p1_short_id = ${MY_PLAYER_ID} AND b.match_result = 'win')
-                OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.match_result = 'loss')
-           THEN 'win'
-           WHEN b.match_result = 'draw' THEN 'draw'
-           ELSE 'loss' END AS result,
+           WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p2_input_type
+           ELSE NULL END AS my_input_type,
+      CASE WHEN b.replay_id IS NOT NULL THEN
+        CASE WHEN (b.p1_short_id = ${MY_PLAYER_ID} AND b.match_result = 'win')
+                  OR (b.p2_short_id = ${MY_PLAYER_ID} AND b.match_result = 'loss')
+             THEN 'win'
+             WHEN b.match_result = 'draw' THEN 'draw'
+             ELSE 'loss' END
+      ELSE m.player1.result END AS result,
       CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_fighter_id
-           ELSE b.p1_fighter_id END AS opponent_name,
-      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_character_name
-           ELSE b.p1_character_name END AS opponent_character,
+           WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p1_fighter_id
+           ELSE NULL END AS opponent_name,
+      COALESCE(
+        CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_character_name
+             WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p1_character_name
+             ELSE NULL END,
+        m.player2.character
+      ) AS opponent_character,
       CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_input_type
-           ELSE b.p1_input_type END AS opponent_input_type,
+           WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p1_input_type
+           ELSE NULL END AS opponent_input_type,
       b.battle_type_name,
       b.replay_id,
-      b.uploaded_at,
+      COALESCE(b.uploaded_at, m.videoPublishedAt::TIMESTAMP) AS uploaded_at,
       m.videoId AS video_id,
       m.startTime AS start_time
     FROM battlelog_replays b
-    LEFT JOIN matches m ON b.replay_id = m.battlelogReplayId
+    FULL OUTER JOIN matches m ON b.replay_id = m.battlelogReplayId
     ${whereClause}
-    ORDER BY b.uploaded_at DESC
+    ORDER BY COALESCE(b.uploaded_at, m.videoPublishedAt::TIMESTAMP) DESC
     LIMIT ${MATCH_HISTORY_PAGE_SIZE} OFFSET ${offset}
   `;
 
@@ -646,13 +659,13 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
 
   return rows.map((row) => ({
     myCharacter: row.my_character,
-    myInputType: Number(row.my_input_type),
-    result: row.result as 'win' | 'loss' | 'draw',
-    opponentName: row.opponent_name,
+    myInputType: row.my_input_type != null ? Number(row.my_input_type) : null,
+    result: (row.result as 'win' | 'loss' | 'draw') ?? null,
+    opponentName: row.opponent_name ?? null,
     opponentCharacter: row.opponent_character,
-    opponentInputType: Number(row.opponent_input_type),
-    battleTypeName: row.battle_type_name,
-    replayId: row.replay_id,
+    opponentInputType: row.opponent_input_type != null ? Number(row.opponent_input_type) : null,
+    battleTypeName: row.battle_type_name ?? null,
+    replayId: row.replay_id ?? null,
     uploadedAt: String(row.uploaded_at),  // DuckDBのTIMESTAMPはUnixミリ秒の数値で返る
     videoId: row.video_id ?? null,
     startTime: row.start_time != null ? Number(row.start_time) : null,

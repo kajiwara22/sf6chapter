@@ -25,7 +25,8 @@ function escapeHtml(text: string): string {
 /**
  * 入力タイプのバッジHTMLを生成
  */
-function createInputTypeBadge(inputType: number): string {
+function createInputTypeBadge(inputType: number | null): string {
+  if (inputType == null) return '<span class="text-muted">-</span>';
   const label = INPUT_TYPE_NAMES[inputType] ?? String(inputType);
   if (inputType === 0) {
     return `<span class="input-badge input-badge-classic" title="${label}">C</span>`;
@@ -38,13 +39,15 @@ function createInputTypeBadge(inputType: number): string {
 /**
  * 勝敗バッジHTMLを生成
  */
-function createResultBadge(result: 'win' | 'loss' | 'draw'): string {
+function createResultBadge(result: 'win' | 'loss' | 'draw' | null): string {
   if (result === 'win') {
     return `<span class="result-badge result-badge-win">WIN</span>`;
   } else if (result === 'loss') {
     return `<span class="result-badge result-badge-loss">LOSS</span>`;
+  } else if (result === 'draw') {
+    return `<span class="result-badge result-badge-draw">DRAW</span>`;
   }
-  return `<span class="result-badge result-badge-draw">DRAW</span>`;
+  return '<span class="text-muted">-</span>';
 }
 
 /**
@@ -70,10 +73,9 @@ function formatAbsoluteTime(dateStr: string): string {
 }
 
 /**
- * YouTubeリンクまたはリプレイIDテキストを生成
+ * YouTubeリンクセルを生成
  */
-function createReplayCell(row: MatchHistoryRow): string {
-  const shortId = escapeHtml(row.replayId.slice(-8));
+function createYoutubeCell(row: MatchHistoryRow): string {
   if (row.videoId && row.startTime != null) {
     const url = `https://www.youtube.com/watch?v=${encodeURIComponent(row.videoId)}&t=${row.startTime}s`;
     return `<a href="${url}" target="_blank" rel="noopener" class="replay-youtube-link" title="YouTubeで視聴">
@@ -81,10 +83,9 @@ function createReplayCell(row: MatchHistoryRow): string {
         <path fill="#FF0000" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5a3 3 0 0 0-2.1 2.1C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1C24 15.9 24 12 24 12s0-3.9-.5-5.8z"/>
         <path fill="#fff" d="M9.6 15.6V8.4l6.3 3.6-6.3 3.6z"/>
       </svg>
-      ${shortId}
     </a>`;
   }
-  return `<span class="replay-id-text" title="${escapeHtml(row.replayId)}">${shortId}</span>`;
+  return '<span class="text-muted">-</span>';
 }
 
 /**
@@ -95,19 +96,25 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
     return '<p class="history-empty">データがありません</p>';
   }
 
-  const tableRows = rows.map((row) => `
+  const tableRows = rows.map((row) => {
+    const opponentNameDisplay = row.opponentName
+      ? `${escapeHtml(row.opponentName.slice(0, 16))}${row.opponentName.length > 16 ? '…' : ''}`
+      : '<span class="text-muted">-</span>';
+    const opponentNameTitle = row.opponentName ? escapeHtml(row.opponentName) : '';
+
+    return `
     <tr class="history-row">
       <td class="history-my-character">${escapeHtml(row.myCharacter)}</td>
       <td class="history-my-input">${createInputTypeBadge(row.myInputType)}</td>
       <td class="history-result">${createResultBadge(row.result)}</td>
-      <td class="history-opponent-name" title="${escapeHtml(row.opponentName)}">${escapeHtml(row.opponentName.slice(0, 16))}${row.opponentName.length > 16 ? '…' : ''}</td>
+      <td class="history-opponent-name" title="${opponentNameTitle}">${opponentNameDisplay}</td>
       <td class="history-opponent-character">${escapeHtml(row.opponentCharacter)}</td>
       <td class="history-opponent-input">${createInputTypeBadge(row.opponentInputType)}</td>
-      <td class="history-battle-type">${escapeHtml(row.battleTypeName)}</td>
-      <td class="history-replay">${createReplayCell(row)}</td>
+      <td class="history-battle-type">${row.battleTypeName ? escapeHtml(row.battleTypeName) : '<span class="text-muted">-</span>'}</td>
+      <td class="history-replay">${createYoutubeCell(row)}</td>
       <td class="history-date">${escapeHtml(formatAbsoluteTime(row.uploadedAt))}</td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   return `
     <table class="history-table">
@@ -120,7 +127,7 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
           <th>相手キャラ</th>
           <th>相手操作</th>
           <th>モード</th>
-          <th>リプレイ</th>
+          <th>YouTube</th>
           <th>試合日</th>
         </tr>
       </thead>
