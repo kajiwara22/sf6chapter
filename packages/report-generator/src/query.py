@@ -50,6 +50,20 @@ class LPRow:
 
 
 @dataclass
+class HourlyRow:
+    """時間帯別勝率集計の1行"""
+
+    hour: int  # 0〜23（JST）
+    total: int
+    wins: int
+    losses: int
+
+    @property
+    def win_rate(self) -> float:
+        return (self.wins / self.total * 100) if self.total > 0 else 0.0
+
+
+@dataclass
 class Summary:
     """サマリー情報"""
 
@@ -226,6 +240,43 @@ def query_lp_history(
             lp=r[3],
             master_rating=r[4],
         )
+        for r in rows
+    ]
+
+
+def query_hourly_win_rate(
+    con: duckdb.DuckDBPyConnection,
+    player_id: str,
+    date_from: str,
+    date_to: str,
+    battle_type: str = "ranked",
+) -> list[HourlyRow]:
+    """時間帯別（JST）勝率を取得"""
+    bt_filter = _battle_type_filter(battle_type)
+    pid = int(player_id)
+
+    rows = con.execute(
+        f"""
+        SELECT
+            DATE_PART('hour', uploaded_at AT TIME ZONE 'Asia/Tokyo') AS hour_jst,
+            COUNT(*) AS total,
+            SUM(CASE
+                WHEN (p1_short_id = ? AND match_result = 'win')
+                  OR (p2_short_id = ? AND match_result = 'loss')
+                THEN 1 ELSE 0 END) AS wins
+        FROM battlelog_replays
+        WHERE (p1_short_id = ? OR p2_short_id = ?)
+          AND uploaded_at >= ?::TIMESTAMPTZ
+          AND uploaded_at < ?::TIMESTAMPTZ
+          {bt_filter}
+        GROUP BY hour_jst
+        ORDER BY hour_jst
+        """,
+        [pid] * 4 + [date_from, date_to],
+    ).fetchall()
+
+    return [
+        HourlyRow(hour=r[0], total=r[1], wins=r[2], losses=r[1] - r[2])
         for r in rows
     ]
 

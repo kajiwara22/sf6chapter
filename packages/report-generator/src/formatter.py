@@ -5,7 +5,7 @@ Markdown形式のレポートフォーマッタ
 from collections import defaultdict
 from datetime import datetime
 
-from .query import LPRow, MatchupRow, Summary
+from .query import HourlyRow, LPRow, MatchupRow, Summary
 
 
 def format_report(
@@ -18,6 +18,7 @@ def format_report(
     player_id: str,
     player_name: str = "ゆたにぃPC",
     battle_type: str = "ranked",
+    hourly: list[HourlyRow] | None = None,
 ) -> str:
     """レポート全体をMarkdown形式で生成"""
     lines: list[str] = []
@@ -39,6 +40,11 @@ def format_report(
 
     # LP推移
     lines.append(_format_lp_history(lp_history))
+
+    # 時間帯別勝率（--hourly-analysis 時のみ）
+    if hourly is not None:
+        lines.append("")
+        lines.append(_format_hourly_win_rate(hourly))
 
     return "\n".join(lines)
 
@@ -263,6 +269,32 @@ def _format_lp_history(lp_history: list[LPRow]) -> str:
         prev_lp = row.lp
         prev_mr = row.master_rating if row.master_rating and row.master_rating > 0 else prev_mr
 
+    return "\n".join(lines)
+
+
+def _format_hourly_win_rate(hourly: list[HourlyRow]) -> str:
+    """時間帯別勝率セクション"""
+    lines = ["## 時間帯別勝率（JST）", ""]
+
+    if not hourly:
+        lines.append("データなし")
+        return "\n".join(lines)
+
+    lines.append("| 時間帯 | 試合数 | 勝利 | 敗北 | 勝率 |")
+    lines.append("|--------|--------|------|------|------|")
+
+    total_all, wins_all = 0, 0
+    for row in hourly:
+        lines.append(
+            f"| {row.hour}時台 | {row.total} | {row.wins} | {row.losses} | {row.win_rate:.1f}% |"
+        )
+        total_all += row.total
+        wins_all += row.wins
+
+    total_wr = wins_all / total_all * 100 if total_all > 0 else 0
+    lines.append(
+        f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** |"
+    )
     return "\n".join(lines)
 
 

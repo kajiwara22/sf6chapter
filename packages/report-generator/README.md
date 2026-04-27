@@ -32,6 +32,12 @@ uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --local ./path/to/ba
 # 前月比較付き
 uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --compare-prev
 
+# 時間帯別勝率分析付き（JST換算、1時間単位）
+uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --hourly-analysis
+
+# 複数オプションの組み合わせ
+uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --hourly-analysis --compare-prev
+
 # 全バトルタイプ対象
 uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --battle-type all
 
@@ -43,4 +49,14 @@ uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --output ./my_report
 
 `output/YYYY-MM_report.md` にMarkdownファイルが生成されます。
 
-詳細は [ADR-032](../../docs/adr/032-battlelog-report-generator.md) を参照。
+### セクション構成
+
+| セクション | 条件 |
+|-----------|------|
+| サマリー | 常時出力 |
+| マッチアップ結果 | 常時出力 |
+| LP推移 | 常時出力 |
+| 時間帯別勝率（JST） | `--hourly-analysis` 指定時のみ |
+| 前期間比較 | `--compare-prev` 指定時のみ |
+
+詳細は [ADR-032](../../docs/adr/032-battlelog-report-generator.md)・[ADR-035](../../docs/adr/035-hourly-win-rate-analysis-in-report-generator.md) を参照。
