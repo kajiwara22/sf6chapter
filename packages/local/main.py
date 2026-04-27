@@ -27,7 +27,6 @@ from src.detection import (
     load_detection_params,
 )
 from src.firestore import FirestoreClient
-from src.pubsub import PubSubSubscriber
 from src.sf6_battlelog import BattlelogCacheManager, BattlelogCollector, BattlelogSiteClient
 from src.storage import R2Uploader
 from src.utils.logger import setup_logger
@@ -66,7 +65,6 @@ class SF6ChapterProcessor:
         self.enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
 
         # モジュール初期化
-        self.subscriber = PubSubSubscriber()
         self.firestore = FirestoreClient()
         self.downloader = VideoDownloader(download_dir=self.download_dir)
 
@@ -366,18 +364,32 @@ class SF6ChapterProcessor:
             logger.exception("❌ Error processing video %s", video_id)
 
     def run_once(self) -> None:
-        """1回だけPub/SubからPullして処理"""
-        logger.info("Pulling messages from Pub/Sub...")
-        self.subscriber.pull_messages(
-            callback=self.process_video,
-            max_messages=10,
-            timeout=30.0,
-        )
+        """Firestoreのqueued動画を取得して処理（1回実行）"""
+        logger.info("Querying queued videos from Firestore...")
+        queued_videos = self.firestore.get_queued_videos()
+
+        if not queued_videos:
+            logger.info("No queued videos found in Firestore")
+            return
+
+        logger.info("Found %d queued video(s) to process", len(queued_videos))
+        for video in queued_videos:
+            self.process_video(video)
 
     def run_forever(self) -> None:
-        """常駐モードで実行"""
-        logger.info("Starting streaming mode...")
-        self.subscriber.listen_streaming(callback=self.process_video)
+        """Firestoreをポーリングして常駐処理"""
+        import time
+
+        poll_interval_sec = int(os.environ.get("POLL_INTERVAL_SEC", "300"))
+        logger.info("Starting Firestore polling mode (interval: %ds)...", poll_interval_sec)
+
+        while True:
+            try:
+                self.run_once()
+            except Exception:
+                logger.exception("Error during polling cycle")
+            logger.info("Sleeping %ds before next poll...", poll_interval_sec)
+            time.sleep(poll_interval_sec)
 
     def _save_detection_summary(
         self,

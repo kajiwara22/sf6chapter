@@ -2,7 +2,7 @@
 
 ## ステータス
 
-提案 - 2026-04-27
+承認済み - 2026-04-27
 
 ## 文脈
 
@@ -154,11 +154,11 @@ Firestore コンソールで `processed_videos` コレクションを `status="q
 
 ## 実装チェックリスト
 
-- [ ] `packages/gcp-functions/check-new-video/main.py`: `publish_to_pubsub()` の呼び出し削除
-- [ ] `packages/gcp-functions/check-new-video/main.py`: Pub/Sub 関連コードの削除
-- [ ] `packages/local/src/pubsub.py`: Firestore キュークライアントに置き換え
-- [ ] `packages/local/main.py`: `run_once()` を Firestore クエリベースに変更
-- [ ] `packages/local/main.py`: `run_forever()` を Firestore ポーリングベースに変更
+- [x] `packages/gcp-functions/check-new-video/main.py`: `publish_to_pubsub()` の呼び出し削除
+- [x] `packages/gcp-functions/check-new-video/main.py`: Pub/Sub 関連コードの削除
+- [x] `packages/local/src/pubsub.py`: `PubSubSubscriber` の利用を `main.py` から除去（`pubsub/` モジュール自体は残存）
+- [x] `packages/local/main.py`: `run_once()` を Firestore クエリベースに変更
+- [x] `packages/local/main.py`: `run_forever()` を Firestore ポーリングベースに変更（`POLL_INTERVAL_SEC` 環境変数で間隔制御）
 - [ ] 動作確認: `--mode once` で Firestore の `queued` レコードが処理されること
 - [ ] 動作確認: 処理済み後に `status` が `completed` に更新されること
 

@@ -95,7 +95,7 @@ sf6-chapter/
 - [x] Battlelog未マッチ時の画像前処理による再認識（ADR-033）
 - [x] 対戦結果一覧ページの実装（SFBUFFライク + YouTubeリンク統合）（ADR-034）
 - [x] レポートジェネレーターへの時間帯別勝率分析の追加（ADR-035）
-- [ ] Pub/Sub キューを Firestore キューに置き換える（ADR-036）
+- [x] Pub/Sub キューを Firestore キューに置き換える（ADR-036）
 
 ## 次のタスク
 

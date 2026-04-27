@@ -165,6 +165,39 @@ class FirestoreClient:
             logger.exception("Error getting processing stats from Firestore")
             return {"total": 0, "error": True}
 
+    def get_queued_videos(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        キュー待ち（status="queued"）の動画リストを取得
+
+        Args:
+            limit: 取得件数上限
+
+        Returns:
+            キュー待ち動画のリスト（videoId, title, channelId, channelTitle, publishedAt を含む）
+        """
+        try:
+            collection_ref = self.db.collection(self.COLLECTION_PROCESSED_VIDEOS)
+
+            query = (
+                collection_ref
+                .where("status", "==", self.STATUS_QUEUED)
+                .order_by("queuedAt")
+                .limit(limit)
+            )
+
+            videos = []
+            for doc in query.stream():
+                data = doc.to_dict()
+                data["videoId"] = doc.id
+                videos.append(data)
+
+            logger.info("Found %d queued videos in Firestore", len(videos))
+            return videos
+
+        except Exception:
+            logger.exception("Error getting queued videos from Firestore")
+            return []
+
     def get_failed_videos(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         失敗した動画リストを取得

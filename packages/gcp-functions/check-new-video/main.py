@@ -1,13 +1,12 @@
 """
 Cloud Function: 新着動画チェック
-Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Subに発行
+Cloud Schedulerから2時間毎に実行され、自分の新着動画をFirestoreキューに登録
 
 処理フロー:
 1. YouTube APIでforMine=Trueで自分の新着動画を取得（最大5件）
 2. 公開日時と現在日時を比較してフィルタ（2.5時間以内）
 3. Firestoreで重複チェック（処理済み動画は除外）
-4. 未処理動画をPub/Subに発行
-5. Firestoreに処理履歴を保存
+4. 未処理動画をFirestoreにstatus="queued"で書き込む
 
 設計根拠（ADR-001より）:
 - 配信頻度: 1日1回〜数回（30分〜1時間/本）
@@ -18,7 +17,6 @@ Cloud Schedulerから2時間毎に実行され、自分の新着動画をPub/Sub
 - forMine=TrueではpublishedAfterパラメータは使用できない
 """
 
-import json
 import logging
 import os
 import re
@@ -28,7 +26,7 @@ from typing import Any, Dict, List, Optional
 import functions_framework
 import google.cloud.logging
 import pytz
-from google.cloud import firestore, pubsub_v1, secretmanager
+from google.cloud import firestore, secretmanager
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -44,7 +42,6 @@ logger.setLevel(logging.INFO)
 
 # 環境変数
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
-PUBSUB_TOPIC = os.environ.get("PUBSUB_TOPIC", "sf6-video-process")
 
 # forMine=Trueを使用するためTARGET_CHANNEL_IDSは不要
 # スケジュール間隔（分）と許容範囲（分）
@@ -58,7 +55,6 @@ FIRESTORE_COLLECTION = "processed_videos"
 
 # グローバルクライアント（再利用のため）
 _firestore_client: Optional[firestore.Client] = None
-_pubsub_publisher: Optional[pubsub_v1.PublisherClient] = None
 _secret_manager_client: Optional[secretmanager.SecretManagerServiceClient] = None
 _oauth_credentials: Optional[Credentials] = None
 
@@ -70,13 +66,6 @@ def get_firestore_client() -> firestore.Client:
         _firestore_client = firestore.Client(project=PROJECT_ID)
     return _firestore_client
 
-
-def get_pubsub_publisher() -> pubsub_v1.PublisherClient:
-    """Pub/Sub Publisherクライアントを取得（シングルトン）"""
-    global _pubsub_publisher
-    if _pubsub_publisher is None:
-        _pubsub_publisher = pubsub_v1.PublisherClient()
-    return _pubsub_publisher
 
 
 def get_secret_manager_client() -> secretmanager.SecretManagerServiceClient:
@@ -313,24 +302,6 @@ def rename_video_title(youtube, video_id: str, new_title: str) -> bool:
         return False
 
 
-def publish_to_pubsub(video_data: Dict[str, Any]) -> bool:
-    """Pub/Subにメッセージを発行"""
-    try:
-        publisher = get_pubsub_publisher()
-        topic_path = publisher.topic_path(PROJECT_ID, PUBSUB_TOPIC)
-
-        message_json = json.dumps(video_data)
-        message_bytes = message_json.encode("utf-8")
-
-        future = publisher.publish(topic_path, message_bytes)
-        message_id = future.result(timeout=10.0)
-        logger.info(f"Published message {message_id} for video {video_data['videoId']}")
-        return True
-    except Exception as e:
-        logger.error(f"Error publishing video {video_data['videoId']}: {e}")
-        return False
-
-
 @functions_framework.http
 def check_new_video(request):
     """
@@ -340,8 +311,7 @@ def check_new_video(request):
     1. forMine=Trueで自分の新着動画を取得
     2. 公開日時でフィルタ（ACCEPTABLE_AGE_MINUTES以内）
     3. 重複チェック（Firestore）
-    4. 未処理動画のみPub/Subに発行
-    5. Firestoreに処理履歴を記録
+    4. 未処理動画をFirestoreにstatus="queued"で書き込む
     """
     # 環境変数チェック
     if not PROJECT_ID:
@@ -363,8 +333,7 @@ def check_new_video(request):
         "foundVideos": 0,
         "filteredVideos": 0,
         "skippedVideos": 0,
-        "publishedVideos": 0,
-        "errors": 0,
+        "queuedVideos": 0,
     }
 
     logger.info(f"Checking for videos published within {ACCEPTABLE_AGE_MINUTES} minutes")
@@ -407,11 +376,7 @@ def check_new_video(request):
             stats["skippedVideos"] += 1
             continue
 
-        # Pub/Subに発行
-        if publish_to_pubsub(video):
-            stats["publishedVideos"] += 1
-        else:
-            stats["errors"] += 1
+        stats["queuedVideos"] += 1
 
     logger.info(f"Check completed: {stats}")
 
