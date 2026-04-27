@@ -41,6 +41,7 @@
 | [033](./033-rerecognition-with-image-preprocessing.md) | Battlelog未マッチ時の画像前処理による再認識 | 採用 | 2026-03-20 |
 | [034](./034-match-history-page-with-youtube-links.md) | 対戦結果一覧ページの実装（SFBUFFライク + YouTubeリンク統合） | 提案 | 2026-04-09 |
 | [035](./035-hourly-win-rate-analysis-in-report-generator.md) | レポートジェネレーターへの時間帯別勝率分析の追加 | 採用 | 2026-04-21 |
+| [036](./036-replace-pubsub-with-firestore-queue.md) | Pub/Sub キューを Firestore キューに置き換える | 提案 | 2026-04-27 |
 
 ## ADRのフォーマット
 
