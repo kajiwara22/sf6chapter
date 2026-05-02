@@ -68,13 +68,12 @@ def determine_match_result(p1_round_results: list[int], p2_round_results: list[i
     """
     P1視点の勝敗を判定
 
-    round_results の合計値で判定:
-    - P1の合計 > P2の合計 → "win"
-    - P1の合計 < P2の合計 → "loss"
-    - 同数 → "draw"
+    round_results の各値は勝利方法ID（0=LOSS, 1=WIN, 2=Chip KO, 3=Time Up,
+    4=DRAW, 5=Overdrive KO, 6=Super Art KO, 7=Critical Art KO, 8=Perfect）。
+    0より大きい値をそのラウンドの勝利としてカウントする。
     """
-    p1_wins = sum(p1_round_results)
-    p2_wins = sum(p2_round_results)
+    p1_wins = sum(1 for v in p1_round_results if v > 0)
+    p2_wins = sum(1 for v in p2_round_results if v > 0)
 
     if p1_wins > p2_wins:
         return "win"
