@@ -42,6 +42,7 @@
 | [034](./034-match-history-page-with-youtube-links.md) | 対戦結果一覧ページの実装（SFBUFFライク + YouTubeリンク統合） | 提案 | 2026-04-09 |
 | [035](./035-hourly-win-rate-analysis-in-report-generator.md) | レポートジェネレーターへの時間帯別勝率分析の追加 | 採用 | 2026-04-21 |
 | [036](./036-replace-pubsub-with-firestore-queue.md) | Pub/Sub キューを Firestore キューに置き換える | 提案 | 2026-04-27 |
+| [037](./037-battlelog-round-results-value-semantics.md) | Battlelog round_results の値の意味と match_result 判定ロジックの修正 | 提案 | 2026-05-02 |
 
 ## ADRのフォーマット
 
