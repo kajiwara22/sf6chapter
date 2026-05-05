@@ -43,6 +43,7 @@
 | [035](./035-hourly-win-rate-analysis-in-report-generator.md) | レポートジェネレーターへの時間帯別勝率分析の追加 | 採用 | 2026-04-21 |
 | [036](./036-replace-pubsub-with-firestore-queue.md) | Pub/Sub キューを Firestore キューに置き換える | 提案 | 2026-04-27 |
 | [037](./037-battlelog-round-results-value-semantics.md) | Battlelog round_results の値の意味と match_result 判定ロジックの修正 | 提案 | 2026-05-02 |
+| [038](./038-dependabot-and-github-actions-for-dependency-updates.md) | Dependabot + GitHub Actions による依存関係自動更新の導入 | 提案 | 2026-05-05 |
 
 ## ADRのフォーマット
 

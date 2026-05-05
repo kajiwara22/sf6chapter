@@ -97,6 +97,7 @@ sf6-chapter/
 - [x] レポートジェネレーターへの時間帯別勝率分析の追加（ADR-035）
 - [x] Pub/Sub キューを Firestore キューに置き換える（ADR-036）
 - [ ] Battlelog round_results 判定ロジックの修正（ADR-037）
+- [ ] Dependabot + GitHub Actions による依存関係自動更新の導入（ADR-038）
 
 ## 次のタスク
 
@@ -311,6 +312,7 @@ docker compose up -d
 - [031: Battlelog Parquet 変換・アップロードの main.py パイプライン統合](docs/adr/031-battlelog-parquet-pipeline-integration.md)
 - [036: Pub/Sub キューを Firestore キューに置き換える](docs/adr/036-replace-pubsub-with-firestore-queue.md)
 - [037: Battlelog round_results の値の意味と match_result 判定ロジックの修正](docs/adr/037-battlelog-round-results-value-semantics.md)
+- [038: Dependabot + GitHub Actions による依存関係自動更新の導入](docs/adr/038-dependabot-and-github-actions-for-dependency-updates.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
