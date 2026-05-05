@@ -18,15 +18,15 @@ importers:
         specifier: ^1.32.0
         version: 1.32.0
       hono:
-        specifier: ^4.12.16
-        version: 4.12.16
+        specifier: ^4.12.17
+        version: 4.12.17
     devDependencies:
       '@hono/vite-cloudflare-pages':
         specifier: ^0.4.3
-        version: 0.4.3(hono@4.12.16)
+        version: 0.4.3(hono@4.12.17)
       '@hono/vite-dev-server':
         specifier: ^0.25.3
-        version: 0.25.3(hono@4.12.16)(miniflare@4.20260430.0)(wrangler@4.87.0)
+        version: 0.25.3(hono@4.12.17)(miniflare@4.20260430.0)(wrangler@4.87.0)
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -1132,8 +1132,8 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
-  hono@4.12.16:
-    resolution: {integrity: sha512-jN0ZewiNAWSe5khM3EyCmBb250+b40wWbwNILNfEvq84VREWwOIkuUsFONk/3i3nqkz7Oe1PcpM2mwQEK2L9Kg==}
+  hono@4.12.17:
+    resolution: {integrity: sha512-FbJJNb/XgX7YW0hX/V8w5oYLztKEsRLykCMZWt1WdLtsfjzMvmoqWBA4H4t5norinq8/rh20oiZYr+WSl4UzAQ==}
     engines: {node: '>=16.9.0'}
 
   json-bignum@0.0.3:
@@ -2066,18 +2066,18 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@hono/node-server@1.19.14(hono@4.12.16)':
+  '@hono/node-server@1.19.14(hono@4.12.17)':
     dependencies:
-      hono: 4.12.16
+      hono: 4.12.17
 
-  '@hono/vite-cloudflare-pages@0.4.3(hono@4.12.16)':
+  '@hono/vite-cloudflare-pages@0.4.3(hono@4.12.17)':
     dependencies:
-      hono: 4.12.16
+      hono: 4.12.17
 
-  '@hono/vite-dev-server@0.25.3(hono@4.12.16)(miniflare@4.20260430.0)(wrangler@4.87.0)':
+  '@hono/vite-dev-server@0.25.3(hono@4.12.17)(miniflare@4.20260430.0)(wrangler@4.87.0)':
     dependencies:
-      '@hono/node-server': 1.19.14(hono@4.12.16)
-      hono: 4.12.16
+      '@hono/node-server': 1.19.14(hono@4.12.17)
+      hono: 4.12.17
       minimatch: 9.0.9
     optionalDependencies:
       miniflare: 4.20260430.0
@@ -2806,7 +2806,7 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  hono@4.12.16: {}
+  hono@4.12.17: {}
 
   json-bignum@0.0.3: {}
 
