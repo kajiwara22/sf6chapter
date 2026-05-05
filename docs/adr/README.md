@@ -45,6 +45,7 @@
 | [037](./037-battlelog-round-results-value-semantics.md) | Battlelog round_results の値の意味と match_result 判定ロジックの修正 | 提案 | 2026-05-02 |
 | [038](./038-dependabot-and-github-actions-for-dependency-updates.md) | Dependabot + GitHub Actions による依存関係自動更新の導入 | 採用 | 2026-05-05 |
 | [039](./039-github-actions-sha-pinning.md) | GitHub Actions サードパーティ Action の SHA ピンニング | 採用 | 2026-05-05 |
+| [040](./040-web-package-testing-strategy.md) | packages/web のテスト戦略 | 採用 | 2026-05-05 |
 
 ## ADRのフォーマット
 
