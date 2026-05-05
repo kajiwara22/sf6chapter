@@ -4,7 +4,6 @@ Firestoreクライアント
 """
 
 import os
-from datetime import datetime, timezone
 from typing import Any
 
 from google.cloud import firestore
@@ -178,12 +177,7 @@ class FirestoreClient:
         try:
             collection_ref = self.db.collection(self.COLLECTION_PROCESSED_VIDEOS)
 
-            query = (
-                collection_ref
-                .where("status", "==", self.STATUS_QUEUED)
-                .order_by("queuedAt")
-                .limit(limit)
-            )
+            query = collection_ref.where("status", "==", self.STATUS_QUEUED).order_by("queuedAt").limit(limit)
 
             videos = []
             for doc in query.stream():
@@ -211,9 +205,11 @@ class FirestoreClient:
         try:
             collection_ref = self.db.collection(self.COLLECTION_PROCESSED_VIDEOS)
 
-            query = collection_ref.where("status", "==", self.STATUS_FAILED).order_by(
-                "failedAt", direction=firestore.Query.DESCENDING
-            ).limit(limit)
+            query = (
+                collection_ref.where("status", "==", self.STATUS_FAILED)
+                .order_by("failedAt", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+            )
 
             failed_videos = []
             for doc in query.stream():

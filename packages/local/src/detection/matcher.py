@@ -215,13 +215,21 @@ class TemplateMatcher:
         if std_diff >= self.recognize_frame_offset_threshold:
             logger.info(
                 "  → Selected alt offset +%d frames (std: %.2f → %.2f, diff=%.2f >= threshold %.1f)",
-                self.recognize_frame_offset_alt, std_offset, std_alt, std_diff, self.recognize_frame_offset_threshold
+                self.recognize_frame_offset_alt,
+                std_offset,
+                std_alt,
+                std_diff,
+                self.recognize_frame_offset_threshold,
             )
             return frame_alt, self.recognize_frame_offset_alt
         else:
             logger.info(
                 "  → Selected default offset +%d frames (std: %.2f vs %.2f, diff=%.2f < threshold %.1f)",
-                self.recognize_frame_offset, std_offset, std_alt, std_diff, self.recognize_frame_offset_threshold
+                self.recognize_frame_offset,
+                std_offset,
+                std_alt,
+                std_diff,
+                self.recognize_frame_offset_threshold,
             )
             return frame_offset, self.recognize_frame_offset
 
@@ -272,7 +280,9 @@ class TemplateMatcher:
                 # 進捗表示（10秒ごと）
                 if (frame_count - start_frame) % int(fps * 10) == 0:
                     progress = 100 * (frame_count - start_frame) / (end_frame - start_frame)
-                    logger.info("Progress: %.1f%% (%d/%d frames)", progress, frame_count - start_frame, end_frame - start_frame)
+                    logger.info(
+                        "Progress: %.1f%% (%d/%d frames)", progress, frame_count - start_frame, end_frame - start_frame
+                    )
 
                 # frame_interval毎にマッチング
                 if (frame_count - start_frame) % self.frame_interval == 0:
@@ -323,7 +333,9 @@ class TemplateMatcher:
                                 if subsequent_reject_count >= self.post_check_reject_limit:
                                     logger.info(
                                         "Rejected match at %.1fs - subsequent frames have %d reject matches (limit: %d)",
-                                        timestamp, subsequent_reject_count, self.post_check_reject_limit
+                                        timestamp,
+                                        subsequent_reject_count,
+                                        self.post_check_reject_limit,
                                     )
                                     # 誤検知判定されたら、次のチェックまでスキップ
                                     prev_timestamp = timestamp
@@ -364,16 +376,22 @@ class TemplateMatcher:
                             round1_detected = True
 
                     # RESULT画面検出（Round 1検出後で、RESULT未検出の場合）
-                    if (not round1_detected
+                    if (
+                        not round1_detected
                         and self.result_detector is not None
                         and len(detections) > 0
-                        and detections[-1].winner_side is None):
+                        and detections[-1].winner_side is None
+                    ):
                         # Round 1フレーム（search_region適用済み）をそのまま使用
                         result_detection = self.result_detector.detect_result(frame)
                         if result_detection.winner_side is not None:
                             detections[-1].winner_side = result_detection.winner_side
-                            logger.info("RESULT detected at %.1fs: %s (win_position=%s)",
-                                        frame_count / fps, result_detection.winner_side, result_detection.win_position)
+                            logger.info(
+                                "RESULT detected at %.1fs: %s (win_position=%s)",
+                                frame_count / fps,
+                                result_detection.winner_side,
+                                result_detection.win_position,
+                            )
 
                 frame_count += 1
 

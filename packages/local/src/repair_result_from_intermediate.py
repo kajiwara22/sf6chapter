@@ -17,6 +17,7 @@ import pyarrow.parquet as pq
 try:
     import boto3
     from botocore.exceptions import ClientError
+
     BOTO3_AVAILABLE = True
 except ImportError:
     BOTO3_AVAILABLE = False
@@ -55,9 +56,7 @@ class ResultRepair:
         self.bucket_name = bucket_name or os.environ.get("R2_BUCKET_NAME", "sf6-chapter-data")
 
         if not all([self.access_key_id, self.secret_access_key, endpoint]):
-            logger.warning(
-                "R2 credentials not found, will only work with local parquet files"
-            )
+            logger.warning("R2 credentials not found, will only work with local parquet files")
             self.s3_client = None
         else:
             # エンドポイントURLの正規化
@@ -96,9 +95,7 @@ class ResultRepair:
 
         return result
 
-    def repair_parquet_from_local(
-        self, video_id: str, parquet_path: str = ".uncommit/matches.parquet"
-    ) -> int:
+    def repair_parquet_from_local(self, video_id: str, parquet_path: str = ".uncommit/matches.parquet") -> int:
         """
         ローカルの parquet ファイルを修復（中間ファイルから winner_side を読み込む）
 
@@ -153,29 +150,33 @@ class ResultRepair:
         logger.info("Repaired %d records", repaired_count)
 
         # スキーマを定義
-        player_struct = pa.struct([
-            pa.field("character", pa.string()),
-            pa.field("result", pa.string(), nullable=True),
-            pa.field("side", pa.string()),
-        ])
+        player_struct = pa.struct(
+            [
+                pa.field("character", pa.string()),
+                pa.field("result", pa.string(), nullable=True),
+                pa.field("side", pa.string()),
+            ]
+        )
 
-        schema = pa.schema([
-            pa.field("id", pa.string()),
-            pa.field("videoId", pa.string()),
-            pa.field("videoTitle", pa.string()),
-            pa.field("videoPublishedAt", pa.string()),
-            pa.field("startTime", pa.int64()),
-            pa.field("player1", player_struct),
-            pa.field("player2", player_struct),
-            pa.field("detectedAt", pa.string()),
-            pa.field("confidence", pa.float64()),
-            pa.field("templateMatchScore", pa.float64()),
-            pa.field("frameTimestamp", pa.int64()),
-            pa.field("battlelogMatched", pa.bool_(), nullable=True),
-            pa.field("battlelogConfidence", pa.string(), nullable=True),
-            pa.field("battlelogReplayId", pa.string(), nullable=True),
-            pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
-        ])
+        schema = pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("videoId", pa.string()),
+                pa.field("videoTitle", pa.string()),
+                pa.field("videoPublishedAt", pa.string()),
+                pa.field("startTime", pa.int64()),
+                pa.field("player1", player_struct),
+                pa.field("player2", player_struct),
+                pa.field("detectedAt", pa.string()),
+                pa.field("confidence", pa.float64()),
+                pa.field("templateMatchScore", pa.float64()),
+                pa.field("frameTimestamp", pa.int64()),
+                pa.field("battlelogMatched", pa.bool_(), nullable=True),
+                pa.field("battlelogConfidence", pa.string(), nullable=True),
+                pa.field("battlelogReplayId", pa.string(), nullable=True),
+                pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
+            ]
+        )
 
         # 修復後の parquet をファイルに書き込む
         import io
@@ -192,9 +193,7 @@ class ResultRepair:
         logger.info("Saved repaired parquet: %s", parquet_path)
         return repaired_count
 
-    def repair_parquet_from_r2(
-        self, video_id: str, key: str = "matches.parquet"
-    ) -> int:
+    def repair_parquet_from_r2(self, video_id: str, key: str = "matches.parquet") -> int:
         """
         R2 上の parquet ファイルを修復（中間ファイルから winner_side を読み込む）
 
@@ -257,29 +256,33 @@ class ResultRepair:
         logger.info("Repaired %d records", repaired_count)
 
         # スキーマを定義
-        player_struct = pa.struct([
-            pa.field("character", pa.string()),
-            pa.field("result", pa.string(), nullable=True),
-            pa.field("side", pa.string()),
-        ])
+        player_struct = pa.struct(
+            [
+                pa.field("character", pa.string()),
+                pa.field("result", pa.string(), nullable=True),
+                pa.field("side", pa.string()),
+            ]
+        )
 
-        schema = pa.schema([
-            pa.field("id", pa.string()),
-            pa.field("videoId", pa.string()),
-            pa.field("videoTitle", pa.string()),
-            pa.field("videoPublishedAt", pa.string()),
-            pa.field("startTime", pa.int64()),
-            pa.field("player1", player_struct),
-            pa.field("player2", player_struct),
-            pa.field("detectedAt", pa.string()),
-            pa.field("confidence", pa.float64()),
-            pa.field("templateMatchScore", pa.float64()),
-            pa.field("frameTimestamp", pa.int64()),
-            pa.field("battlelogMatched", pa.bool_(), nullable=True),
-            pa.field("battlelogConfidence", pa.string(), nullable=True),
-            pa.field("battlelogReplayId", pa.string(), nullable=True),
-            pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
-        ])
+        schema = pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("videoId", pa.string()),
+                pa.field("videoTitle", pa.string()),
+                pa.field("videoPublishedAt", pa.string()),
+                pa.field("startTime", pa.int64()),
+                pa.field("player1", player_struct),
+                pa.field("player2", player_struct),
+                pa.field("detectedAt", pa.string()),
+                pa.field("confidence", pa.float64()),
+                pa.field("templateMatchScore", pa.float64()),
+                pa.field("frameTimestamp", pa.int64()),
+                pa.field("battlelogMatched", pa.bool_(), nullable=True),
+                pa.field("battlelogConfidence", pa.string(), nullable=True),
+                pa.field("battlelogReplayId", pa.string(), nullable=True),
+                pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
+            ]
+        )
 
         # 修復後の parquet をメモリに書き込む
         import io

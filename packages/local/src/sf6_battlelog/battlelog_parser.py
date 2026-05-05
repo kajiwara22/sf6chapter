@@ -110,9 +110,7 @@ class BattlelogParser:
         """
         try:
             fighter_info = next_data["props"]["pageProps"]["fighter_banner_info"]
-            logger.debug(
-                f"Fighter info: {fighter_info['personal_info']['fighter_id']}"
-            )
+            logger.debug(f"Fighter info: {fighter_info['personal_info']['fighter_id']}")
             return fighter_info
         except KeyError as e:
             logger.error(f"Failed to extract fighter info: {e}")

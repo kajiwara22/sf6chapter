@@ -40,9 +40,7 @@ class R2Uploader:
         self.bucket_name = bucket_name or os.environ.get("R2_BUCKET_NAME", "sf6-chapter-data")
 
         if not all([self.access_key_id, self.secret_access_key, endpoint]):
-            raise ValueError(
-                "R2 credentials must be set: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT_URL"
-            )
+            raise ValueError("R2 credentials must be set: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT_URL")
 
         # エンドポイントURLの正規化（https://プレフィックスを追加）
         if not endpoint.startswith("http"):
@@ -92,29 +90,33 @@ class R2Uploader:
         matches.parquet用のスキーマを定義
         player1/player2 の構造体に result フィールドを含める
         """
-        player_struct = pa.struct([
-            pa.field("character", pa.string()),
-            pa.field("result", pa.string(), nullable=True),  # "win" | "loss" | None
-            pa.field("side", pa.string()),
-        ])
+        player_struct = pa.struct(
+            [
+                pa.field("character", pa.string()),
+                pa.field("result", pa.string(), nullable=True),  # "win" | "loss" | None
+                pa.field("side", pa.string()),
+            ]
+        )
 
-        return pa.schema([
-            pa.field("id", pa.string()),
-            pa.field("videoId", pa.string()),
-            pa.field("videoTitle", pa.string()),
-            pa.field("videoPublishedAt", pa.string()),
-            pa.field("startTime", pa.int64()),
-            pa.field("player1", player_struct),
-            pa.field("player2", player_struct),
-            pa.field("detectedAt", pa.string()),
-            pa.field("confidence", pa.float64()),
-            pa.field("templateMatchScore", pa.float64()),
-            pa.field("frameTimestamp", pa.int64()),
-            pa.field("battlelogMatched", pa.bool_(), nullable=True),
-            pa.field("battlelogConfidence", pa.string(), nullable=True),
-            pa.field("battlelogReplayId", pa.string(), nullable=True),
-            pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
-        ])
+        return pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("videoId", pa.string()),
+                pa.field("videoTitle", pa.string()),
+                pa.field("videoPublishedAt", pa.string()),
+                pa.field("startTime", pa.int64()),
+                pa.field("player1", player_struct),
+                pa.field("player2", player_struct),
+                pa.field("detectedAt", pa.string()),
+                pa.field("confidence", pa.float64()),
+                pa.field("templateMatchScore", pa.float64()),
+                pa.field("frameTimestamp", pa.int64()),
+                pa.field("battlelogMatched", pa.bool_(), nullable=True),
+                pa.field("battlelogConfidence", pa.string(), nullable=True),
+                pa.field("battlelogReplayId", pa.string(), nullable=True),
+                pa.field("battlelogTimeDiff", pa.int64(), nullable=True),
+            ]
+        )
 
     def upload_parquet(
         self,

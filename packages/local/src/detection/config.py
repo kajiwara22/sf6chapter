@@ -257,4 +257,6 @@ def _validate_params(params: DetectionParams) -> None:
         raise ValueError(f"recognize_frame_offset_alt must be non-negative, got {params.recognize_frame_offset_alt}")
 
     if params.recognize_frame_offset_threshold < 0:
-        raise ValueError(f"recognize_frame_offset_threshold must be non-negative, got {params.recognize_frame_offset_threshold}")
+        raise ValueError(
+            f"recognize_frame_offset_threshold must be non-negative, got {params.recognize_frame_offset_threshold}"
+        )

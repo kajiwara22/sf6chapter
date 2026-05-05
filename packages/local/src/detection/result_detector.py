@@ -103,9 +103,7 @@ class ResultScreenDetector:
         # 複数テンプレートのいずれかが閾値を超えたかチェック
         max_score = 0.0
         for template_edges in self.result_templates_edges:
-            match_result = cv2.matchTemplate(
-                frame_edges, template_edges, cv2.TM_CCOEFF_NORMED
-            )
+            match_result = cv2.matchTemplate(frame_edges, template_edges, cv2.TM_CCOEFF_NORMED)
             max_val = match_result.max()
             max_score = max(max_score, max_val)
 
@@ -113,7 +111,10 @@ class ResultScreenDetector:
 
         logger.debug(
             "🔍 RESULT screen detection: max_match_value=%.3f | threshold=%.3f | templates_count=%d | detected=%s",
-            max_score, self.result_threshold, len(self.result_templates_edges), is_detected
+            max_score,
+            self.result_threshold,
+            len(self.result_templates_edges),
+            is_detected,
         )
 
         return is_detected
@@ -142,9 +143,7 @@ class ResultScreenDetector:
         # 複数テンプレートのマッチ結果を集約
         all_win_matches = np.empty((0, 2), dtype=np.int64)
         for template_edges in self.win_templates_edges:
-            matches = cv2.matchTemplate(
-                frame_edges, template_edges, cv2.TM_CCOEFF_NORMED
-            )
+            matches = cv2.matchTemplate(frame_edges, template_edges, cv2.TM_CCOEFF_NORMED)
             # 閾値以上のマッチ位置を取得
             win_matches = np.argwhere(matches >= self.win_threshold)
             all_win_matches = np.vstack([all_win_matches, win_matches]) if len(win_matches) > 0 else all_win_matches
@@ -152,7 +151,8 @@ class ResultScreenDetector:
         if len(all_win_matches) == 0:
             logger.debug(
                 "🔍 Win text detection: no matches (threshold=%.3f, templates_count=%d)",
-                self.win_threshold, len(self.win_templates_edges)
+                self.win_threshold,
+                len(self.win_templates_edges),
             )
             return "unknown"
 
@@ -165,7 +165,11 @@ class ResultScreenDetector:
 
         logger.debug(
             "🔍 Win text detection: match_count=%d | templates_count=%d | centroid_x=%.1f | frame_center=%.1f | position=%s",
-            len(all_win_matches), len(self.win_templates_edges), centroid_x, frame_center, position
+            len(all_win_matches),
+            len(self.win_templates_edges),
+            centroid_x,
+            frame_center,
+            position,
         )
 
         return position
@@ -211,7 +215,9 @@ class ResultScreenDetector:
 
             logger.debug(
                 "✅ Result detected: winner_side=%s | win_position=%s | confidence=%.1f",
-                result.winner_side, win_position, result.detection_confidence
+                result.winner_side,
+                win_position,
+                result.detection_confidence,
             )
         else:
             logger.debug("⚠️ Win text position unknown: %s", win_position)

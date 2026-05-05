@@ -51,12 +51,8 @@ class BattlelogCacheManager:
         )
 
         # インデックスを作成
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_player_id ON replay_cache(player_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_uploaded_at ON replay_cache(uploaded_at)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_id ON replay_cache(player_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_uploaded_at ON replay_cache(uploaded_at)")
 
         conn.commit()
         conn.close()
@@ -95,16 +91,12 @@ class BattlelogCacheManager:
                 (player_id, str(uploaded_at), replay_json),
             )
             conn.commit()
-            logger.debug(
-                f"Cached replay: player_id={player_id}, uploaded_at={uploaded_at}"
-            )
+            logger.debug(f"Cached replay: player_id={player_id}, uploaded_at={uploaded_at}")
             return True
 
         except sqlite3.IntegrityError:
             # UNIQUE 制約違反 = 既に存在
-            logger.debug(
-                f"Replay already cached: player_id={player_id}, uploaded_at={uploaded_at}"
-            )
+            logger.debug(f"Replay already cached: player_id={player_id}, uploaded_at={uploaded_at}")
             return False
 
         finally:
@@ -209,9 +201,7 @@ class BattlelogCacheManager:
         cursor = conn.cursor()
 
         try:
-            cursor.execute(
-                "SELECT replay_data FROM replay_cache ORDER BY cached_at DESC"
-            )
+            cursor.execute("SELECT replay_data FROM replay_cache ORDER BY cached_at DESC")
             rows = cursor.fetchall()
 
             replays = []
@@ -243,9 +233,7 @@ class BattlelogCacheManager:
 
         try:
             if player_id:
-                cursor.execute(
-                    "DELETE FROM replay_cache WHERE player_id = ?", (player_id,)
-                )
+                cursor.execute("DELETE FROM replay_cache WHERE player_id = ?", (player_id,))
                 logger.info(f"Cleared cache for player_id={player_id}")
             else:
                 cursor.execute("DELETE FROM replay_cache")
@@ -280,9 +268,7 @@ class BattlelogCacheManager:
             unique_players = cursor.fetchone()[0]
 
             # プレイヤーごとのレコード数
-            cursor.execute(
-                "SELECT player_id, COUNT(*) FROM replay_cache GROUP BY player_id ORDER BY COUNT(*) DESC"
-            )
+            cursor.execute("SELECT player_id, COUNT(*) FROM replay_cache GROUP BY player_id ORDER BY COUNT(*) DESC")
             unique_replays_by_player = {row[0]: row[1] for row in cursor.fetchall()}
 
             # データベースファイルサイズ
@@ -358,8 +344,6 @@ class BattlelogCacheManager:
         all_cached = page_uploaded_ats.issubset(cached_uploaded_at_set)
 
         logger.debug(
-            f"Cache boundary check for {player_id}: "
-            f"page_count={len(page_uploaded_ats)}, "
-            f"all_cached={all_cached}"
+            f"Cache boundary check for {player_id}: page_count={len(page_uploaded_ats)}, all_cached={all_cached}"
         )
         return all_cached

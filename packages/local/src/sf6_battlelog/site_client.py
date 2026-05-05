@@ -54,7 +54,7 @@ class BattlelogSiteClient:
             RuntimeError: buildIdが見つからない場合
         """
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:  # noqa: SIM117
                 # Step 1: プロフィールページにアクセスしてHTMLを取得
                 # Next.jsの__NEXT_DATA__スクリプトタグからbuildIdを抽出
                 async with session.get(

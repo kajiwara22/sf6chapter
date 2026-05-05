@@ -57,7 +57,9 @@ class CapcomIdAuthenticator:
         try:
             from playwright.async_api import async_playwright
         except ImportError as e:
-            raise ImportError("playwright is required for BucklerAuthenticator. Install with: pip install playwright") from e
+            raise ImportError(
+                "playwright is required for BucklerAuthenticator. Install with: pip install playwright"
+            ) from e
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -129,7 +131,7 @@ class CapcomIdAuthenticator:
                         logger.info("プラットフォーム選択画面が表示されました")
 
                         # 最初のプラットフォーム（PlayStation）をクリック
-                        platform_item = page.locator('listitem').first
+                        platform_item = page.locator("listitem").first
                         await platform_item.click()
                         logger.debug("Selected first platform (PlayStation)")
 
@@ -163,7 +165,9 @@ class CapcomIdAuthenticator:
                 cookie_names = [c["name"] for c in cookies]
                 logger.debug(f"Available cookies: {cookie_names}")
                 for cookie in cookies:
-                    logger.debug(f"  - {cookie['name']}: {cookie['value'][:50] if len(cookie['value']) > 50 else cookie['value']}")
+                    logger.debug(
+                        f"  - {cookie['name']}: {cookie['value'][:50] if len(cookie['value']) > 50 else cookie['value']}"
+                    )
 
                 # 可能性のある認証クッキー名（優先順）
                 auth_cookie_names = [
@@ -191,13 +195,18 @@ class CapcomIdAuthenticator:
                     logger.warning("No recognized auth cookie found. Searching for session-related cookies...")
                     # セッション関連のクッキーを試す
                     for cookie in cookies:
-                        if any(keyword in cookie["name"].lower() for keyword in ["buckler", "session", "auth", "token", "sid", "capcom"]):
+                        if any(
+                            keyword in cookie["name"].lower()
+                            for keyword in ["buckler", "session", "auth", "token", "sid", "capcom"]
+                        ):
                             auth_cookie = cookie["value"]
                             logger.info(f"Using cookie: {cookie['name']}")
                             break
 
                 if not auth_cookie:
-                    raise RuntimeError(f"Failed to extract auth cookie from login. Available cookies: {', '.join(cookie_names)}")
+                    raise RuntimeError(
+                        f"Failed to extract auth cookie from login. Available cookies: {', '.join(cookie_names)}"
+                    )
 
                 logger.info("Successfully obtained authentication cookie")
                 return auth_cookie

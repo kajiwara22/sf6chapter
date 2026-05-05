@@ -27,12 +27,14 @@ class BattlelogCollector:
     API_BASE_URL = "https://api.streetfighter.com/v1"
     BUCKLER_API_URL = "https://www.streetfighter.com/6/buckler/api"
 
-    class Unauthorized(Exception):
+    class Unauthorized(Exception):  # noqa: N818
         """認証エラー"""
+
         pass
 
-    class PageNotFound(Exception):
+    class PageNotFound(Exception):  # noqa: N818
         """ページ不在エラー"""
+
         pass
 
     def __init__(
@@ -104,33 +106,33 @@ class BattlelogCollector:
         """
         headers = kwargs.pop("headers", {})
         # response_type に応じて Accept ヘッダーを設定
-        accept_header = (
-            "text/html" if response_type == "text" else "application/json"
-        )
+        accept_header = "text/html" if response_type == "text" else "application/json"
         headers.update(self._get_headers(accept=accept_header))
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
-            async with session.request(
+        async with (
+            aiohttp.ClientSession(timeout=self.timeout) as session,
+            session.request(
                 method,
                 url,
                 headers=headers,
                 **kwargs,
-            ) as resp:
-                logger.debug("%s %s -> %d", method, url, resp.status)
+            ) as resp,
+        ):
+            logger.debug("%s %s -> %d", method, url, resp.status)
 
-                if resp.status == 401:
-                    raise self.Unauthorized("Authentication failed (401)")
-                elif resp.status == 404:
-                    raise self.PageNotFound(f"Endpoint not found: {url}")
-                elif resp.status >= 400:
-                    text = await resp.text()
-                    logger.error("HTTP %d: %s", resp.status, text[:200])
-                    raise RuntimeError(f"HTTP {resp.status}: {text[:200]}")
+            if resp.status == 401:
+                raise self.Unauthorized("Authentication failed (401)")
+            elif resp.status == 404:
+                raise self.PageNotFound(f"Endpoint not found: {url}")
+            elif resp.status >= 400:
+                text = await resp.text()
+                logger.error("HTTP %d: %s", resp.status, text[:200])
+                raise RuntimeError(f"HTTP {resp.status}: {text[:200]}")
 
-                if response_type == "text":
-                    return await resp.text()
-                else:
-                    return await resp.json()
+            if response_type == "text":
+                return await resp.text()
+            else:
+                return await resp.json()
 
     async def get_matches(
         self,
@@ -193,10 +195,7 @@ class BattlelogCollector:
         if home_character_id:
             params["home_character_id"] = home_character_id
 
-        logger.info(
-            "Fetching matches for player %s from %s to %s",
-            player_id, date_from, date_to
-        )
+        logger.info("Fetching matches for player %s from %s to %s", player_id, date_from, date_to)
 
         # 複数のエンドポイント候補を試す
         endpoints = [
@@ -228,9 +227,7 @@ class BattlelogCollector:
 
         # すべてのエンドポイントが失敗
         logger.error("All endpoints failed. Last error: %s", last_error)
-        raise RuntimeError(
-            f"Could not fetch matches from any endpoint. Last error: {last_error}"
-        ) from last_error
+        raise RuntimeError(f"Could not fetch matches from any endpoint. Last error: {last_error}") from last_error
 
     async def get_battlelog_html(
         self,
@@ -254,10 +251,7 @@ class BattlelogCollector:
             PageNotFound: ページ不在
             RuntimeError: その他のエラー
         """
-        url = (
-            f"https://www.streetfighter.com/6/buckler/{language}/"
-            f"profile/{player_id}/battlelog"
-        )
+        url = f"https://www.streetfighter.com/6/buckler/{language}/profile/{player_id}/battlelog"
 
         logger.info("Fetching battlelog for player %s, page %d", player_id, page)
 
@@ -321,10 +315,7 @@ class BattlelogCollector:
             raise RuntimeError(f"Failed to parse battlelog HTML: {e}") from e
 
         # 3. キャッシュにない対戦ログを抽出
-        new_replays = [
-            r for r in api_replays
-            if str(r.get("uploaded_at")) not in cached_uploaded_at_set
-        ]
+        new_replays = [r for r in api_replays if str(r.get("uploaded_at")) not in cached_uploaded_at_set]
 
         # 4. 新規データをキャッシュに保存
         if new_replays:
@@ -370,7 +361,9 @@ class BattlelogCollector:
 
         logger.info(
             "Starting incremental fetch for %s: latest_cached_at=%s, cached_count=%d",
-            player_id, latest_cached_at, len(cached_replays)
+            player_id,
+            latest_cached_at,
+            len(cached_replays),
         )
 
         all_new_replays = []
@@ -388,18 +381,14 @@ class BattlelogCollector:
                 next_data = BattlelogParser.extract_next_data(html)
                 page_replays = BattlelogParser.get_replay_list(next_data)
                 logger.info(
-                    "Fetching battlelog for player %s, page %d: got %d replays",
-                    player_id, page, len(page_replays)
+                    "Fetching battlelog for player %s, page %d: got %d replays", player_id, page, len(page_replays)
                 )
             except (ValueError, KeyError) as e:
                 logger.error("Failed to parse page %d: %s", page, e)
                 break
 
             # 3. キャッシュにない対戦ログを抽出
-            new_page_replays = [
-                r for r in page_replays
-                if str(r.get("uploaded_at")) not in cached_uploaded_at_set
-            ]
+            new_page_replays = [r for r in page_replays if str(r.get("uploaded_at")) not in cached_uploaded_at_set]
 
             # 4. 実際にキャッシュに追加された件数
             if new_page_replays:
@@ -407,8 +396,10 @@ class BattlelogCollector:
                 all_new_replays.extend(new_page_replays)
                 logger.info(
                     "Cached %d/%d new replays from page %d (skipped %d duplicates)",
-                    actual_cached_count, len(new_page_replays), page,
-                    len(new_page_replays) - actual_cached_count
+                    actual_cached_count,
+                    len(new_page_replays),
+                    page,
+                    len(new_page_replays) - actual_cached_count,
                 )
 
                 # キャッシュ済みセットを更新（次のページで重複判定を正確にするため）
@@ -416,7 +407,9 @@ class BattlelogCollector:
 
             # 5. キャッシュ境界に到達したか確認（新規リプレイがない = 境界到達）
             if not new_page_replays:
-                logger.info("No new replays found on page %d. Reached cache boundary. Stopping incremental fetch.", page)
+                logger.info(
+                    "No new replays found on page %d. Reached cache boundary. Stopping incremental fetch.", page
+                )
                 break
 
             # 5. ラストページの判定（10件未満）

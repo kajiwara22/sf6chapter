@@ -4,8 +4,8 @@
 """
 
 import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def setup_logger(name: str = "sf6-chapter", log_dir: str = "logs") -> logging.Logger:
@@ -26,10 +26,7 @@ def setup_logger(name: str = "sf6-chapter", log_dir: str = "logs") -> logging.Lo
         logger.handlers.clear()
 
     # ログフォーマット（タイムスタンプ、レベル、モジュール名、メッセージ）
-    formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
     # 標準出力ハンドラ
     console_handler = logging.StreamHandler()
