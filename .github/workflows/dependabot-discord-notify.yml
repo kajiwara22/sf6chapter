@@ -1,0 +1,124 @@
+name: Dependabot Discord notify
+
+on:
+  pull_request:
+    types: [opened, closed]
+
+jobs:
+  notify-pr-opened:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' && github.event.action == 'opened'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a  # v2.5.0
+
+      - name: Send Discord notification (PR opened)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch) UPDATE_LABEL="patch (auto-merge予定)" ; COLOR=3066993 ;;
+            version-update:semver-minor) UPDATE_LABEL="minor (手動レビュー必要)" ; COLOR=15844367 ;;
+            version-update:semver-major) UPDATE_LABEL="major (手動レビュー必要)" ; COLOR=15158332 ;;
+            *) UPDATE_LABEL="$UPDATE_TYPE" ; COLOR=9807270 ;;
+          esac
+
+          payload=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "🤖 Dependabot PR #${PR_NUMBER} が作成されました",
+              "url": "${PR_URL}",
+              "color": ${COLOR},
+              "fields": [
+                { "name": "タイトル", "value": "${PR_TITLE}", "inline": false },
+                { "name": "パッケージ", "value": "${DEPENDENCY_NAMES}", "inline": true },
+                { "name": "エコシステム", "value": "${PACKAGE_ECOSYSTEM}", "inline": true },
+                { "name": "更新種別", "value": "${UPDATE_LABEL}", "inline": true }
+              ],
+              "footer": { "text": "sf6-chapter / Dependabot" }
+            }]
+          }
+          EOF
+          )
+          curl -fsSL -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+
+  notify-pr-merged:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a  # v2.5.0
+
+      - name: Send Discord notification (PR merged)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        run: |
+          if [ "$MERGED_BY" = "github-actions[bot]" ]; then
+            MERGE_METHOD="⚡ auto-merge"
+          else
+            MERGE_METHOD="👤 手動マージ (by ${MERGED_BY})"
+          fi
+
+          payload=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "✅ Dependabot PR #${PR_NUMBER} がマージされました",
+              "url": "${PR_URL}",
+              "color": 5763719,
+              "fields": [
+                { "name": "タイトル", "value": "${PR_TITLE}", "inline": false },
+                { "name": "パッケージ", "value": "${DEPENDENCY_NAMES}", "inline": true },
+                { "name": "エコシステム", "value": "${PACKAGE_ECOSYSTEM}", "inline": true },
+                { "name": "更新種別", "value": "${UPDATE_TYPE}", "inline": true },
+                { "name": "マージ方法", "value": "${MERGE_METHOD}", "inline": false }
+              ],
+              "footer": { "text": "sf6-chapter / Dependabot" }
+            }]
+          }
+          EOF
+          )
+          curl -fsSL -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+
+  notify-pr-closed:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' && github.event.action == 'closed' && github.event.pull_request.merged == false
+    steps:
+      - name: Send Discord notification (PR closed without merge)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CLOSED_BY: ${{ github.event.pull_request.closed_by.login }}
+        run: |
+          payload=$(cat <<EOF
+          {
+            "embeds": [{
+              "title": "🚫 Dependabot PR #${PR_NUMBER} がクローズされました（未マージ）",
+              "url": "${PR_URL}",
+              "color": 10038562,
+              "fields": [
+                { "name": "タイトル", "value": "${PR_TITLE}", "inline": false },
+                { "name": "クローズ者", "value": "${CLOSED_BY}", "inline": true }
+              ],
+              "footer": { "text": "sf6-chapter / Dependabot" }
+            }]
+          }
+          EOF
+          )
+          curl -fsSL -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
