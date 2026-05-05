@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/packages/local"
+    schedule:
+      interval: "weekly"
+    groups:
+      local-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/gcp-functions/check-new-video"
+    schedule:
+      interval: "weekly"
+    groups:
+      check-new-video-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/obs-title-updater"
+    schedule:
+      interval: "weekly"
+    groups:
+      obs-title-updater-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/report-generator"
+    schedule:
+      interval: "weekly"
+    groups:
+      report-generator-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/packages/web"
+    schedule:
+      interval: "weekly"
+    groups:
+      web-dependencies:
+        patterns:
+          - "*"

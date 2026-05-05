@@ -1,0 +1,32 @@
+name: CI - packages/obs-title-updater
+
+on:
+  push:
+    paths:
+      - "packages/obs-title-updater/**"
+  pull_request:
+    paths:
+      - "packages/obs-title-updater/**"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/obs-title-updater
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check src/
+
+      - name: Format check
+        run: uv run ruff format --check src/

@@ -1,0 +1,29 @@
+name: CI - packages/gcp-functions/check-new-video
+
+on:
+  push:
+    paths:
+      - "packages/gcp-functions/check-new-video/**"
+  pull_request:
+    paths:
+      - "packages/gcp-functions/check-new-video/**"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/gcp-functions/check-new-video
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Test
+        run: uv run pytest

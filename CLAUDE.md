@@ -97,7 +97,7 @@ sf6-chapter/
 - [x] レポートジェネレーターへの時間帯別勝率分析の追加（ADR-035）
 - [x] Pub/Sub キューを Firestore キューに置き換える（ADR-036）
 - [ ] Battlelog round_results 判定ロジックの修正（ADR-037）
-- [ ] Dependabot + GitHub Actions による依存関係自動更新の導入（ADR-038）
+- [x] Dependabot + GitHub Actions による依存関係自動更新の導入（ADR-038）
 
 ## 次のタスク
 
