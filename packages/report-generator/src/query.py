@@ -275,10 +275,7 @@ def query_hourly_win_rate(
         [pid] * 4 + [date_from, date_to],
     ).fetchall()
 
-    return [
-        HourlyRow(hour=r[0], total=r[1], wins=r[2], losses=r[1] - r[2])
-        for r in rows
-    ]
+    return [HourlyRow(hour=r[0], total=r[1], wins=r[2], losses=r[1] - r[2]) for r in rows]
 
 
 def load_parquet(parquet_path: str) -> duckdb.DuckDBPyConnection:

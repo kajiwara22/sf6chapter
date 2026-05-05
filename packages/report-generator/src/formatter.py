@@ -285,16 +285,12 @@ def _format_hourly_win_rate(hourly: list[HourlyRow]) -> str:
 
     total_all, wins_all = 0, 0
     for row in hourly:
-        lines.append(
-            f"| {row.hour}時台 | {row.total} | {row.wins} | {row.losses} | {row.win_rate:.1f}% |"
-        )
+        lines.append(f"| {row.hour}時台 | {row.total} | {row.wins} | {row.losses} | {row.win_rate:.1f}% |")
         total_all += row.total
         wins_all += row.wins
 
     total_wr = wins_all / total_all * 100 if total_all > 0 else 0
-    lines.append(
-        f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** |"
-    )
+    lines.append(f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** |")
     return "\n".join(lines)
 
 
