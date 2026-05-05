@@ -137,7 +137,7 @@ export async function loadBattlelogParquetData(): Promise<void> {
  * @param isEndOfDay trueの場合は23:59:59 JST、falseの場合は00:00:00 JST
  * @returns UTC ISO8601文字列
  */
-function convertJstDateToUtc(dateStr: string, isEndOfDay: boolean): string {
+export function convertJstDateToUtc(dateStr: string, isEndOfDay: boolean): string {
   // JST = UTC + 9時間
   // JST 00:00:00 → UTC 前日15:00:00
   // JST 23:59:59 → UTC 当日14:59:59
@@ -387,7 +387,7 @@ const INPUT_TYPE_NAMES: Record<number, string> = {
  * @param timeStr JSTの時刻文字列（例: "14:30"）省略時はisEndOfDayで決定
  * @param isEndOfDay timeStr省略時: trueなら23:59:59 JST、falseなら00:00:00 JST
  */
-function convertJstDateTimeToTimestamp(dateStr: string, isEndOfDay: boolean, timeStr?: string): string {
+export function convertJstDateTimeToTimestamp(dateStr: string, isEndOfDay: boolean, timeStr?: string): string {
   const [year, month, day] = dateStr.split('-').map(Number);
 
   let hours: number;

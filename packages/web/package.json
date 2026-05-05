@@ -10,7 +10,8 @@
     "build": "pnpm run build:client && pnpm run build:copy-manifest && pnpm run build:server",
     "preview": "wrangler pages dev dist",
     "deploy": "pnpm run build && wrangler pages deploy dist --commit-message=\"Deploy from local\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "TZ=UTC vitest run"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1024.0",
@@ -24,6 +25,7 @@
     "@types/node": "^25.5.2",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
+    "vitest": "^4.1.4",
     "wrangler": "^4.80.0"
   }
 }
