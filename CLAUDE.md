@@ -100,6 +100,7 @@ sf6-chapter/
 - [x] Dependabot + GitHub Actions による依存関係自動更新の導入（ADR-038）
 - [ ] GitHub Actions サードパーティ Action の SHA ピンニング（ADR-039）
 - [x] packages/web のテスト戦略策定（ADR-040）
+- [ ] 再認識後のBattlelogマッチング全体再実行（ADR-041）
 
 ## 次のタスク
 
@@ -317,6 +318,7 @@ docker compose up -d
 - [038: Dependabot + GitHub Actions による依存関係自動更新の導入](docs/adr/038-dependabot-and-github-actions-for-dependency-updates.md)
 - [039: GitHub Actions サードパーティ Action の SHA ピンニング](docs/adr/039-github-actions-sha-pinning.md)
 - [040: packages/web のテスト戦略](docs/adr/040-web-package-testing-strategy.md)
+- [041: 再認識後のBattlelogマッチング全体再実行](docs/adr/041-rematch-all-chapters-after-rerecognition.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

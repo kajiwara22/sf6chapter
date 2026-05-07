@@ -46,6 +46,7 @@
 | [038](./038-dependabot-and-github-actions-for-dependency-updates.md) | Dependabot + GitHub Actions による依存関係自動更新の導入 | 採用 | 2026-05-05 |
 | [039](./039-github-actions-sha-pinning.md) | GitHub Actions サードパーティ Action の SHA ピンニング | 採用 | 2026-05-05 |
 | [040](./040-web-package-testing-strategy.md) | packages/web のテスト戦略 | 採用 | 2026-05-05 |
+| [041](./041-rematch-all-chapters-after-rerecognition.md) | 再認識後のBattlelogマッチング全体再実行 | 提案 | 2026-05-07 |
 
 ## ADRのフォーマット
 
