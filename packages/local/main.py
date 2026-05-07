@@ -536,6 +536,7 @@ class SF6ChapterProcessor:
     ) -> list[dict[str, Any]]:
         """
         Battlelog未マッチチャプターに対して画像前処理+再認識を実施（ADR-033）
+        タイトル変更があった場合はBattlelogマッチング全体を再実行する（ADR-041）
 
         トリガー条件（すべて満たす）:
         1. matched == False
@@ -554,15 +555,10 @@ class SF6ChapterProcessor:
         video_intermediate_dir = self.intermediate_dir / video_id
         rerecognition_method = "negative"
 
-        # 再認識で使用済みのreplay_idを収集（既にマッチ済みのもの）
-        used_replay_ids = {
-            ch["replay_id"] for ch in chapters_with_result
-            if ch.get("matched") and ch.get("replay_id")
-        }
-        sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
+        # index -> new_title: タイトルが変更されたチャプターを追跡
+        updated_titles: dict[int, str] = {}
 
         rerecognized_count = 0
-        rematch_success_count = 0
 
         for i, chapter in enumerate(chapters_with_result):
             # トリガー条件1: matched == False
@@ -608,40 +604,37 @@ class SF6ChapterProcessor:
                 continue
 
             logger.info("  再認識 %ds: %s → %s", start_time, title, new_title)
-
-            # Battlelog再マッチング
-            rerecognized_chapter = {**chapter, "title": new_title}
-            result = self.battlelog_matcher.match_chapter_with_battlelog(
-                rerecognized_chapter, sorted_replays, video_published_at,
-                used_replay_ids, tolerance_seconds=600,
-            )
-
-            if result.get("matched"):
-                # 再マッチ成功: チャプター情報を更新
-                rematch_success_count += 1
-                if result.get("replay_id"):
-                    used_replay_ids.add(result["replay_id"])
-
-                chapters_with_result[i] = {
-                    **chapter,
-                    **result,
-                    "title": new_title,
-                    "rerecognized": True,
-                    "original_title": title,
-                    "rerecognition_method": rerecognition_method,
-                }
-                logger.info("  再マッチ成功 %ds: %s (replay_id=%s)", start_time, new_title, result.get("replay_id"))
-            else:
-                # 再マッチ失敗: 元のデータを維持（再認識の事実だけ記録）
-                logger.info("  再マッチ失敗 %ds: %s → 元のデータを維持", start_time, new_title)
+            updated_titles[i] = new_title
 
         if rerecognized_count > 0:
-            logger.info(
-                "  再認識結果: %d件実施, %d件再マッチ成功",
-                rerecognized_count, rematch_success_count,
-            )
+            logger.info("  再認識実施: %d件", rerecognized_count)
 
-        return chapters_with_result
+        # タイトル変更なし → そのまま返す
+        if not updated_titles:
+            return chapters_with_result
+
+        # タイトル変更あり → 全チャプターで再マッチング（ADR-041）
+        # 初回マッチングで誤認識チャプターの「穴」を埋めるように割り当てられた
+        # replay_idが残ったまま再マッチすると誤割り当てが継続するため、
+        # used_replay_ids をリセットして最初から照合し直す。
+        logger.info("  %d件のタイトル変更 → Battlelogマッチング全体を再実行", len(updated_titles))
+
+        # 再認識済みタイトルを反映したチャプターリストを構築（Battlelog結果フィールドをリセット）
+        base_chapters = []
+        for i, chapter in enumerate(chapters_with_result):
+            base: dict[str, Any] = {
+                "startTime": chapter["startTime"],
+                "title": updated_titles.get(i, chapter["title"]),
+                "matchId": chapter.get("matchId"),
+                "winner_side": chapter.get("winner_side"),
+            }
+            if i in updated_titles:
+                base["rerecognized"] = True
+                base["original_title"] = chapter["title"]
+                base["rerecognition_method"] = rerecognition_method
+            base_chapters.append(base)
+
+        return self._match_chapters_with_battlelog_replays(base_chapters, replays, video_published_at)
 
     def _find_frame_image(self, video_intermediate_dir: Path, start_time: int) -> Path | None:
         """
