@@ -1424,38 +1424,13 @@ def test_r2_upload(
     )
 
     # 対戦データに Battlelog 情報を統合
-    chapter_map = {
-        ch.get("matchId"): ch for ch in chapters_with_result
-    }
+    _processor._apply_match_results(matches, chapters_with_result)
+
+    chapter_map = {ch.get("matchId"): ch for ch in chapters_with_result}
     for match in matches:
         match_id = match.get("id")
         if match_id in chapter_map:
             chapter = chapter_map[match_id]
-
-            # 1. Battlelog マッピング結果から result を取得
-            if chapter.get("player1_result"):
-                match["player1"]["result"] = chapter.get("player1_result")
-            if chapter.get("player2_result"):
-                match["player2"]["result"] = chapter.get("player2_result")
-
-            # 2. RESULT 検出結果から result を推定（Battlelog マッピングなし、または失敗時）
-            # result がまだ None の場合のみ推定
-            if match["player1"]["result"] is None:
-                winner_side = chapter.get("winner_side")
-                if winner_side:
-                    if winner_side == "player1":
-                        match["player1"]["result"] = "win"
-                        match["player2"]["result"] = "loss"
-                    elif winner_side == "player2":
-                        match["player1"]["result"] = "loss"
-                        match["player2"]["result"] = "win"
-                    logger.info(
-                        "Set result from RESULT detection for matchId=%s: winner_side=%s",
-                        match_id,
-                        winner_side,
-                    )
-
-            # 3. Battlelog マッピング結果を match に追加
             match["battlelogMatched"] = chapter.get("matched", False)
             match["battlelogConfidence"] = chapter.get("confidence", "low")
             match["battlelogReplayId"] = chapter.get("replay_id")
