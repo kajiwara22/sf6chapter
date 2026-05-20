@@ -47,6 +47,7 @@
 | [039](./039-github-actions-sha-pinning.md) | GitHub Actions サードパーティ Action の SHA ピンニング | 採用 | 2026-05-05 |
 | [040](./040-web-package-testing-strategy.md) | packages/web のテスト戦略 | 採用 | 2026-05-05 |
 | [041](./041-rematch-all-chapters-after-rerecognition.md) | 再認識後のBattlelogマッチング全体再実行 | 提案 | 2026-05-07 |
+| [042](./042-gemini-model-migration-2.5-to-3.1-flash-lite.md) | Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Flex, バッチ送信) への移行 | 採用 | 2026-05-20 |
 | [043](./043-dependabot-pip-to-uv-ecosystem-migration.md) | Dependabot エコシステムを `pip` から `uv` へ移行 | 採用 | 2026-05-21 |
 
 ## ADRのフォーマット
