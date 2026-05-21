@@ -322,11 +322,8 @@ docker compose up -d
 - [039: GitHub Actions サードパーティ Action の SHA ピンニング](docs/adr/039-github-actions-sha-pinning.md)
 - [040: packages/web のテスト戦略](docs/adr/040-web-package-testing-strategy.md)
 - [041: 再認識後のBattlelogマッチング全体再実行](docs/adr/041-rematch-all-chapters-after-rerecognition.md)
-<<<<<<< HEAD
-- [043: Dependabot エコシステムを `pip` から `uv` へ移行](docs/adr/043-dependabot-pip-to-uv-ecosystem-migration.md)
-=======
 - [042: Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Flex, バッチ送信) への移行](docs/adr/042-gemini-model-migration-2.5-to-3.1-flash-lite.md)
->>>>>>> 4527c24 (docs(adr): Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Flex, バッチ送信) への移行（ADR-042）)
+- [043: Dependabot エコシステムを `pip` から `uv` へ移行](docs/adr/043-dependabot-pip-to-uv-ecosystem-migration.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
