@@ -95,7 +95,9 @@ class SF6ChapterProcessor:
 
         # キャラクター正規化とマッチング（Battlelog マッピング用）
         aliases_path = self.app_root / "config" / "character_aliases.json"
-        self.character_normalizer = CharacterNormalizer(aliases_file=str(aliases_path) if aliases_path.exists() else None)
+        self.character_normalizer = CharacterNormalizer(
+            aliases_file=str(aliases_path) if aliases_path.exists() else None
+        )
         self.battlelog_matcher = BattlelogMatcher(normalizer=self.character_normalizer)
 
         # RESULT画面検出器の初期化
@@ -126,16 +128,25 @@ class SF6ChapterProcessor:
             logger.info("No matches found, skipping video")
             return [], []
 
-        # 3. Gemini APIでキャラクター認識
-        logger.info("[3/6] Recognizing characters...")
+        # 3. Gemini APIでキャラクター認識（ADR-042: バッチ送信で1リクエストにまとめる）
+        logger.info("[3/6] Recognizing characters (batch mode)...")
         matches: list[dict[str, Any]] = []
         chapters: list[dict[str, Any]] = []
 
+        # フレームを先に全件保存
+        frame_paths: list[Path] = []
         for i, detection in enumerate(detections, 1):
+            frame_path = video_intermediate_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
+            self.matcher.save_detection_frame(detection, str(frame_path))
+            frame_paths.append(frame_path)
+
+        # バッチ認識
+        recognition_results = self.recognizer.recognize_from_frames([d.frame for d in detections])
+
+        for i, (detection, frame_path, (normalized, raw)) in enumerate(
+            zip(detections, frame_paths, recognition_results, strict=True), 1
+        ):
             try:
-                frame_path = video_intermediate_dir / f"frame_{i:03d}_{int(detection.timestamp)}s.png"
-                self.matcher.save_detection_frame(detection, str(frame_path))
-                normalized, raw = self.recognizer.recognize_from_frame(detection.frame)
                 match_id = f"{video_id}_{int(detection.timestamp)}"
 
                 match_data = {
@@ -174,14 +185,12 @@ class SF6ChapterProcessor:
                 logger.info("  %s at %.1fs", chapter["title"], detection.timestamp)
 
             except Exception:
-                logger.exception("Error recognizing characters for match %d", i)
+                logger.exception("Error processing recognition result for match %d", i)
                 continue
 
         return matches, chapters
 
-    def _apply_match_results(
-        self, matches: list[dict[str, Any]], chapters_with_result: list[dict[str, Any]]
-    ) -> None:
+    def _apply_match_results(self, matches: list[dict[str, Any]], chapters_with_result: list[dict[str, Any]]) -> None:
         """
         マッチデータに結果情報を反映（Battlelog + RESULT検出）
         """
@@ -216,8 +225,11 @@ class SF6ChapterProcessor:
                     )
 
     def _save_to_storage(
-        self, video_id: str, message_data: dict[str, Any],
-        chapters_with_result: list[dict[str, Any]], matches: list[dict[str, Any]]
+        self,
+        video_id: str,
+        message_data: dict[str, Any],
+        chapters_with_result: list[dict[str, Any]],
+        matches: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """
         データを R2 またはローカルストレージに保存
@@ -266,6 +278,7 @@ class SF6ChapterProcessor:
             logger.info("[6/6] Skipping Parquet update")
 
             import json
+
             output_dir = Path("./output")
             output_dir.mkdir(exist_ok=True)
 
@@ -325,9 +338,7 @@ class SF6ChapterProcessor:
             self.youtube_updater.update_video_description(video_id, chapters)
 
             # 4.5. Battlelog マッピング
-            chapters_with_result = self._run_battlelog_matching(
-                video_id, chapters, message_data.get("publishedAt", "")
-            )
+            chapters_with_result = self._run_battlelog_matching(video_id, chapters, message_data.get("publishedAt", ""))
 
             # マッチ結果を反映
             self._apply_match_results(matches, chapters_with_result)
@@ -523,7 +534,7 @@ class SF6ChapterProcessor:
         matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
         logger.info(
             f"  Matched {matched_count}/{len(enriched_chapters)} chapters "
-            f"({matched_count*100//len(enriched_chapters) if enriched_chapters else 0}%)"
+            f"({matched_count * 100 // len(enriched_chapters) if enriched_chapters else 0}%)"
         )
         return enriched_chapters
 
@@ -581,6 +592,7 @@ class SF6ChapterProcessor:
 
             # フレーム画像を読み込み
             import cv2  # main.pyではcv2を通常使わないためローカルインポート
+
             frame = cv2.imread(str(frame_path))
             if frame is None:
                 logger.warning("  再認識スキップ %ds: フレーム画像読み込み失敗: %s", start_time, frame_path)
@@ -588,9 +600,7 @@ class SF6ChapterProcessor:
 
             # 前処理適用+Gemini API再認識
             try:
-                normalized, _raw = self.recognizer.recognize_with_preprocessing(
-                    frame, method=rerecognition_method
-                )
+                normalized, _raw = self.recognizer.recognize_with_preprocessing(frame, method=rerecognition_method)
             except Exception:
                 logger.exception("  再認識失敗 %ds", start_time)
                 continue
@@ -694,7 +704,10 @@ class SF6ChapterProcessor:
             if unmatched_count > 0:
                 logger.info("[4.5.1/6] Running rerecognition for %d unmatched chapters...", unmatched_count)
                 chapters_with_result = self._rerecognize_unmatched_chapters(
-                    chapters_with_result, replays, video_published_at, video_id,
+                    chapters_with_result,
+                    replays,
+                    video_published_at,
+                    video_id,
                 )
 
             return chapters_with_result
@@ -703,6 +716,7 @@ class SF6ChapterProcessor:
             logger.error(f"Battlelog マッピング失敗: {e}")
             logger.warning("  Proceeding without Battlelog data")
             return chapters
+
 
 # ====================
 # Battlelog Parquet パイプライン
@@ -767,9 +781,7 @@ def _update_battlelog_parquet(
 # ====================
 
 
-def _initialize_result_screen_detector(
-    app_root: Path, detection_params
-) -> "ResultScreenDetector | None":
+def _initialize_result_screen_detector(app_root: Path, detection_params) -> "ResultScreenDetector | None":
     """
     RESULT画面検出器を初期化（共通ロジック）
 
@@ -785,12 +797,8 @@ def _initialize_result_screen_detector(
         return None
 
     # テンプレートパスを相対パスから絶対パスに変換
-    result_template_paths = [
-        app_root / Path(p) for p in detection_params.result_detection.result_template_paths
-    ]
-    win_template_paths = [
-        app_root / Path(p) for p in detection_params.result_detection.win_template_paths
-    ]
+    result_template_paths = [app_root / Path(p) for p in detection_params.result_detection.result_template_paths]
+    win_template_paths = [app_root / Path(p) for p in detection_params.result_detection.win_template_paths]
 
     # 最初の有効なテンプレートペアを使用
     result_template_path = None
@@ -838,8 +846,7 @@ def get_intermediate_dir(video_id: str) -> Path:
 
 
 def save_detection_results(
-    video_id: str, detections: list[MatchDetection], video_path: str,
-    chapters: list[dict[str, Any]] | None = None
+    video_id: str, detections: list[MatchDetection], video_path: str, chapters: list[dict[str, Any]] | None = None
 ) -> Path:
     """
     検出結果を中間ファイルに保存
@@ -1112,16 +1119,14 @@ def test_recognition(
     if not detections:
         raise ValueError("detections is required when from_intermediate=False")
 
-    logger.info("[TEST] Recognizing characters from %d frames", len(detections))
+    logger.info("[TEST] Recognizing characters from %d frames (batch mode)", len(detections))
     app_root = Path(__file__).parent
     recognizer = CharacterRecognizer(aliases_path=str(app_root / "config" / "character_aliases.json"))
 
-    results = []
-    for i, detection in enumerate(detections, 1):
-        logger.info("   Processing match %d/%d...", i, len(detections))
-        normalized, raw = recognizer.recognize_from_frame(detection.frame)
-        results.append((normalized, raw))
-        logger.info("   ✅ %s VS %s", normalized.get("1p"), normalized.get("2p"))
+    # ADR-042: バッチ送信で1リクエストにまとめる
+    results = recognizer.recognize_from_frames([d.frame for d in detections])
+    for i, (normalized, raw) in enumerate(results, 1):
+        logger.info("   %d/%d: ✅ %s VS %s", i, len(detections), normalized.get("1p"), normalized.get("2p"))
         logger.info("      (raw: %s vs %s)", raw.get("1p"), raw.get("2p"))
 
     # 中間ファイルに保存
@@ -1325,10 +1330,7 @@ def test_r2_upload(
 
         # chapters.json の title から matches の character を上書き（ADR-029）
         # chapters.json を手動修正した場合、matches.json にもキャラクター名を反映する
-        chapter_by_match_id = {
-            ch.get("matchId") or f"{video_id}_{int(ch['startTime'])}": ch
-            for ch in chapters
-        }
+        chapter_by_match_id = {ch.get("matchId") or f"{video_id}_{int(ch['startTime'])}": ch for ch in chapters}
         for match in matches:
             match_id = match.get("id")
             if match_id in chapter_by_match_id:
@@ -1344,9 +1346,12 @@ def test_r2_upload(
                         old_p2 = match.get("player2", {}).get("character", "")
                         if ch_p1 != old_p1 or ch_p2 != old_p2:
                             logger.info(
-                                "Overriding character from chapters.json for matchId=%s: "
-                                "%s VS %s → %s VS %s",
-                                match_id, old_p1, old_p2, ch_p1, ch_p2,
+                                "Overriding character from chapters.json for matchId=%s: %s VS %s → %s VS %s",
+                                match_id,
+                                old_p1,
+                                old_p2,
+                                ch_p1,
+                                ch_p2,
                             )
                             match["player1"]["character"] = ch_p1
                             match["player2"]["character"] = ch_p2
@@ -1419,9 +1424,7 @@ def test_r2_upload(
     battlelog_cache_db = os.environ.get("BATTLELOG_CACHE_DB", "./battlelog_cache.db")
 
     _processor = SF6ChapterProcessor()
-    chapters_with_result = _processor._run_battlelog_matching(
-        video_id, chapters, video_info["publishedAt"]
-    )
+    chapters_with_result = _processor._run_battlelog_matching(video_id, chapters, video_info["publishedAt"])
 
     # 対戦データに Battlelog 情報を統合
     _processor._apply_match_results(matches, chapters_with_result)
@@ -1539,7 +1542,7 @@ def main():
 
         # --video-pathからvideo_idを抽出（ファイル名形式: YYYYMMDD[VIDEO_ID].ext）
         if not args.video_id and args.video_path:
-            m = re.search(r'\[([^\]]+)\]', Path(args.video_path).name)
+            m = re.search(r"\[([^\]]+)\]", Path(args.video_path).name)
             if m:
                 args.video_id = m.group(1)
             else:

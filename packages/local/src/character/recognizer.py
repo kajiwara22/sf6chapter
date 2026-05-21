@@ -5,10 +5,13 @@ Gemini APIを使用したキャラクター認識（Vertex AI経由）
 
 import json
 import os
+import time
+from typing import Any
 
 import cv2
 import numpy as np
 from google import genai
+from google.genai import errors as genai_errors
 from PIL import Image
 
 from ..auth import get_oauth_credentials
@@ -19,6 +22,11 @@ logger = get_logger()
 # 認識できなかった場合の定数
 UNKNOWN_CHARACTER = "UNKNOWN"
 
+# ADR-042: Flex Tier のリトライ/タイムアウト設定
+_FLEX_TIMEOUT_MS = 900_000  # 15分（公式推奨600s以上）
+_FLEX_MAX_RETRIES = 3
+_FLEX_BASE_DELAY_SEC = 5
+
 
 class CharacterRecognizer:
     """Gemini APIを使用したキャラクター認識器（Vertex AI経由）"""
@@ -26,20 +34,26 @@ class CharacterRecognizer:
     def __init__(
         self,
         aliases_path: str,
-        model_name: str = "gemini-2.5-flash-lite",
+        model_name: str = "gemini-3.1-flash-lite",
         client_secrets_file: str = "client_secrets.json",
         token_file: str = "token.pickle",
         project_id: str | None = None,
-        location: str = "us-central1",
+        location: str = "global",
+        service_tier: str | None = "flex",
     ):
         """
         Args:
             aliases_path: キャラクター名正規化マッピングファイルのパス（必須）
-            model_name: 使用するモデル名
+            model_name: 使用するモデル名（ADR-042: gemini-3.1-flash-lite）
             client_secrets_file: OAuth2クライアントシークレットファイルのパス
             token_file: 認証トークン保存ファイルのパス（pickle形式）
             project_id: Google Cloud プロジェクトID（省略時は環境変数GOOGLE_CLOUD_PROJECTを使用）
-            location: Vertex AIのロケーション（デフォルト: us-central1）
+            location: Vertex AIのロケーション
+                - ADR-042: gemini-3.1-flash-lite は us-central1 非対応のため "global" がデフォルト
+                - 利用可能: global / us / eu
+            service_tier: 推論サービス Tier
+                - "flex": Flex Tier (50% off、1-15分レイテンシ、sheddable)
+                - None: Standard Tier
         """
         # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
         project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -50,14 +64,17 @@ class CharacterRecognizer:
             client_secrets_file=client_secrets_file,
             token_file=token_file,
         )
+        # ADR-042: Flex Tier の長時間待機に対応するため client timeout を 15分に設定
         self.client = genai.Client(
             vertexai=True,
             project=project_id,
             location=location,
             credentials=creds,
+            http_options=genai.types.HttpOptions(timeout=_FLEX_TIMEOUT_MS),
         )
 
         self.model_name = model_name
+        self.service_tier = service_tier
 
         # キャラクター名正規化マッピング読み込み（必須）
         self.aliases_map: dict[str, str] = {}
@@ -99,37 +116,100 @@ class CharacterRecognizer:
             return UNKNOWN_CHARACTER
         return normalized
 
-    def recognize_from_frame(
+    # ---------------------------------------------------------------------
+    # 内部ユーティリティ
+    # ---------------------------------------------------------------------
+
+    def _build_base_config_kwargs(self) -> dict[str, Any]:
+        """ADR-019/042 で共通の GenerateContentConfig パラメータを返す"""
+        # ADR-019: OCRタスク最適化のため低温度（temperature=0.1）
+        # ADR-042: thinking_budget=0 で OCR に不要な thinking tokens 課金を回避
+        kwargs: dict[str, Any] = {
+            "temperature": 0.1,
+            "top_p": 0.95,
+            "top_k": 40,
+            "thinking_config": genai.types.ThinkingConfig(thinking_budget=0),
+            "response_mime_type": "application/json",
+        }
+        if self.service_tier:
+            kwargs["service_tier"] = self.service_tier
+        return kwargs
+
+    @staticmethod
+    def _is_retryable_error(exc: Exception) -> bool:
+        """ADR-042: Flex の sheddable 性質に応じた 503/429 リトライ対象判定"""
+        if isinstance(exc, genai_errors.APIError):
+            code = getattr(exc, "code", None)
+            return code in (429, 503)
+        return False
+
+    def _generate_with_retry(
         self,
-        frame: np.ndarray,
-        save_debug_image: str | None = None,
-    ) -> tuple[dict[str, str], dict[str, str]]:
+        contents: list[Any],
+        config: genai.types.GenerateContentConfig,
+    ) -> Any:
         """
-        フレーム画像からキャラクターを認識
+        ADR-042: Flex Tier 用のリトライ + Standard フォールバック付き API 呼び出し
 
-        Args:
-            frame: OpenCV形式のフレーム（BGR）
-            save_debug_image: デバッグ用画像保存パス（オプション）
-
-        Returns:
-            (正規化済み結果, 生の認識結果)のタプル
-            例: ({"1p": "Ryu", "2p": "Ken"}, {"1p": "リュウ", "2p": "ケン"})
+        1. service_tier=flex で実行
+        2. 503/429 のときは指数バックオフでリトライ
+        3. リトライ枯渇したら Standard tier で再試行（service_tier を外す）
         """
-        # OpenCV画像をPIL.Imageに変換
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil_image = Image.fromarray(frame_rgb)
+        # Flex リトライ
+        last_exc: Exception | None = None
+        for attempt in range(_FLEX_MAX_RETRIES):
+            try:
+                return self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as exc:
+                if not self._is_retryable_error(exc):
+                    raise
+                last_exc = exc
+                if attempt < _FLEX_MAX_RETRIES - 1:
+                    delay = _FLEX_BASE_DELAY_SEC * (2**attempt)
+                    logger.warning(
+                        "Flex API busy (attempt %d/%d): %s. Retrying in %ds...",
+                        attempt + 1,
+                        _FLEX_MAX_RETRIES,
+                        exc,
+                        delay,
+                    )
+                    time.sleep(delay)
 
-        # デバッグ画像保存
-        if save_debug_image:
-            pil_image.save(save_debug_image)
+        # Standard フォールバック（service_tier を外して再構築）
+        if self.service_tier:
+            logger.warning(
+                "Flex retries exhausted (last error: %s). Falling back to Standard tier.",
+                last_exc,
+            )
+            fallback_kwargs = {k: v for k, v in self._config_kwargs_from(config).items() if k != "service_tier"}
+            fallback_config = genai.types.GenerateContentConfig(**fallback_kwargs)
+            return self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=fallback_config,
+            )
 
-        # 有効なキャラクター名リスト
-        valid_chars = self.valid_characters
+        # service_tier 未指定だったらリトライ枯渇をそのまま伝搬
+        assert last_exc is not None
+        raise last_exc
 
-        # プロンプト（候補リストを含める）
-        # ADR-019: OCRタスク明示とJP/JAMIE混同防止のための改善プロンプト（Phase 1.5強化版）
-        char_list = ", ".join(valid_chars)
-        prompt = (
+    @staticmethod
+    def _config_kwargs_from(config: genai.types.GenerateContentConfig) -> dict[str, Any]:
+        """GenerateContentConfig インスタンスから kwargs dict を復元"""
+        return config.model_dump(exclude_none=True)
+
+    # ---------------------------------------------------------------------
+    # 個別認識（ADR-033 再認識フローや単発テストで使用）
+    # ---------------------------------------------------------------------
+
+    def _build_single_prompt(self) -> str:
+        """ADR-019 のプロンプト（OCRタスク明示、JP/JAMIE混同防止）"""
+        char_list = ", ".join(self.valid_characters)
+        return (
             "あなたはOCR専門家です。この画像はストリートファイター6のラウンド開始画面です。\n"
             "画面上部に表示されているキャラクター名のテキストを1文字ずつ正確に読み取ってください。\n\n"
             "タスク: 左側（画面上部左）のキャラクター名を1p、右側（画面上部右）のキャラクター名を2pとして認識してください。\n\n"
@@ -150,38 +230,52 @@ class CharacterRecognizer:
             '出力形式: {"1p": "RYU", "2p": "KEN"}'
         )
 
-        # Gemini API呼び出し（スキーマ制約付き）
-        # ADR-019: OCRタスク最適化のため低温度（temperature=0.1）を設定
-        logger.debug("Calling Gemini API with temperature=0.1 (ADR-019 improvement)")
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=[prompt, pil_image],
-            config=genai.types.GenerateContentConfig(
-                temperature=0.1,  # OCRタスクに最適（決定性向上、変動性低減）
-                top_p=0.95,  # 累積確率のカットオフ
-                top_k=40,  # 候補数の制限
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "object",
-                    "properties": {
-                        "1p": {"type": "string", "enum": valid_chars},
-                        "2p": {"type": "string", "enum": valid_chars},
-                    },
-                    "required": ["1p", "2p"],
-                },
-            ),
-        )
+    def recognize_from_frame(
+        self,
+        frame: np.ndarray,
+        save_debug_image: str | None = None,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """
+        フレーム画像からキャラクターを認識（1リクエスト）
 
-        # レスポンスパース
+        Args:
+            frame: OpenCV形式のフレーム（BGR）
+            save_debug_image: デバッグ用画像保存パス（オプション）
+
+        Returns:
+            (正規化済み結果, 生の認識結果)のタプル
+        """
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(frame_rgb)
+
+        if save_debug_image:
+            pil_image.save(save_debug_image)
+
+        prompt = self._build_single_prompt()
+        config_kwargs = self._build_base_config_kwargs()
+        config_kwargs["response_schema"] = {
+            "type": "object",
+            "properties": {
+                "1p": {"type": "string", "enum": self.valid_characters},
+                "2p": {"type": "string", "enum": self.valid_characters},
+            },
+            "required": ["1p", "2p"],
+        }
+        config = genai.types.GenerateContentConfig(**config_kwargs)
+
+        logger.debug(
+            "Calling Gemini API (model=%s, tier=%s) for single frame",
+            self.model_name,
+            self.service_tier or "standard",
+        )
+        response = self._generate_with_retry(contents=[prompt, pil_image], config=config)
         raw_result = json.loads(response.text)
 
-        # キャラクター名正規化と検証
         normalized_result = {
             "1p": self.normalize_character_name(raw_result.get("1p", "")),
             "2p": self.normalize_character_name(raw_result.get("2p", "")),
         }
 
-        # 認識失敗のログ出力
         if normalized_result["1p"] == UNKNOWN_CHARACTER:
             logger.warning("Failed to recognize 1p character, raw: %s", raw_result.get("1p"))
         if normalized_result["2p"] == UNKNOWN_CHARACTER:
@@ -197,7 +291,7 @@ class CharacterRecognizer:
         """
         前処理を適用してからキャラクターを再認識（ADR-033）
 
-        Battlelogマッチング失敗時に、画像前処理を適用して認識精度を改善する。
+        ADR-042: 再認識は対象が 1〜数フレームに限定されるためバッチ化せず個別送信のまま維持する。
 
         Args:
             frame: OpenCV形式のフレーム（BGR）
@@ -211,29 +305,170 @@ class CharacterRecognizer:
         preprocessed = preprocess_for_recognition(frame, method=method)
         return self.recognize_from_frame(preprocessed)
 
-    def recognize_batch(
+    # ---------------------------------------------------------------------
+    # バッチ認識（ADR-042）
+    # ---------------------------------------------------------------------
+
+    def _build_batch_prompt(self, num_images: int) -> str:
+        """ADR-042: バッチ送信用プロンプト（検証Notebookで100%一致を達成したもの）"""
+        char_list = ", ".join(self.valid_characters)
+        return (
+            "あなたはOCR専門家です。以下の複数画像はそれぞれストリートファイター6のラウンド開始画面です。\n"
+            f"画像は image 1 から image {num_images} までの順番で提示されます。\n"
+            "各画像について、画面上部左のキャラクター名を1p、右側のキャラクター名を2pとして認識してください。\n\n"
+            "【重要】文字数を必ず確認してください:\n"
+            "- 'JP' は2文字のみです。絶対に 'JAMIE'（5文字）ではありません。\n"
+            "- 'ED' は2文字のみです。絶対に 'E.HONDA'（7文字）ではありません。\n\n"
+            f"有効なキャラクター名（必ずこの中から選んでください）:\n{char_list}\n\n"
+            "出力形式（必ず index を含めてください、image 1 → index=1 のように1始まり）:\n"
+            '{"results": [{"index": 1, "1p": "RYU", "2p": "KEN"}, {"index": 2, "1p": "...", "2p": "..."}]}'
+        )
+
+    def recognize_from_frames(
         self,
         frames: list[np.ndarray],
     ) -> list[tuple[dict[str, str], dict[str, str]]]:
         """
-        複数フレームを一括認識
+        複数フレームを1リクエストで一括認識（ADR-042）
+
+        バッチ送信が失敗 or 一部 index が欠損した場合は、該当フレームのみ個別送信にフォールバックする。
 
         Args:
             frames: OpenCV形式のフレームリスト
 
         Returns:
-            各フレームの認識結果リスト
+            各フレームの (正規化済み結果, 生の認識結果) リスト（入力順）
         """
-        results = []
-        for i, frame in enumerate(frames):
-            try:
-                result = self.recognize_from_frame(frame)
-                results.append(result)
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                logger.error("Error recognizing frame %d: %s", i, e)
-                results.append(({}, {}))
-            except Exception as e:
-                logger.exception("Unexpected error recognizing frame %d: %s", i, e)
-                results.append(({}, {}))
+        if not frames:
+            return []
+
+        num = len(frames)
+
+        # バッチ送信を試行
+        try:
+            batch_raw = self._call_batch_api(frames)
+        except Exception:
+            logger.exception(
+                "Batch recognition failed entirely. Falling back to individual recognition for all %d frames.",
+                num,
+            )
+            return self._recognize_individually(frames)
+
+        # index でレスポンスを正規化（1始まり）
+        results_by_index: dict[int, dict[str, str]] = {}
+        for item in batch_raw.get("results", []):
+            idx = item.get("index")
+            if isinstance(idx, int) and 1 <= idx <= num:
+                results_by_index[idx] = item
+
+        results: list[tuple[dict[str, str], dict[str, str]]] = []
+        missing_indices: list[int] = []
+        for i in range(1, num + 1):
+            item = results_by_index.get(i)
+            if item is None:
+                missing_indices.append(i)
+                results.append(({}, {}))  # プレースホルダ、後でフォールバック値で置換
+                continue
+            raw = {"1p": item.get("1p", ""), "2p": item.get("2p", "")}
+            normalized = {
+                "1p": self.normalize_character_name(raw["1p"]),
+                "2p": self.normalize_character_name(raw["2p"]),
+            }
+            if normalized["1p"] == UNKNOWN_CHARACTER:
+                logger.warning("Batch index=%d: failed to recognize 1p, raw=%s", i, raw["1p"])
+            if normalized["2p"] == UNKNOWN_CHARACTER:
+                logger.warning("Batch index=%d: failed to recognize 2p, raw=%s", i, raw["2p"])
+            results.append((normalized, raw))
+
+        # 欠損 index は個別送信でフォールバック
+        if missing_indices:
+            logger.warning(
+                "Batch response missing %d index(es): %s. Falling back to individual recognition.",
+                len(missing_indices),
+                missing_indices,
+            )
+            for idx in missing_indices:
+                try:
+                    results[idx - 1] = self.recognize_from_frame(frames[idx - 1])
+                except Exception:
+                    logger.exception("Individual fallback failed for index=%d", idx)
+                    results[idx - 1] = (
+                        {"1p": UNKNOWN_CHARACTER, "2p": UNKNOWN_CHARACTER},
+                        {"1p": "", "2p": ""},
+                    )
 
         return results
+
+    def _call_batch_api(self, frames: list[np.ndarray]) -> dict[str, Any]:
+        """バッチ送信本体。レスポンス JSON を辞書で返す（リトライ/フォールバックは _generate_with_retry に委譲）"""
+        pil_images = []
+        for frame in frames:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_images.append(Image.fromarray(frame_rgb))
+
+        prompt = self._build_batch_prompt(len(frames))
+        contents = [prompt, *pil_images]
+
+        config_kwargs = self._build_base_config_kwargs()
+        config_kwargs["response_schema"] = {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "index": {"type": "integer"},
+                            "1p": {"type": "string", "enum": self.valid_characters},
+                            "2p": {"type": "string", "enum": self.valid_characters},
+                        },
+                        "required": ["index", "1p", "2p"],
+                    },
+                },
+            },
+            "required": ["results"],
+        }
+        config = genai.types.GenerateContentConfig(**config_kwargs)
+
+        logger.info(
+            "Calling Gemini batch API: %d frames in 1 request (model=%s, tier=%s)",
+            len(frames),
+            self.model_name,
+            self.service_tier or "standard",
+        )
+        response = self._generate_with_retry(contents=contents, config=config)
+        return json.loads(response.text)
+
+    def _recognize_individually(
+        self,
+        frames: list[np.ndarray],
+    ) -> list[tuple[dict[str, str], dict[str, str]]]:
+        """全フレームを個別送信で処理（バッチ送信が完全失敗した時のフォールバック）"""
+        results: list[tuple[dict[str, str], dict[str, str]]] = []
+        for i, frame in enumerate(frames, 1):
+            try:
+                results.append(self.recognize_from_frame(frame))
+            except Exception:
+                logger.exception("Individual fallback failed for frame %d", i)
+                results.append(
+                    (
+                        {"1p": UNKNOWN_CHARACTER, "2p": UNKNOWN_CHARACTER},
+                        {"1p": "", "2p": ""},
+                    )
+                )
+        return results
+
+    # ---------------------------------------------------------------------
+    # 旧 API 互換: recognize_batch は recognize_from_frames に委譲
+    # ---------------------------------------------------------------------
+
+    def recognize_batch(
+        self,
+        frames: list[np.ndarray],
+    ) -> list[tuple[dict[str, str], dict[str, str]]]:
+        """
+        複数フレームを認識（ADR-042 以降は内部的に1リクエストにまとめて送信）
+
+        後方互換のためのエイリアス。新規実装は recognize_from_frames を直接使うことを推奨。
+        """
+        return self.recognize_from_frames(frames)
