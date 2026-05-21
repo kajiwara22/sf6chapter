@@ -20,10 +20,7 @@ from googleapiclient.errors import HttpError
 from oauth import get_oauth_credentials
 
 # ログ設定
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -41,13 +38,11 @@ def get_latest_video_with_placeholder(youtube_service, limit: int = 50) -> dict 
     """
     try:
         # 自分の最新アップロード動画を取得
-        response = youtube_service.search().list(
-            forMine=True,
-            part="snippet",
-            type="video",
-            maxResults=limit,
-            order="date"
-        ).execute()
+        response = (
+            youtube_service.search()
+            .list(forMine=True, part="snippet", type="video", maxResults=limit, order="date")
+            .execute()
+        )
 
         videos = response.get("items", [])
         if not videos:
@@ -60,11 +55,7 @@ def get_latest_video_with_placeholder(youtube_service, limit: int = 50) -> dict 
             if "{DateTime}" in title:
                 video_id = video["id"]["videoId"]
                 logger.info(f"Found video with placeholder: {video_id} - '{title}'")
-                return {
-                    "id": video_id,
-                    "title": title,
-                    "publishedAt": video["snippet"]["publishedAt"]
-                }
+                return {"id": video_id, "title": title, "publishedAt": video["snippet"]["publishedAt"]}
 
         logger.info("No video with {DateTime} placeholder found")
         return None
@@ -131,32 +122,21 @@ def update_video_title(youtube_service, video_id: str, new_title: str) -> bool:
     try:
         # 更新リクエスト実行
         youtube_service.videos().update(
-            part="snippet",
-            body={
-                "id": video_id,
-                "snippet": {
-                    "title": new_title,
-                    "categoryId": "20"
-                }
-            }
+            part="snippet", body={"id": video_id, "snippet": {"title": new_title, "categoryId": "20"}}
         ).execute()
 
         logger.info(f"Successfully updated video {video_id} title to '{new_title}'")
         return True
 
-    except HttpError as e:
+    except HttpError:
         logger.exception(f"YouTube API error while updating {video_id}")
         return False
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error updating {video_id}")
         return False
 
 
-def main(
-    token_path: str | None = None,
-    client_secrets_path: str | None = None,
-    search_limit: int = 50
-) -> int:
+def main(token_path: str | None = None, client_secrets_path: str | None = None, search_limit: int = 50) -> int:
     """
     メイン処理：最新動画のタイトルプレースホルダーを置き換え
 
@@ -173,7 +153,7 @@ def main(
         credentials = get_oauth_credentials(
             token_path=token_path,
             client_secrets_path=client_secrets_path,
-            scopes=["https://www.googleapis.com/auth/youtube.force-ssl"]
+            scopes=["https://www.googleapis.com/auth/youtube.force-ssl"],
         )
 
         # YouTube APIクライアントを初期化
