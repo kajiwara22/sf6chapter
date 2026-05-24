@@ -68,3 +68,4 @@ battlelog_cache.db
 .claude/handovers/*.md
 .cocoindex_code/*
 battlelog_replays.parquet
+.claude-config/sf6-chapter
