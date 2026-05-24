@@ -22,10 +22,18 @@ logger = get_logger()
 # 認識できなかった場合の定数
 UNKNOWN_CHARACTER = "UNKNOWN"
 
-# ADR-042: Flex Tier のリトライ/タイムアウト設定
-_FLEX_TIMEOUT_MS = 900_000  # 15分（公式推奨600s以上）
+# ADR-042: Vertex AI Flex PayGo のリトライ/タイムアウト設定
+_FLEX_TIMEOUT_MS = 1_800_000  # 30分（Vertex AI Flex PayGo の最大タイムアウト）
 _FLEX_MAX_RETRIES = 3
 _FLEX_BASE_DELAY_SEC = 5
+
+# ADR-042: Vertex AI Flex PayGo を使うためのリクエストヘッダー
+# 公式: https://docs.cloud.google.com/vertex-ai/docs/flex-paygo
+# "Flex PayGo only" モード（Provisioned Throughput を持っていない PayGo 用途）
+_FLEX_PAYGO_HEADERS = {
+    "X-Vertex-AI-LLM-Request-Type": "shared",
+    "X-Vertex-AI-LLM-Shared-Request-Type": "flex",
+}
 
 
 class CharacterRecognizer:
@@ -39,7 +47,7 @@ class CharacterRecognizer:
         token_file: str = "token.pickle",
         project_id: str | None = None,
         location: str = "global",
-        service_tier: str | None = "flex",
+        use_flex: bool = True,
     ):
         """
         Args:
@@ -51,9 +59,9 @@ class CharacterRecognizer:
             location: Vertex AIのロケーション
                 - ADR-042: gemini-3.1-flash-lite は us-central1 非対応のため "global" がデフォルト
                 - 利用可能: global / us / eu
-            service_tier: 推論サービス Tier
-                - "flex": Flex Tier (50% off、1-15分レイテンシ、sheddable)
-                - None: Standard Tier
+            use_flex: Vertex AI Flex PayGo を使うかどうか（ADR-042）
+                - True: Flex PayGo（50% off、~30分まで待機、sheddable）。Standard へ自動フォールバックする。
+                - False: Standard PayGo のみで実行
         """
         # OAuth2認証を使用（Vertex AI経由、YouTube APIと共通）
         project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -64,22 +72,48 @@ class CharacterRecognizer:
             client_secrets_file=client_secrets_file,
             token_file=token_file,
         )
-        # ADR-042: Flex Tier の長時間待機に対応するため client timeout を 15分に設定
-        self.client = genai.Client(
-            vertexai=True,
-            project=project_id,
-            location=location,
-            credentials=creds,
-            http_options=genai.types.HttpOptions(timeout=_FLEX_TIMEOUT_MS),
+
+        # ADR-042: Vertex AI 上の Flex PayGo はヘッダーで指定する
+        # （Gemini Developer API の `service_tier` パラメータとは別物。
+        #  Vertex AI で `GenerateContentConfig.service_tier` を渡すと
+        #  `400 INVALID_ARGUMENT` で拒否される）
+        # Standard クライアント（Flex 失敗時のフォールバック用）も必ず1つ持っておく。
+        self._project_id = project_id
+        self._location = location
+        self._credentials = creds
+
+        self.standard_client = self._build_client(extra_headers=None)
+        self.flex_client = (
+            self._build_client(extra_headers=_FLEX_PAYGO_HEADERS)
+            if use_flex
+            else None
         )
 
         self.model_name = model_name
-        self.service_tier = service_tier
+        self.use_flex = use_flex
 
         # キャラクター名正規化マッピング読み込み（必須）
         self.aliases_map: dict[str, str] = {}
         self.valid_characters: list[str] = []
         self._load_aliases(aliases_path)
+
+    def _build_client(self, extra_headers: dict[str, str] | None) -> genai.Client:
+        """Vertex AI 用の genai.Client を構築する（Flex/Standard で別インスタンスを使う）"""
+        headers: dict[str, str] = {}
+        if extra_headers:
+            headers.update(extra_headers)
+        http_options = genai.types.HttpOptions(
+            api_version="v1",
+            timeout=_FLEX_TIMEOUT_MS,
+            headers=headers or None,
+        )
+        return genai.Client(
+            vertexai=True,
+            project=self._project_id,
+            location=self._location,
+            credentials=self._credentials,
+            http_options=http_options,
+        )
 
     def _load_aliases(self, aliases_path: str) -> None:
         """キャラクター名正規化マッピングを読み込み"""
@@ -124,16 +158,15 @@ class CharacterRecognizer:
         """ADR-019/042 で共通の GenerateContentConfig パラメータを返す"""
         # ADR-019: OCRタスク最適化のため低温度（temperature=0.1）
         # ADR-042: thinking_budget=0 で OCR に不要な thinking tokens 課金を回避
-        kwargs: dict[str, Any] = {
+        # 注: Vertex AI では service_tier はパラメータではなくヘッダーで指定するため
+        #     ここには載せない（_build_client 側で設定済み）
+        return {
             "temperature": 0.1,
             "top_p": 0.95,
             "top_k": 40,
             "thinking_config": genai.types.ThinkingConfig(thinking_budget=0),
             "response_mime_type": "application/json",
         }
-        if self.service_tier:
-            kwargs["service_tier"] = self.service_tier
-        return kwargs
 
     @staticmethod
     def _is_retryable_error(exc: Exception) -> bool:
@@ -149,17 +182,25 @@ class CharacterRecognizer:
         config: genai.types.GenerateContentConfig,
     ) -> Any:
         """
-        ADR-042: Flex Tier 用のリトライ + Standard フォールバック付き API 呼び出し
+        ADR-042: Flex PayGo 用のリトライ + Standard フォールバック付き API 呼び出し
 
-        1. service_tier=flex で実行
+        1. Flex クライアント（ヘッダー付き）で実行
         2. 503/429 のときは指数バックオフでリトライ
-        3. リトライ枯渇したら Standard tier で再試行（service_tier を外す）
+        3. リトライ枯渇したら Standard クライアントで再試行
         """
+        # use_flex=False のときは Standard で一発実行
+        if self.flex_client is None:
+            return self.standard_client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config,
+            )
+
         # Flex リトライ
         last_exc: Exception | None = None
         for attempt in range(_FLEX_MAX_RETRIES):
             try:
-                return self.client.models.generate_content(
+                return self.flex_client.models.generate_content(
                     model=self.model_name,
                     contents=contents,
                     config=config,
@@ -171,7 +212,7 @@ class CharacterRecognizer:
                 if attempt < _FLEX_MAX_RETRIES - 1:
                     delay = _FLEX_BASE_DELAY_SEC * (2**attempt)
                     logger.warning(
-                        "Flex API busy (attempt %d/%d): %s. Retrying in %ds...",
+                        "Flex PayGo busy (attempt %d/%d): %s. Retrying in %ds...",
                         attempt + 1,
                         _FLEX_MAX_RETRIES,
                         exc,
@@ -179,28 +220,16 @@ class CharacterRecognizer:
                     )
                     time.sleep(delay)
 
-        # Standard フォールバック（service_tier を外して再構築）
-        if self.service_tier:
-            logger.warning(
-                "Flex retries exhausted (last error: %s). Falling back to Standard tier.",
-                last_exc,
-            )
-            fallback_kwargs = {k: v for k, v in self._config_kwargs_from(config).items() if k != "service_tier"}
-            fallback_config = genai.types.GenerateContentConfig(**fallback_kwargs)
-            return self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=fallback_config,
-            )
-
-        # service_tier 未指定だったらリトライ枯渇をそのまま伝搬
-        assert last_exc is not None
-        raise last_exc
-
-    @staticmethod
-    def _config_kwargs_from(config: genai.types.GenerateContentConfig) -> dict[str, Any]:
-        """GenerateContentConfig インスタンスから kwargs dict を復元"""
-        return config.model_dump(exclude_none=True)
+        # Standard フォールバック
+        logger.warning(
+            "Flex PayGo retries exhausted (last error: %s). Falling back to Standard PayGo.",
+            last_exc,
+        )
+        return self.standard_client.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=config,
+        )
 
     # ---------------------------------------------------------------------
     # 個別認識（ADR-033 再認識フローや単発テストで使用）
@@ -266,7 +295,7 @@ class CharacterRecognizer:
         logger.debug(
             "Calling Gemini API (model=%s, tier=%s) for single frame",
             self.model_name,
-            self.service_tier or "standard",
+            "flex" if self.use_flex else "standard",
         )
         response = self._generate_with_retry(contents=[prompt, pil_image], config=config)
         raw_result = json.loads(response.text)
@@ -434,7 +463,7 @@ class CharacterRecognizer:
             "Calling Gemini batch API: %d frames in 1 request (model=%s, tier=%s)",
             len(frames),
             self.model_name,
-            self.service_tier or "standard",
+            "flex" if self.use_flex else "standard",
         )
         response = self._generate_with_retry(contents=contents, config=config)
         return json.loads(response.text)
