@@ -19,7 +19,7 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.12",
+    "ruff>=0.15.14",
 ]
 
 [tool.ruff]
