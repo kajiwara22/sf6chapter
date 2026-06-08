@@ -13,6 +13,26 @@ from ..utils.logger import get_logger
 logger = get_logger()
 
 
+class _YtDlpLogger:
+    """yt-dlpの出力をPython loggingに橋渡しするアダプター"""
+
+    def debug(self, msg: str) -> None:
+        # yt-dlpはprogressメッセージもdebugとして送るため、WARNINGより低いレベルで出力
+        if msg.startswith("[download]") or msg.startswith("[hlsnative]"):
+            logger.info(msg)
+        else:
+            logger.debug(msg)
+
+    def info(self, msg: str) -> None:
+        logger.info(msg)
+
+    def warning(self, msg: str) -> None:
+        logger.warning(msg)
+
+    def error(self, msg: str) -> None:
+        logger.error(msg)
+
+
 class VideoDownloader:
     """YouTube動画ダウンローダー"""
 
@@ -54,6 +74,7 @@ class VideoDownloader:
         ydl_opts: dict[str, Any] = {
             "outtmpl": str(self.download_dir / "%(upload_date)s[%(id)s].%(ext)s"),
             "ignoreerrors": True,
+            "logger": _YtDlpLogger(),
         }
 
         if self.cookie_path:
@@ -127,6 +148,7 @@ class VideoDownloader:
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
+            "logger": _YtDlpLogger(),
         }
 
         if self.cookie_path:
