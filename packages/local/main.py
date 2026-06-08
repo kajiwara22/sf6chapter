@@ -959,6 +959,54 @@ def load_detection_results(video_id: str) -> tuple[list[MatchDetection], str] | 
     return detections, video_path
 
 
+def update_chapters_titles_from_rerecognition(
+    video_id: str, chapters_with_result: list[dict[str, Any]]
+) -> None:
+    """
+    再認識でタイトルが変更されたチャプターを chapters.json に反映する
+
+    chapters_with_result に "rerecognized": True のエントリがある場合のみ
+    chapters.json の対応エントリのタイトルを上書きする。
+
+    Args:
+        video_id: YouTube動画ID
+        chapters_with_result: Battlelogマッチング済みチャプターリスト
+    """
+    import json
+
+    rerecognized = {ch["startTime"]: ch["title"] for ch in chapters_with_result if ch.get("rerecognized")}
+    if not rerecognized:
+        return
+
+    output_dir = get_intermediate_dir(video_id)
+    chapters_path = output_dir / "chapters.json"
+    if not chapters_path.exists():
+        return
+
+    with open(chapters_path, encoding="utf-8") as f:
+        chapters_data = json.load(f)
+
+    updated = False
+    for chapter in chapters_data["chapters"]:
+        start_time = chapter.get("startTime")
+        if start_time in rerecognized:
+            old_title = chapter["title"]
+            new_title = rerecognized[start_time]
+            chapter["title"] = new_title
+            # normalized/raw も新しいタイトルに合わせて更新
+            parts = new_title.split(" VS ")
+            if len(parts) == 2:
+                chapter["normalized"] = {"1p": parts[0], "2p": parts[1]}
+                chapter["raw"] = {"1p": parts[0], "2p": parts[1]}
+            logger.info("  chapters.json 更新 %ds: %s → %s", start_time, old_title, new_title)
+            updated = True
+
+    if updated:
+        with open(chapters_path, "w", encoding="utf-8") as f:
+            json.dump(chapters_data, f, ensure_ascii=False, indent=2)
+        logger.info("✅ Updated chapters.json with rerecognition results: %s", chapters_path)
+
+
 def save_recognition_results(
     video_id: str, detections: list[MatchDetection], results: list[tuple[dict[str, str], dict[str, str]]]
 ) -> None:
@@ -1425,6 +1473,9 @@ def test_r2_upload(
 
     _processor = SF6ChapterProcessor()
     chapters_with_result = _processor._run_battlelog_matching(video_id, chapters, video_info["publishedAt"])
+
+    # 再認識でタイトルが変更されたチャプターを chapters.json に反映
+    update_chapters_titles_from_rerecognition(video_id, chapters_with_result)
 
     # 対戦データに Battlelog 情報を統合
     _processor._apply_match_results(matches, chapters_with_result)
