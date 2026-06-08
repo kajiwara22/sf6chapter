@@ -103,7 +103,7 @@ sf6-chapter/
 - [ ] 再認識後のBattlelogマッチング全体再実行（ADR-041）
 - [x] Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Vertex AI Flex PayGo, バッチ送信) への移行（ADR-042）
 - [x] Dependabot エコシステムを `pip` から `uv` へ移行（ADR-043）
-- [ ] yt-dlp フラグメントエラー発生時のダウンロード中断（ADR-044）
+- [x] yt-dlp フラグメントエラー発生時のダウンロード中断（ADR-044）
 
 ## 次のタスク
 

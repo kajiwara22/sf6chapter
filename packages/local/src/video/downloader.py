@@ -83,6 +83,15 @@ class VideoDownloader:
         if format_option:
             ydl_opts["format"] = format_option
 
+        fragment_errors: list[str] = []
+
+        def _on_progress(d: dict[str, Any]) -> None:
+            if d.get("status") == "error":
+                msg = str(d.get("error", "unknown fragment error"))
+                fragment_errors.append(msg)
+
+        ydl_opts["progress_hooks"] = [_on_progress]
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # 動画情報取得
             info_raw = ydl.extract_info(url, download=False)
@@ -95,23 +104,29 @@ class VideoDownloader:
             # ダウンロード
             ydl.download([url])
 
-            # ダウンロードされたファイルパスを推定
-            upload_date = info.get("upload_date", "unknown")
-            ext = info.get("ext", "mp4")
-            file_path = self.download_dir / f"{upload_date}[{video_id}].{ext}"
+        if fragment_errors:
+            raise RuntimeError(
+                f"フラグメント取得エラーが発生したためダウンロードを中断しました "
+                f"(video_id={video_id}, errors={len(fragment_errors)}件): {fragment_errors[0]}"
+            )
 
-            # 拡張子候補を検索
-            if not file_path.exists():
-                for candidate_ext in ["mp4", "webm", "mkv"]:
-                    candidate = self.download_dir / f"{upload_date}[{video_id}].{candidate_ext}"
-                    if candidate.exists():
-                        file_path = candidate
-                        break
+        # ダウンロードされたファイルパスを推定
+        upload_date = info.get("upload_date", "unknown")
+        ext = info.get("ext", "mp4")
+        file_path = self.download_dir / f"{upload_date}[{video_id}].{ext}"
 
-            if not file_path.exists():
-                raise FileNotFoundError(f"Downloaded file not found: {file_path}")
+        # 拡張子候補を検索
+        if not file_path.exists():
+            for candidate_ext in ["mp4", "webm", "mkv"]:
+                candidate = self.download_dir / f"{upload_date}[{video_id}].{candidate_ext}"
+                if candidate.exists():
+                    file_path = candidate
+                    break
 
-            return str(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"Downloaded file not found: {file_path}")
+
+        return str(file_path)
 
     def _find_existing_file(self, video_id: str) -> Path | None:
         """
