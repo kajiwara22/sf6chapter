@@ -49,6 +49,7 @@
 | [041](./041-rematch-all-chapters-after-rerecognition.md) | 再認識後のBattlelogマッチング全体再実行 | 提案 | 2026-05-07 |
 | [042](./042-gemini-model-migration-2.5-to-3.1-flash-lite.md) | Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Vertex AI Flex PayGo, バッチ送信) への移行 | 採用（2026-05-24 訂正） | 2026-05-20 |
 | [043](./043-dependabot-pip-to-uv-ecosystem-migration.md) | Dependabot エコシステムを `pip` から `uv` へ移行 | 採用 | 2026-05-21 |
+| [044](./044-yt-dlp-fragment-error-handling.md) | yt-dlp フラグメントエラー発生時のダウンロード中断 | 採用 | 2026-06-08 |
 
 ## ADRのフォーマット
 

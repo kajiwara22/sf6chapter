@@ -103,6 +103,7 @@ sf6-chapter/
 - [ ] 再認識後のBattlelogマッチング全体再実行（ADR-041）
 - [x] Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Vertex AI Flex PayGo, バッチ送信) への移行（ADR-042）
 - [x] Dependabot エコシステムを `pip` から `uv` へ移行（ADR-043）
+- [ ] yt-dlp フラグメントエラー発生時のダウンロード中断（ADR-044）
 
 ## 次のタスク
 
@@ -324,6 +325,7 @@ docker compose up -d
 - [041: 再認識後のBattlelogマッチング全体再実行](docs/adr/041-rematch-all-chapters-after-rerecognition.md)
 - [042: Geminiキャラクター認識モデルの 2.5-flash-lite → 3.1-flash-lite (Vertex AI Flex PayGo, バッチ送信) への移行](docs/adr/042-gemini-model-migration-2.5-to-3.1-flash-lite.md)
 - [043: Dependabot エコシステムを `pip` から `uv` へ移行](docs/adr/043-dependabot-pip-to-uv-ecosystem-migration.md)
+- [044: yt-dlp フラグメントエラー発生時のダウンロード中断](docs/adr/044-yt-dlp-fragment-error-handling.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
