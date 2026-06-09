@@ -83,11 +83,7 @@ class CharacterRecognizer:
         self._credentials = creds
 
         self.standard_client = self._build_client(extra_headers=None)
-        self.flex_client = (
-            self._build_client(extra_headers=_FLEX_PAYGO_HEADERS)
-            if use_flex
-            else None
-        )
+        self.flex_client = self._build_client(extra_headers=_FLEX_PAYGO_HEADERS) if use_flex else None
 
         self.model_name = model_name
         self.use_flex = use_flex
