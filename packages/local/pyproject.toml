@@ -63,3 +63,7 @@ ignore = [
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[[tool.uv.index]]
+url = "https://pypi.flatt.tech/simple/"
+default = true

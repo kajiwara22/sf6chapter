@@ -1,4 +1,9 @@
 version: 2
+registries:
+  takumi-guard-pypi:
+    type: python-index
+    url: https://pypi.flatt.tech/simple/
+
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -12,6 +17,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/packages/local"
+    registries:
+      - takumi-guard-pypi
     schedule:
       interval: "weekly"
     groups:
@@ -21,6 +28,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/packages/gcp-functions/check-new-video"
+    registries:
+      - takumi-guard-pypi
     schedule:
       interval: "weekly"
     groups:
@@ -30,6 +39,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/packages/obs-title-updater"
+    registries:
+      - takumi-guard-pypi
     schedule:
       interval: "weekly"
     groups:
@@ -39,6 +50,8 @@ updates:
 
   - package-ecosystem: "uv"
     directory: "/packages/report-generator"
+    registries:
+      - takumi-guard-pypi
     schedule:
       interval: "weekly"
     groups:
