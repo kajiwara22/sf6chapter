@@ -121,6 +121,22 @@
     "Elena": {
       "canonical": "ELENA",
       "aliases": ["elena", "エレナ", "ELENA", "Elena"]
+    },
+    "Yasmine": {
+      "canonical": "YASMINE",
+      "aliases": ["yasmine", "ヤスミン", "YASMINE", "Yasmine"]
+    },
+    "Bosch": {
+      "canonical": "BOSCH",
+      "aliases": ["bosch", "ボシュ", "BOSCH", "Bosch"]
+    },
+    "Arjun": {
+      "canonical": "ARJUN",
+      "aliases": ["arjun", "アルジュン", "ARJUN", "Arjun"]
+    },
+    "Tifa": {
+      "canonical": "TIFA",
+      "aliases": ["tifa", "ティファ", "TIFA", "Tifa"]
     }
   }
 }
