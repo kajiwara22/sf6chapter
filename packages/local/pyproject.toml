@@ -7,21 +7,21 @@ requires-python = ">=3.11"
 dependencies = [
     "google-cloud-pubsub>=2.39.0",
     "google-cloud-firestore>=2.28.0",
-    "yt-dlp[default]>=2026.6.9",
-    "opencv-python>=4.8.0",
-    "google-genai>=2.10.0",
+    "yt-dlp[default]>=2026.7.4",
+    "opencv-python>=5.0.0.93",
+    "google-genai>=2.11.0",
     "google-api-python-client>=2.198.0",
     "boto3>=1.43.30",
-    "pyarrow>=14.0.0",
+    "pyarrow>=25.0.0",
     "jsonschema>=4.20.0",
-    "pillow>=12.0.0",
+    "pillow>=12.3.0",
     "google-auth-oauthlib>=1.2.3",
     "jupyter>=1.1.1",
     "ipykernel>=7.3.0",
     "matplotlib>=3.11.0",
     "pandas>=2.3.3",
     "seaborn>=0.13.2",
-    "playwright>=1.60.0",
+    "playwright>=1.61.0",
     "aiohttp>=3.14.1",
 ]
 
@@ -35,7 +35,7 @@ packages = ["src"]
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "ruff>=0.15.20",
+    "ruff>=0.15.21",
 ]
 
 [tool.ruff]
