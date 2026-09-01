@@ -23,7 +23,7 @@ from oauth import get_oauth_credentials
 
 # ログ設定
 
-with open('log_config.json') as f:
+with open("log_config.json") as f:
     log_conf = json.load(f)
 config.dictConfig(log_conf)
 logger = getLogger(__name__)
