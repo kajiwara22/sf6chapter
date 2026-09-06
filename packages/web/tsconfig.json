@@ -15,11 +15,10 @@
     "isolatedModules": true,
     "noEmit": true,
     "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@client/*": ["src/client/*"],
-      "@server/*": ["src/server/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@client/*": ["./src/client/*"],
+      "@server/*": ["./src/server/*"]
     }
   },
   "include": ["src/**/*"],
