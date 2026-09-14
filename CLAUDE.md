@@ -6,17 +6,12 @@ SF6（ストリートファイター6）のYouTube配信動画から対戦シー
 
 ## アーキテクチャ
 
-**Google Cloud + Cloudflare ハイブリッド構成**を採用。
+**ローカルPC中心 + Cloudflare ハイブリッド構成**を採用。
 
 ```
-[Google Cloud]
-Cloud Scheduler (2時間毎)
-    → Cloud Functions (新動画検知、OAuth2認証、Firestore重複防止)
-    → Cloud Pub/Sub (メッセージキュー、7日間保持)
-
 [ローカルPC]
-Python常駐スクリプト
-    → Pub/SubからPull
+Pythonスクリプト
+    → 動画IDを直接指定、または Firestore キューから取得
     → yt-dlpで動画ダウンロード
     → OpenCVでフレーム抽出・テンプレートマッチング
     → Gemini APIでキャラクター認識
@@ -37,7 +32,7 @@ R2 (ストレージ、非公開)
 
 詳細は `docs/adr/` を参照。
 
-- **Google Cloud**: YouTube/Gemini APIとの親和性、Pub/Subの信頼性
+- **Google Cloud**: YouTube Data API / Vertex AI (Gemini) / Firestore との親和性
 - **Cloudflare Pages**: R2の無料エグレス、Accessの簡便な認証、Git連携CI/CD、自動プレビュー環境
 - **Hono**: 軽量なWebフレームワーク、Pages/Workers両対応、TypeScript完全サポート
 - **Parquet + DuckDB-WASM**: 高速検索、柔軟なSQLクエリ、R2非公開との両立
@@ -49,7 +44,6 @@ R2 (ストレージ、非公開)
 sf6-chapter/
 ├── packages/
 │   ├── local/                # ローカルPC用Python (uv)
-│   ├── gcp-functions/        # Google Cloud Functions
 │   └── web/                  # Cloudflare Pages + Functions
 ├── schema/                   # 共通JSONスキーマ
 ├── docs/
@@ -105,6 +99,7 @@ sf6-chapter/
 - [x] Dependabot エコシステムを `pip` から `uv` へ移行（ADR-043）
 - [x] yt-dlp フラグメントエラー発生時のダウンロード中断（ADR-044）
 - [x] DependabotのPyPIレジストリをTakumi Guard経由に変更（ADR-045）
+- [x] GCP Functions の廃止（`packages/gcp-functions/` 削除）（ADR-046）
 
 ## 次のタスク
 
@@ -119,16 +114,14 @@ sf6-chapter/
 
 ### 中優先度
 3. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
-4. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
+4. **継続的な運用**: ローカルPC処理の安定稼働
 5. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
 
 ## 重要な設計判断
 
 ### 処理フロー
 
-- **Cloud Scheduler**: 2時間毎に実行（API quota効率化）
-- **Firestore**: 処理済み動画の追跡、重複防止
-- **Pub/Sub**: 7日間保持、ローカルPC停止中も検知漏れなし
+- **Firestore**: 処理済み動画の追跡、重複防止（キューとしても利用）
 
 ### データ構造
 
@@ -176,7 +169,7 @@ sf6-chapter/
 - **すべてのAPI呼び出しでOAuth2認証を使用** (詳細: `docs/adr/004-oauth2-authentication-for-all-gcp-apis.md`)
 - `oauth.py` の `get_oauth_credentials()` で統一的に認証情報を取得
 - 環境変数 `GOOGLE_APPLICATION_CREDENTIALS` は使用しない
-- 対象API: YouTube Data API, Cloud Pub/Sub, Vertex AI (Gemini)
+- 対象API: YouTube Data API, Cloud Firestore, Vertex AI (Gemini)
 - トークンは `token.pickle` に保存（pickle形式、パスは引数で変更可能）
 - クライアントシークレットは `client_secrets.json` から読み込み（パスは引数で変更可能）
 
@@ -328,6 +321,7 @@ docker compose up -d
 - [043: Dependabot エコシステムを `pip` から `uv` へ移行](docs/adr/043-dependabot-pip-to-uv-ecosystem-migration.md)
 - [044: yt-dlp フラグメントエラー発生時のダウンロード中断](docs/adr/044-yt-dlp-fragment-error-handling.md)
 - [045: DependabotのPyPIレジストリをTakumi Guard経由に変更](docs/adr/045-dependabot-takumi-guard-pypi-registry.md)
+- [046: GCP Functions（check-new-video）の廃止](docs/adr/046-remove-gcp-functions.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

@@ -8,17 +8,12 @@ YouTube配信動画から「ROUND 1」画面をテンプレートマッチング
 
 ## アーキテクチャ
 
-**Google Cloud + Cloudflare ハイブリッド構成**を採用。
+**ローカルPC中心 + Cloudflare ハイブリッド構成**を採用。
 
 ```
-[Google Cloud]
-Cloud Scheduler (2時間毎)
-    → Cloud Functions (新動画検知、OAuth2認証、Firestore重複防止)
-    → Cloud Pub/Sub (メッセージキュー、7日間保持)
-
 [ローカルPC]
-Python常駐スクリプト
-    → Pub/SubからPull
+Pythonスクリプト
+    → 動画IDを直接指定、または Firestore キューから取得
     → yt-dlpで動画ダウンロード
     → OpenCVでフレーム抽出・テンプレートマッチング
     → Gemini APIでキャラクター認識
@@ -60,16 +55,6 @@ R2 (ストレージ、非公開)
 | boto3 | R2アップロード (S3互換) |
 | PyArrow | Parquet生成 |
 
-### GCP Functions (packages/gcp-functions)
-
-| 技術 | 用途 |
-|------|------|
-| Python 3.12 | ランタイム |
-| Cloud Functions | 新動画検知 |
-| Cloud Scheduler | 2時間毎の定期実行 |
-| Cloud Pub/Sub | メッセージキュー |
-| Firestore | 重複防止・状態管理 |
-
 ### Web (packages/web)
 
 | 技術 | 用途 |
@@ -98,9 +83,6 @@ sf6-chapter/
 │   │   ├── main.py               # エントリーポイント
 │   │   ├── Dockerfile            # Docker化対応
 │   │   └── pyproject.toml
-│   │
-│   ├── gcp-functions/
-│   │   └── check-new-video/      # 新動画検知Cloud Function
 │   │
 │   └── web/                      # Cloudflare Pages + Functions
 │       ├── src/
@@ -168,7 +150,6 @@ pnpm dev
 ```bash
 # Google Cloud
 GOOGLE_CLOUD_PROJECT=your-project-id
-PUBSUB_SUBSCRIPTION=projects/your-project-id/subscriptions/new-video-trigger
 
 # Cloudflare R2
 R2_ACCESS_KEY_ID=your-token-id
@@ -184,10 +165,10 @@ R2_BUCKET_NAME=sf6-chapter-data
 ```bash
 cd packages/local
 
-# 常駐モード（Pub/Subストリーミング受信）
+# 常駐モード（Firestoreキューをポーリング）
 uv run python main.py --mode daemon
 
-# ワンショットモード（1回だけPull）
+# ワンショットモード（キューを1回取得）
 uv run python main.py --mode once
 
 # テストモード（個別処理）
@@ -265,7 +246,6 @@ pnpm deploy
 
 - YouTube Data API
 - Vertex AI (Gemini API)
-- Cloud Pub/Sub
 - Cloud Firestore
 
 ### Cloudflare R2
