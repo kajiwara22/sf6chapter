@@ -142,11 +142,14 @@ describe('createChartSvg', () => {
     expect((svg.match(/lp-star-line/g) ?? []).length).toBe(4);
   });
 
-  it('☆区間のラベルを含む', () => {
+  it('☆区間のラベルを区間の開始位置に含む', () => {
     const svg = createChartSvg(coords, yAxis);
+    // y軸は 20200〜23800 のため、☆2〜☆5 の開始位置にラベルが付く
+    expect(svg).toContain('>DIAMOND ☆☆<');
     expect(svg).toContain('>DIAMOND ☆☆☆<');
     expect(svg).toContain('>DIAMOND ☆☆☆☆<');
-    expect(svg).not.toContain('>DIAMOND ☆☆☆☆☆<');
+    expect(svg).toContain('>DIAMOND ☆☆☆☆☆<');
+    expect(svg).not.toContain('>DIAMOND ☆<');
   });
 
   it('表示範囲外のリーグのラベルは含まない', () => {

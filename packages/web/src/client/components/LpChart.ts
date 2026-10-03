@@ -281,19 +281,14 @@ export function createChartSvg(
     })
     .join('');
 
-  // ☆区間のラベル（区間の中央に "DIAMOND ☆☆☆" のように表示）
+  // ☆区間のラベル（区間の開始位置＝☆が変わる境界に "DIAMOND ☆☆☆" のように表示）
+  // 区間の中央に置くと「中央の LP から☆が変わる」と誤読されるため、境界線の位置に置く
   const segmentLabels = getStarSegments()
-    .map((segment) => {
-      const center =
-        segment.endLp === null
-          ? segment.startLp + 500
-          : (segment.startLp + segment.endLp) / 2;
-      return { label: segment.label, center };
-    })
-    .filter((item) => item.center >= yAxis.min && item.center <= yAxis.max)
+    .map((segment) => ({ label: segment.label, lp: segment.startLp }))
+    .filter((item) => item.lp >= yAxis.min && item.lp <= yAxis.max)
     .map((item) => {
-      const y = scaleY(item.center);
-      return `<text class="lp-league-label" x="${PADDING.left + 6}" y="${(y + 4).toFixed(1)}" text-anchor="start">${item.label}</text>`;
+      const y = scaleY(item.lp);
+      return `<text class="lp-league-label" x="${PADDING.left + 6}" y="${(y - 4).toFixed(1)}" text-anchor="start">${item.label}</text>`;
     })
     .join('');
 
