@@ -957,6 +957,24 @@ body {
   stroke-width: 2;
 }
 
+.lp-league-line {
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-dasharray: 6 4;
+  stroke-width: 1;
+}
+
+.lp-star-line {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+
+.lp-league-label {
+  fill: var(--color-text-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
 .lp-grid-line {
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 1;

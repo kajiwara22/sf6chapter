@@ -11,6 +11,7 @@
 
 import { DOM_IDS } from '../types';
 import type { LpHistoryRow, LpHistoryFilters } from '@shared/types';
+import { LEAGUES, getStarBoundaries, computeYAxisRange } from '@shared/leagues';
 
 export type LpFilterHandler = (filters: LpHistoryFilters) => void;
 
@@ -207,7 +208,7 @@ interface ChartCoord {
 /**
  * SVG本体のHTMLを生成
  */
-function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: number; max: number }): string {
+export function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: number; max: number }): string {
   const innerW = CHART_WIDTH - PADDING.left - PADDING.right;
   const innerH = CHART_HEIGHT - PADDING.top - PADDING.bottom;
   const right = CHART_WIDTH - PADDING.right;
@@ -224,6 +225,26 @@ function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: num
         <text class="lp-axis-label lp-axis-label-y" x="${PADDING.left - 10}" y="${(y + 4).toFixed(1)}" text-anchor="end">${value.toLocaleString('en-US')}</text>`;
     })
     .join('');
+
+  // リーグ境界・☆境界（y軸の表示範囲内のみ）
+  // sfbuff の marks と同じく、リーグの開始 LP に横線とリーグ名を表示する。
+  // さらにリーグ内で☆が増える境界にも横線を引く。
+  const leagueLines = LEAGUES.flatMap((league) => {
+    const items: { lp: number; label?: string }[] = [
+      { lp: league.startLp, label: league.name },
+      ...getStarBoundaries(league).map((lp) => ({ lp })),
+    ];
+    return items
+      .filter((item) => item.lp >= yAxis.min && item.lp <= yAxis.max)
+      .map((item) => {
+        const y = scaleY(item.lp).toFixed(1);
+        if (item.label) {
+          return `<line class="lp-league-line" x1="${PADDING.left}" y1="${y}" x2="${right}" y2="${y}" />
+            <text class="lp-league-label" x="${PADDING.left + 6}" y="${(Number(y) - 4).toFixed(1)}" text-anchor="start">${item.label}</text>`;
+        }
+        return `<line class="lp-star-line" x1="${PADDING.left}" y1="${y}" x2="${right}" y2="${y}" />`;
+      });
+  }).join('');
 
   // x軸: ラベルを間引いて表示
   const xTickIndexes: number[] = [];
@@ -278,6 +299,7 @@ function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: num
   return `
     <svg class="lp-chart-svg" viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LP推移グラフ">
       <g class="lp-grid">${yGrid}${xLabels}</g>
+      <g class="lp-league-marks">${leagueLines}</g>
       ${axes}
       ${linePath}
       ${singlePoint}
@@ -422,8 +444,11 @@ export function renderLpChart(rows: LpHistoryRow[], currentLp?: number): void {
   }
 
   const lps = points.map((p) => p.lp);
-  let lpMin = Math.min(...lps);
-  let lpMax = Math.max(...lps);
+  // 基準 LP（現在地点。未指定なら最後の試合）が属するリーグ帯を y軸に含める
+  const referenceLp = currentLp ?? lps[lps.length - 1];
+  const range = computeYAxisRange(lps, referenceLp);
+  let lpMin = range.min;
+  let lpMax = range.max;
   if (lpMin === lpMax) {
     lpMin -= 100;
     lpMax += 100;

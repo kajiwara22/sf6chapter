@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeLpAxisTicks, computeEquidistantPositions, buildLinePath, findNearestIndex } from './components/LpChart';
+import { computeLpAxisTicks, computeEquidistantPositions, buildLinePath, findNearestIndex, createChartSvg } from './components/LpChart';
 
 describe('computeLpAxisTicks', () => {
   it('通常の値域は200刻みで目盛りを作る', () => {
@@ -108,5 +108,37 @@ describe('buildLinePath', () => {
     // 制御点の y も 50 になる
     expect(path).toContain('C');
     expect(path.match(/50\.0/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('createChartSvg', () => {
+  const yAxis = computeLpAxisTicks(19000, 25000);
+  const coords = [
+    { x: 72, y: 200, ts: 0, lp: 21280, row: null, isCurrent: false },
+    { x: 500, y: 150, ts: 1000, lp: 22000, row: null, isCurrent: false },
+    { x: 936, y: 120, ts: 2000, lp: 23000, row: null, isCurrent: true },
+  ] as Parameters<typeof createChartSvg>[0];
+
+  it('リーグ境界線とリーグ名を含む', () => {
+    const svg = createChartSvg(coords, yAxis);
+    expect(svg).toContain('lp-league-line');
+    expect(svg).toContain('DIAMOND');
+  });
+
+  it('☆境界線を Diamond の4本分含む', () => {
+    const svg = createChartSvg(coords, yAxis);
+    expect((svg.match(/lp-star-line/g) ?? []).length).toBe(4);
+  });
+
+  it('表示範囲外のリーグ境界は含まない', () => {
+    const svg = createChartSvg(coords, yAxis);
+    expect(svg).not.toContain('GOLD');
+    expect(svg).not.toContain('PLATINUM');
+    expect(svg).toContain('MASTER');
+  });
+
+  it('現在地点のマーカーを含む', () => {
+    const svg = createChartSvg(coords, yAxis);
+    expect(svg).toContain('lp-current-point');
   });
 });

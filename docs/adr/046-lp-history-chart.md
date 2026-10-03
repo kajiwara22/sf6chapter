@@ -132,11 +132,19 @@ Chart.js の `timeseries` スケールは公式ドキュメントに「for the t
 - sfbuff の `tension: 0.4` に合わせ、Catmull-Rom スプラインを3次ベジェに変換して描画する（`buildLinePath()`）。
 - 直線ではなく曲線になるため、変動の傾向が視覚的に追いやすくなる。
 
-### 7. グラフ上に勝敗は表現しない
+### 7. y軸にリーグ境界と☆境界を表示
+
+- y軸の表示範囲を「データ範囲 ＋ 基準LP（現在地点）が属するリーグ带」に広げ、リーグ境界がグラフ内に収まるようにする（`computeYAxisRange()`）。
+- リーグの開始 LP に横線とリーグ名（ROOKIE / IRON / BRONZE / ...）を表示する（sfbuff の marks プラグインと同じ方式）。
+- さらにリーグ内で☆が増える境界にも横線を引く（`getStarBoundaries()`）。Diamond なら 20200 / 21400 / 22600 / 23800 の4本。
+- 境界の値は [tamiz-blog の LP 分布表](https://tamiz-blog.com/sf6/lp-rank/)（2024年12月末時点）に基づく。sfbuff の marks とも一致する。
+- Master は☆がなく、上限もないため、リーグ開始 LP（25000）のみを表示する。
+
+### 8. グラフ上に勝敗は表現しない
 
 点の色分け・マーカー・背景帯など、グラフの視覚表現に勝敗を持ち込まない。LP の推移そのものに集中する（ADR-037 の誤判定の影響をグラフの見た目に持ち込まないため）。
 
-### 8. ツールチップに 日時（JST）・LP・相手キャラ・勝敗 を表示
+### 9. ツールチップに 日時（JST）・LP・相手キャラ・勝敗 を表示
 
 ホバー時に以下を表示する：
 
@@ -159,7 +167,7 @@ Chart.js の `timeseries` スケールは公式ドキュメントに「for the t
 
 算出はクエリ結果を受け取った後の TypeScript 側（`countRoundWins()` / `determineResultFromRounds()`）で行う。SQL 内で JSON を展開する必要がなく、判定ロジックをユニットテストできる。
 
-### 9. フィルターは日付・時刻の手入力のみ（プリセットなし）
+### 10. フィルターは日付・時刻の手入力のみ（プリセットなし）
 
 既存タブと同じ操作感とする。プリセットボタン（1週 / 1ヶ月 / 3ヶ月 / 全期間）は設けない。
 
@@ -176,15 +184,15 @@ Chart.js の `timeseries` スケールは公式ドキュメントに「for the t
 
 **自キャラクターのフィルターは設けない。** 現状の使用キャラは JP のみで系列が混在せず、SF6 の LP はキャラクターごとに別管理されるため、複数キャラ運用を始めた時点で改めて対応する（将来の見直し条件）。
 
-### 10. MR（マスターレーティング）は今回対象外
+### 11. MR（マスターレーティング）は今回対象外
 
 LP のみをプロットする。MR はデータ上 `p1_master_rating` / `p2_master_rating` に既に存在するが、現状全件 0 で検証不能なため、LP/MR 切替 UI は作らない（将来の見直し条件に記載）。
 
-### 11. 過去データの遡及取得はスコープ外
+### 12. 過去データの遡及取得はスコープ外
 
 `battlelog_cache.db` に存在する範囲のみを表示対象とし、Battlelog API を遡って過去分を取得する処理は今回実装しない。既知の制約として ADR に明記する。
 
-### 12. テストはクエリ関数のユニットテスト＋手動確認
+### 13. テストはクエリ関数のユニットテスト＋手動確認
 
 ADR-040 のテスト戦略に沿い、`search.ts` のクエリ関数（P1/P2 視点統一・LP 抽出・期間フィルター・ranked 絞り込み）を vitest で検証する。SVG 描画は手動確認とする。
 
@@ -328,6 +336,30 @@ export interface LpHistoryFilters {
 | 既存方式との一貫性 | ✕ クライアント側クエリ方式から逸脱 |
 | 実装コスト | △ サーバーロジックの追加 |
 
+### y軸の表示範囲
+
+#### 選択肢A: 基準 LP のリーグ带を含むように広げる（採用）
+
+| 観点 | 評価 |
+|------|------|
+| リーグ境界の可視性 | ◎ 現在のリーグの境界と☆境界が見える |
+| LP 変動の見やすさ | △ 軸が広がるため、日々の上下動は小さく見える |
+| 実装コスト | ○ `computeYAxisRange()` を追加するだけ |
+
+#### 選択肢B: データ範囲のまま
+
+| 観点 | 評価 |
+|------|------|
+| LP 変動の見やすさ | ◎ 変動が大きく見える |
+| リーグ境界の可視性 | ✕ 現在の Diamond 带では境界が軸外で見えない |
+
+#### 選択肢C: 表示の切替
+
+| 観点 | 評価 |
+|------|------|
+| 柔軟性 | ◎ 両方の見方ができる |
+| 実装コスト | △ 切替 UI が増える |
+
 ### 点の粒度
 
 #### 選択肢A: 1試合 = 1点（採用）
@@ -469,7 +501,7 @@ export interface LpHistoryFilters {
 | 検証 | 結果 |
 |------|------|
 | `pnpm typecheck` | エラーなし |
-| `pnpm test` | 2 files / 43 tests passed（既存テスト＋`countRoundWins` / `determineResultFromRounds` / `computeLpAxisTicks` / `computeEquidistantPositions` / `buildLinePath` / `findNearestIndex`） |
+| `pnpm test` | 3 files / 56 tests passed（既存テスト＋`countRoundWins` / `determineResultFromRounds` / `computeLpAxisTicks` / `computeEquidistantPositions` / `buildLinePath` / `findNearestIndex` / リーグ定義・y軸範囲） |
 | `pnpm build` | 成功（クライアントバンドル 235KB / gzip 55.6KB。ライブラリ追加なし） |
 | R2 実データでの SQL 検証 | `battlelog_replays.parquet` から 1,500 行取得。期間 2026-02-14 〜 2026-10-02 |
 | ブラウザでの描画確認（Playwright） | 初版（実時間比例）で全期間1,500点・期間指定236点・ツールチップを確認。等間隔・現在点・曲線への変更後は、実行環境から Playwright のブラウザ依存ライブラリを導入できず未確認 |
@@ -477,6 +509,7 @@ export interface LpHistoryFilters {
 実装時に判明した追加事項：
 
 - **sfbuff との横軸の違い**: sfbuff は Chart.js の `timeseries` スケールで各データ点を等間隔に配置する。当初の実時間比例実装では見た目が一致しないため、等間隔・現在点・曲線補間へ変更した（決定4〜6）。
+- **リーグ境界と☆境界**: リーグの開始 LP は sfbuff の marks（1000=IRON 〜 25000=MASTER）と tamiz-blog の LP 分布表が一致した。☆境界は各リーグ5等分（Rookie 200 / Iron・Bronze 400 / Silver・Gold 800 / Platinum・Diamond 1200 刻み）。リーグ境界は Master を含めて軸に収まるよう、`computeYAxisRange()` で基準 LP のリーグ带を含めた。
 - **LP 初期化の独立化**: `packages/web/src/client/main.ts` で、LP 推移の初期化を既存の「マッチアップ／対戦履歴」の try ブロックから分離し、`battlelog_replays` のみに依存する独立した try ブロックにした。既存タブ側の失敗（`matches` テーブル不在など）で LP 推移が初期化されなくなるのを防ぐ。
 - **x軸ラベルの間引き**: 端のラベルは `text-anchor` を `start` / `end` に切り替え、さらに最後のラベルが直前のラベルと近い場合（`MIN_X_LABEL_GAP` 未満）は直前のラベルを間引く。ラベルの重なり・見切れを防ぐ。
 
@@ -485,13 +518,15 @@ export interface LpHistoryFilters {
 - [x] `packages/web/src/shared/types.ts`: `LpHistoryRow` / `LpHistoryFilters` の型定義追加
 - [x] `packages/web/src/client/types.ts`: `DOM_IDS` に TAB_LP / VIEW_LP / LP_FORM / LP_DATE_FROM / LP_TIME_FROM / LP_DATE_TO / LP_TIME_TO / LP_CHART / LP_LOADING / LP_ERROR を追加、`LpHistoryQueryRow` を追加
 - [x] `packages/web/src/client/search.ts`: `queryLpHistory()`（P1/P2視点統一・Ranked絞り込み・LP>0・期間フィルター・`uploaded_at ASC`）、`getLatestLp()`、`countRoundWins()` / `determineResultFromRounds()` を追加
-- [x] `packages/web/src/client/components/LpChart.ts`: 自作 SVG チャート（等間隔x軸・現在地点・なめらか補間・軸目盛り・ツールチップ・JST表示・最近傍探索）を作成
+- [x] `packages/web/src/shared/leagues.ts`: リーグ定義（`LEAGUES`）、`getLeagueForLp()` / `getLeagueEndLp()` / `getStarBoundaries()` / `computeYAxisRange()` を追加
+- [x] `packages/web/src/client/components/LpChart.ts`: 自作 SVG チャート（等間隔x軸・現在地点・なめらか補間・リーグ境界と☆境界・軸目盛り・ツールチップ・JST表示・最近傍探索）を作成
 - [x] `packages/web/src/client/main.ts`: LP 推移ロード、現在点の取得、フォーム初期化、フィルターハンドラ追加（独立した try ブロック）
 - [x] `packages/web/src/server/routes/pages.tsx`: 「LP推移」タブ・ビュー・フィルターフォーム・チャートコンテナの追加
-- [x] `packages/web/public/static/main.css`: チャート・ツールチップ・軸ラベル・現在地点マーカーのスタイル追加
+- [x] `packages/web/public/static/main.css`: チャート・ツールチップ・軸ラベル・現在地点マーカー・リーグ境界線のスタイル追加
 - [x] `packages/web/src/client/search.test.ts`: `countRoundWins` / `determineResultFromRounds` のユニットテスト追加（0/1以外の値、NULL、引き分けを含む）
 - [x] `packages/web/src/client/LpChart.test.ts`: `computeLpAxisTicks` / `computeEquidistantPositions` / `buildLinePath` / `findNearestIndex` のユニットテスト追加
-- [ ] 等間隔x軸・現在地点・曲線補間への変更後の見た目を手動確認（ブラウザ環境が必要）
+- [x] `packages/web/src/client/leagues.test.ts`: リーグ判定・終端 LP・☆境界・y軸範囲のユニットテスト追加
+- [ ] 等間隔x軸・現在地点・曲線補間・リーグ境界への変更後の見た目を手動確認（ブラウザ環境が必要）
 
 ## 関連ADR
 
