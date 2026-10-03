@@ -70,6 +70,8 @@ export const DOM_IDS = {
   LP_CHART: 'lp-chart',
   LP_LOADING: 'lp-loading',
   LP_ERROR: 'lp-error',
+  LP_MA_ENABLED: 'lp-ma-enabled',
+  LP_MA_WINDOW: 'lp-ma-window',
 } as const;
 
 /** クエリ結果の行 */

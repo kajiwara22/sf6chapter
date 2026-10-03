@@ -5,13 +5,19 @@
  * - 1試合 = 1点。x軸は「試合ごとの等間隔」（sfbuff の Chart.js timeseries 相当）
  * - 右端に最新の対戦時点の LP を追加（現在地点）
  * - 線はなめらかに補間（sfbuff の tension 0.4 相当）
- * - y軸は LP を 200 区切りで表示（目盛りが多すぎる場合はステップを拡大）
+ * - y軸にリーグ境界と☆境界を表示し、☆区間のラベル（例: "DIAMOND ☆☆☆"）を出す
+ * - 移動平均線をオプションで表示できる
  * - グラフ上に勝敗は表現せず、ツールチップにテキストで表示する
  */
 
 import { DOM_IDS } from '../types';
 import type { LpHistoryRow, LpHistoryFilters } from '@shared/types';
-import { LEAGUES, getStarBoundaries, computeYAxisRange } from '@shared/leagues';
+import {
+  LEAGUES,
+  getAllLeagueBoundaries,
+  getStarSegments,
+  computeYAxisRange,
+} from '@shared/leagues';
 
 export type LpFilterHandler = (filters: LpHistoryFilters) => void;
 
@@ -28,6 +34,17 @@ const MIN_X_LABEL_GAP = 140;
 
 /** 線の補間の強さ（sfbuff の Chart.js tension: 0.4 に合わせる） */
 const LINE_TENSION = 0.4;
+
+/** 移動平均のデフォルト期間（試合数） */
+export const DEFAULT_MA_WINDOW = 20;
+
+/** チャートの表示オプション */
+export interface LpChartOptions {
+  /** 移動平均線を表示するか */
+  showMovingAverage?: boolean;
+  /** 移動平均の期間（試合数） */
+  maWindow?: number;
+}
 
 /**
  * y軸の目盛りを計算する
@@ -79,6 +96,26 @@ export function computeEquidistantPositions(count: number, left: number, width: 
     positions.push(left + (i / (count - 1)) * width);
   }
   return positions;
+}
+
+/**
+ * 移動平均を計算する
+ *
+ * 各点で直近 `window` 試合の平均を返す。`window` 未満の点は null。
+ */
+export function computeMovingAverage(values: number[], window: number): (number | null)[] {
+  if (window <= 0) return values.map(() => null);
+
+  const result: (number | null)[] = [];
+  let sum = 0;
+
+  for (let i = 0; i < values.length; i += 1) {
+    sum += values[i];
+    if (i >= window) sum -= values[i - window];
+    result.push(i >= window - 1 ? sum / window : null);
+  }
+
+  return result;
 }
 
 /**
@@ -207,8 +244,14 @@ interface ChartCoord {
 
 /**
  * SVG本体のHTMLを生成
+ *
+ * @param maWindow 指定すると、その試合数の移動平均線を描画する
  */
-export function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: number; max: number }): string {
+export function createChartSvg(
+  coords: ChartCoord[],
+  yAxis: { ticks: number[]; min: number; max: number },
+  maWindow?: number,
+): string {
   const innerW = CHART_WIDTH - PADDING.left - PADDING.right;
   const innerH = CHART_HEIGHT - PADDING.top - PADDING.bottom;
   const right = CHART_WIDTH - PADDING.right;
@@ -227,24 +270,32 @@ export function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; m
     .join('');
 
   // リーグ境界・☆境界（y軸の表示範囲内のみ）
-  // sfbuff の marks と同じく、リーグの開始 LP に横線とリーグ名を表示する。
-  // さらにリーグ内で☆が増える境界にも横線を引く。
-  const leagueLines = LEAGUES.flatMap((league) => {
-    const items: { lp: number; label?: string }[] = [
-      { lp: league.startLp, label: league.name },
-      ...getStarBoundaries(league).map((lp) => ({ lp })),
-    ];
-    return items
-      .filter((item) => item.lp >= yAxis.min && item.lp <= yAxis.max)
-      .map((item) => {
-        const y = scaleY(item.lp).toFixed(1);
-        if (item.label) {
-          return `<line class="lp-league-line" x1="${PADDING.left}" y1="${y}" x2="${right}" y2="${y}" />
-            <text class="lp-league-label" x="${PADDING.left + 6}" y="${(Number(y) - 4).toFixed(1)}" text-anchor="start">${item.label}</text>`;
-        }
-        return `<line class="lp-star-line" x1="${PADDING.left}" y1="${y}" x2="${right}" y2="${y}" />`;
-      });
-  }).join('');
+  // sfbuff の marks と同じく、リーグの開始 LP に横線を引く。☆境界は細い線にする。
+  const leagueStarts = new Set(LEAGUES.map((league) => league.startLp));
+  const boundaryLines = getAllLeagueBoundaries()
+    .filter((lp) => lp >= yAxis.min && lp <= yAxis.max)
+    .map((lp) => {
+      const y = scaleY(lp).toFixed(1);
+      const className = leagueStarts.has(lp) ? 'lp-league-line' : 'lp-star-line';
+      return `<line class="${className}" x1="${PADDING.left}" y1="${y}" x2="${right}" y2="${y}" />`;
+    })
+    .join('');
+
+  // ☆区間のラベル（区間の中央に "DIAMOND ☆☆☆" のように表示）
+  const segmentLabels = getStarSegments()
+    .map((segment) => {
+      const center =
+        segment.endLp === null
+          ? segment.startLp + 500
+          : (segment.startLp + segment.endLp) / 2;
+      return { label: segment.label, center };
+    })
+    .filter((item) => item.center >= yAxis.min && item.center <= yAxis.max)
+    .map((item) => {
+      const y = scaleY(item.center);
+      return `<text class="lp-league-label" x="${PADDING.left + 6}" y="${(y + 4).toFixed(1)}" text-anchor="start">${item.label}</text>`;
+    })
+    .join('');
 
   // x軸: ラベルを間引いて表示
   const xTickIndexes: number[] = [];
@@ -283,6 +334,18 @@ export function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; m
       ? `<circle class="lp-point-single" cx="${coords[0].x.toFixed(1)}" cy="${coords[0].y.toFixed(1)}" r="4" />`
       : '';
 
+  // 移動平均線
+  let maPath = '';
+  if (maWindow !== undefined && maWindow > 0) {
+    const maValues = computeMovingAverage(coords.map((c) => c.lp), maWindow);
+    const maPoints = maValues
+      .map((value, i) => (value === null ? null : { x: coords[i].x, y: scaleY(value) }))
+      .filter((point): point is { x: number; y: number } => point !== null);
+    if (maPoints.length > 1) {
+      maPath = `<path class="lp-ma-line" d="${buildLinePath(maPoints)}" />`;
+    }
+  }
+
   // 現在地点のマーカー
   const current = coords[coords.length - 1];
   const currentMarker =
@@ -299,9 +362,10 @@ export function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; m
   return `
     <svg class="lp-chart-svg" viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LP推移グラフ">
       <g class="lp-grid">${yGrid}${xLabels}</g>
-      <g class="lp-league-marks">${leagueLines}</g>
+      <g class="lp-league-marks">${boundaryLines}${segmentLabels}</g>
       ${axes}
       ${linePath}
+      ${maPath}
       ${singlePoint}
       ${currentMarker}
       <line class="lp-crosshair" x1="0" y1="${PADDING.top}" x2="0" y2="${bottom}" style="display: none;" />
@@ -411,8 +475,13 @@ function attachTooltip(container: HTMLElement, coords: ChartCoord[]): void {
  *
  * @param rows 試合ごとの LP（試合開始時点の値）
  * @param currentLp 右端に追加する現在地点の LP（未指定なら追加しない）
+ * @param options 表示オプション（移動平均など）
  */
-export function renderLpChart(rows: LpHistoryRow[], currentLp?: number): void {
+export function renderLpChart(
+  rows: LpHistoryRow[],
+  currentLp?: number,
+  options: LpChartOptions = {},
+): void {
   const container = document.getElementById(DOM_IDS.LP_CHART);
   if (!container) {
     console.error('[LpChart] Container not found');
@@ -444,9 +513,8 @@ export function renderLpChart(rows: LpHistoryRow[], currentLp?: number): void {
   }
 
   const lps = points.map((p) => p.lp);
-  // 基準 LP（現在地点。未指定なら最後の試合）が属するリーグ帯を y軸に含める
-  const referenceLp = currentLp ?? lps[lps.length - 1];
-  const range = computeYAxisRange(lps, referenceLp);
+  // データ範囲をリーグ境界で挟んだ範囲を y軸にする（☆の区切りが見えるように）
+  const range = computeYAxisRange(lps);
   let lpMin = range.min;
   let lpMax = range.max;
   if (lpMin === lpMax) {
@@ -472,8 +540,19 @@ export function renderLpChart(rows: LpHistoryRow[], currentLp?: number): void {
     isCurrent: point.isCurrent,
   }));
 
+  const maWindow = options.showMovingAverage ? (options.maWindow ?? DEFAULT_MA_WINDOW) : undefined;
+
+  const legendHtml =
+    maWindow !== undefined
+      ? `<div class="lp-legend">
+          <span class="lp-legend-item"><span class="lp-legend-swatch lp-legend-swatch-lp"></span>LP</span>
+          <span class="lp-legend-item"><span class="lp-legend-swatch lp-legend-swatch-ma"></span>移動平均（${maWindow}試合）</span>
+        </div>`
+      : '';
+
   container.innerHTML =
-    createChartSvg(coords, yAxis) +
+    legendHtml +
+    createChartSvg(coords, yAxis, maWindow) +
     '<div class="lp-tooltip" style="display: none;"></div>';
 
   attachTooltip(container, coords);
@@ -487,6 +566,20 @@ export function clearLpChart(): void {
   if (container) {
     container.innerHTML = '';
   }
+}
+
+/**
+ * フォームの移動平均オプションを読み取る
+ */
+export function readLpChartOptions(): LpChartOptions {
+  const enabled = document.getElementById(DOM_IDS.LP_MA_ENABLED) as HTMLInputElement | null;
+  const windowSelect = document.getElementById(DOM_IDS.LP_MA_WINDOW) as HTMLSelectElement | null;
+
+  const parsed = Number(windowSelect?.value);
+  return {
+    showMovingAverage: enabled?.checked ?? false,
+    maWindow: Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MA_WINDOW,
+  };
 }
 
 /**

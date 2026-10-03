@@ -975,6 +975,58 @@ body {
   letter-spacing: 0.08em;
 }
 
+.lp-ma-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  opacity: 0.85;
+}
+
+.lp-ma-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.lp-ma-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.lp-legend {
+  display: flex;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.lp-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lp-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+}
+
+.lp-legend-swatch-lp {
+  background: var(--color-primary);
+}
+
+.lp-legend-swatch-ma {
+  background: var(--color-accent);
+}
+
 .lp-grid-line {
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 1;

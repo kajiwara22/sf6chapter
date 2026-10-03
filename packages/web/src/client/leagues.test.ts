@@ -4,6 +4,8 @@ import {
   getLeagueForLp,
   getLeagueEndLp,
   getStarBoundaries,
+  getAllLeagueBoundaries,
+  getStarSegments,
   computeYAxisRange,
 } from '../shared/leagues';
 
@@ -48,34 +50,65 @@ describe('getStarBoundaries', () => {
     expect(getStarBoundaries(byName('ROOKIE'))).toEqual([200, 400, 600, 800]);
   });
 
-  it('Platinum の☆境界は 1200 刻み', () => {
-    expect(getStarBoundaries(byName('PLATINUM'))).toEqual([14200, 15400, 16600, 17800]);
-  });
-
   it('Master は☆なしのため空配列', () => {
     expect(getStarBoundaries(byName('MASTER'))).toEqual([]);
   });
 });
 
+describe('getAllLeagueBoundaries', () => {
+  it('昇順で返す', () => {
+    const boundaries = getAllLeagueBoundaries();
+    const sorted = [...boundaries].sort((a, b) => a - b);
+    expect(boundaries).toEqual(sorted);
+  });
+
+  it('Diamond の☆境界を含む', () => {
+    const boundaries = getAllLeagueBoundaries();
+    for (const lp of [20200, 21400, 22600, 23800]) {
+      expect(boundaries).toContain(lp);
+    }
+  });
+});
+
+describe('getStarSegments', () => {
+  it('Diamond は5区間で☆が増える', () => {
+    const diamond = getStarSegments().filter((segment) => segment.leagueName === 'DIAMOND');
+    expect(diamond).toHaveLength(5);
+    expect(diamond[0]).toMatchObject({
+      star: 1,
+      startLp: 19000,
+      endLp: 20200,
+      label: 'DIAMOND ☆',
+    });
+    expect(diamond[2]).toMatchObject({
+      star: 3,
+      startLp: 21400,
+      endLp: 22600,
+      label: 'DIAMOND ☆☆☆',
+    });
+  });
+
+  it('Master は☆なしで上限なし', () => {
+    const master = getStarSegments().find((segment) => segment.leagueName === 'MASTER')!;
+    expect(master).toMatchObject({ star: 0, startLp: 25000, endLp: null, label: 'MASTER' });
+  });
+});
+
 describe('computeYAxisRange', () => {
-  it('基準LPが属するリーグ帯を範囲に含める', () => {
-    // データは Diamond の中だが、軸は Diamond 帯全体（19000〜25000）を含む
-    expect(computeYAxisRange([21280, 23265], 22900)).toEqual({ min: 19000, max: 25000 });
+  it('データをリーグ境界で挟んだ範囲を返す', () => {
+    // Diamond ☆3〜☆4 の範囲 → 20200〜23800
+    expect(computeYAxisRange([21280, 23265])).toEqual({ min: 20200, max: 23800 });
   });
 
-  it('基準LPが未指定ならデータ範囲のみ', () => {
-    expect(computeYAxisRange([21280, 23265])).toEqual({ min: 21280, max: 23265 });
+  it('単一の☆区間に収まる場合はその区間全体', () => {
+    expect(computeYAxisRange([21500, 22000])).toEqual({ min: 21400, max: 22600 });
   });
 
-  it('データがリーグ帯を超える場合はデータ範囲を優先する', () => {
-    expect(computeYAxisRange([12500, 26000], 22000)).toEqual({ min: 12500, max: 26000 });
-  });
-
-  it('Master は上限なし（データ範囲を使う）', () => {
-    expect(computeYAxisRange([25000, 26000], 25500)).toEqual({ min: 25000, max: 26000 });
+  it('複数リーグにまたがる場合も境界で挟む', () => {
+    expect(computeYAxisRange([8800, 19100])).toEqual({ min: 8200, max: 20200 });
   });
 
   it('空配列は 0,0', () => {
-    expect(computeYAxisRange([], 22000)).toEqual({ min: 0, max: 0 });
+    expect(computeYAxisRange([])).toEqual({ min: 0, max: 0 });
   });
 });

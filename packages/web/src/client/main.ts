@@ -9,8 +9,8 @@ import { renderResults, clearResults } from './components/ResultsGrid';
 import { renderStats, clearStats } from './components/StatsPanel';
 import { renderMatchupChart, clearMatchupChart, initMatchupForm, updateMatchupCharacterSelect } from './components/MatchupChart';
 import { renderMatchHistory, clearMatchHistory, renderHistoryPagination, initHistoryForm, updateHistoryCharacterSelects } from './components/MatchHistory';
-import { renderLpChart, clearLpChart, initLpForm } from './components/LpChart';
-import type { SearchFilters, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters } from '@shared/types';
+import { renderLpChart, clearLpChart, initLpForm, readLpChartOptions } from './components/LpChart';
+import type { SearchFilters, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters, LpHistoryRow } from '@shared/types';
 
 /**
  * ローディング表示
@@ -239,6 +239,18 @@ function shouldAddCurrentPoint(filters: LpHistoryFilters): boolean {
   return filters.dateTo >= todayJst();
 }
 
+/** LP推移の現在のデータ（移動平均の切替時に再描画するため保持） */
+let currentLpRows: LpHistoryRow[] = [];
+let currentLpValue: number | undefined;
+
+/**
+ * 保持しているデータでLP推移チャートを再描画する（移動平均の切替用）
+ */
+function rerenderLpChart(): void {
+  if (currentLpRows.length === 0) return;
+  renderLpChart(currentLpRows, currentLpValue, readLpChartOptions());
+}
+
 /**
  * LP推移を表示
  */
@@ -252,8 +264,10 @@ async function handleLpFilter(filters: LpHistoryFilters): Promise<void> {
   try {
     const rows = await queryLpHistory(filters);
     const currentLp = shouldAddCurrentPoint(filters) ? await getLatestLp() : null;
+    currentLpRows = rows;
+    currentLpValue = currentLp ?? undefined;
     console.log(`[App] LP history: ${rows.length} points`);
-    renderLpChart(rows, currentLp ?? undefined);
+    renderLpChart(rows, currentLp ?? undefined, readLpChartOptions());
   } catch (err) {
     console.error('[App] LP history error:', err);
     showLpError(`LP推移の取得に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
@@ -348,10 +362,16 @@ async function init(): Promise<void> {
   try {
     initLpForm(handleLpFilter);
 
+    // 移動平均の切替時は再取得せずに再描画する
+    document.getElementById(DOM_IDS.LP_MA_ENABLED)?.addEventListener('change', rerenderLpChart);
+    document.getElementById(DOM_IDS.LP_MA_WINDOW)?.addEventListener('change', rerenderLpChart);
+
     // 初期表示（フィルターなし、全期間）
     const initialLp = await queryLpHistory({});
     const currentLp = await getLatestLp();
-    renderLpChart(initialLp, currentLp ?? undefined);
+    currentLpRows = initialLp;
+    currentLpValue = currentLp ?? undefined;
+    renderLpChart(initialLp, currentLp ?? undefined, readLpChartOptions());
 
     console.log('[App] LP history initialized');
   } catch (err) {

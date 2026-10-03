@@ -355,6 +355,24 @@ pages.get('/', (c) => {
                     </button>
                   </div>
                 </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="lp-ma-window">移動平均</label>
+                    <div class="lp-ma-controls">
+                      <label class="lp-ma-toggle">
+                        <input type="checkbox" id="lp-ma-enabled" name="showMovingAverage" />
+                        表示
+                      </label>
+                      <select id="lp-ma-window" name="maWindow">
+                        <option value="10">10試合</option>
+                        <option value="20" selected>20試合</option>
+                        <option value="30">30試合</option>
+                        <option value="50">50試合</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </form>
             </section>
 

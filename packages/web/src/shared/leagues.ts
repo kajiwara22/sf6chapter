@@ -71,27 +71,94 @@ export function getStarBoundaries(league: LeagueDefinition): number[] {
 }
 
 /**
+ * 全リーグの境界 LP（リーグ開始と☆境界）を昇順で返す
+ */
+export function getAllLeagueBoundaries(): number[] {
+  const boundaries: number[] = [];
+  for (const league of LEAGUES) {
+    boundaries.push(league.startLp);
+    boundaries.push(...getStarBoundaries(league));
+  }
+  return boundaries.sort((a, b) => a - b);
+}
+
+/** リーグ内の☆区間 */
+export interface StarSegment {
+  /** リーグ名 */
+  leagueName: string;
+  /** ☆の数（1〜5）。Master は 0 */
+  star: number;
+  /** 区間の開始 LP */
+  startLp: number;
+  /** 区間の終了 LP（Master は上限なしのため null） */
+  endLp: number | null;
+  /** 表示ラベル（例: "DIAMOND ☆☆☆"） */
+  label: string;
+}
+
+/**
+ * 全リーグの☆区間を LP の昇順で返す
+ *
+ * Master は☆がなく上限もないため、単一区間（star: 0、endLp: null）として返す。
+ */
+export function getStarSegments(): StarSegment[] {
+  const segments: StarSegment[] = [];
+
+  for (const league of LEAGUES) {
+    if (league.starWidth === null) {
+      segments.push({
+        leagueName: league.name,
+        star: 0,
+        startLp: league.startLp,
+        endLp: null,
+        label: league.name,
+      });
+      continue;
+    }
+
+    for (let star = 1; star <= 5; star += 1) {
+      const startLp = league.startLp + league.starWidth * (star - 1);
+      segments.push({
+        leagueName: league.name,
+        star,
+        startLp,
+        endLp: startLp + league.starWidth,
+        label: `${league.name} ${'☆'.repeat(star)}`,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
  * y軸の表示範囲を計算する
  *
- * データの最小・最大に加え、基準 LP（現在地点）が属するリーグの帯
- * （開始 LP 〜 次のリーグの開始 LP）を含める。これによりリーグ境界線が
- * グラフ内に表示される。
+ * データの最小・最大を、リーグ境界（リーグ開始・☆境界）で挟んだ範囲を返す。
+ * これにより、データの変動を保ったまま、その範囲に入る☆の区切りが表示される。
+ *
+ * 例: データが 21,280〜23,265（Diamond ☆3〜☆4）なら 20,200〜23,800。
  */
-export function computeYAxisRange(
-  lps: number[],
-  referenceLp?: number,
-): { min: number; max: number } {
+export function computeYAxisRange(lps: number[]): { min: number; max: number } {
   if (lps.length === 0) return { min: 0, max: 0 };
 
-  let min = Math.min(...lps);
-  let max = Math.max(...lps);
+  const dataMin = Math.min(...lps);
+  const dataMax = Math.max(...lps);
+  const boundaries = getAllLeagueBoundaries();
 
-  if (referenceLp !== undefined) {
-    const league = getLeagueForLp(referenceLp);
-    if (league) {
-      min = Math.min(min, league.startLp);
-      const end = getLeagueEndLp(league);
-      if (end !== null) max = Math.max(max, end);
+  let min = dataMin;
+  let max = dataMax;
+
+  // データ最小値以下で最大の境界
+  for (const boundary of boundaries) {
+    if (boundary <= dataMin) min = boundary;
+  }
+
+  // データ最大値以上で最小の境界
+  for (const boundary of boundaries) {
+    if (boundary >= dataMax) {
+      max = boundary;
+      break;
     }
   }
 
