@@ -951,6 +951,12 @@ body {
   fill: var(--color-primary);
 }
 
+.lp-current-point {
+  fill: var(--color-accent);
+  stroke: var(--color-bg-card);
+  stroke-width: 2;
+}
+
 .lp-grid-line {
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 1;

@@ -801,6 +801,37 @@ export async function queryLpHistory(filters: LpHistoryFilters): Promise<LpHisto
 }
 
 /**
+ * 最新の対戦時点の LP を取得（グラフ右端の現在地点用）
+ *
+ * Battlelog の league_point は試合開始時点の値のため、厳密な「現在の LP」ではなく
+ * 最新の対戦を始めた時点の LP である（ADR-046）
+ */
+export async function getLatestLp(): Promise<number | null> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const query = `
+    SELECT
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p1_league_point
+           ELSE p2_league_point END AS league_point
+    FROM battlelog_replays
+    WHERE (p1_short_id = ${MY_PLAYER_ID} OR p2_short_id = ${MY_PLAYER_ID})
+      AND battle_type = 1
+      AND (CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p1_league_point
+                ELSE p2_league_point END) > 0
+    ORDER BY uploaded_at DESC
+    LIMIT 1
+  `;
+
+  const result = await instance.conn.query(query);
+  const rows = result.toArray() as unknown as { league_point: number | bigint }[];
+  if (rows.length === 0) return null;
+
+  return Number(rows[0].league_point);
+}
+
+/**
  * DuckDBインスタンスをクリーンアップ
  */
 export async function closeDuckDB(): Promise<void> {

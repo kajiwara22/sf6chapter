@@ -2,7 +2,9 @@
  * SF6 Chapter - LP推移チャートコンポーネント
  *
  * 依存ライブラリを追加せず、SVG で折れ線グラフを描画する（ADR-046）。
- * - 1試合 = 1点（全プロット）
+ * - 1試合 = 1点。x軸は「試合ごとの等間隔」（sfbuff の Chart.js timeseries 相当）
+ * - 右端に最新の対戦時点の LP を追加（現在地点）
+ * - 線はなめらかに補間（sfbuff の tension 0.4 相当）
  * - y軸は LP を 200 区切りで表示（目盛りが多すぎる場合はステップを拡大）
  * - グラフ上に勝敗は表現せず、ツールチップにテキストで表示する
  */
@@ -22,6 +24,9 @@ const MAX_X_LABELS = 6;
 
 /** x軸ラベル同士の最小間隔（viewBox座標）。これより近い場合は間引く */
 const MIN_X_LABEL_GAP = 140;
+
+/** 線の補間の強さ（sfbuff の Chart.js tension: 0.4 に合わせる） */
+const LINE_TENSION = 0.4;
 
 /**
  * y軸の目盛りを計算する
@@ -56,6 +61,59 @@ export function computeLpAxisTicks(
   if (ticks[ticks.length - 1] !== max) ticks.push(max);
 
   return { ticks, min, max };
+}
+
+/**
+ * 各データ点を等間隔に配置した x 座標を返す
+ *
+ * sfbuff（Chart.js の timeseries スケール）と同じく、時刻の長さではなく
+ * 試合の並び順で等間隔に配置する。
+ */
+export function computeEquidistantPositions(count: number, left: number, width: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [left + width / 2];
+
+  const positions: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    positions.push(left + (i / (count - 1)) * width);
+  }
+  return positions;
+}
+
+/**
+ * 座標列からなめらかな曲線の SVG path 文字列を生成する
+ *
+ * Catmull-Rom スプラインを3次ベジェに変換する。tension は Chart.js の
+ * tension オプションに近い挙動になるよう調整している。
+ */
+export function buildLinePath(points: { x: number; y: number }[], tension = LINE_TENSION): string {
+  if (points.length < 2) return '';
+
+  const fmt = (value: number) => value.toFixed(1);
+
+  if (points.length === 2) {
+    return `M${fmt(points[0].x)},${fmt(points[0].y)} L${fmt(points[1].x)},${fmt(points[1].y)}`;
+  }
+
+  const segments: string[] = [`M${fmt(points[0].x)},${fmt(points[0].y)}`];
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+
+    const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+    const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+    const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+    const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+    segments.push(
+      `C${fmt(cp1x)},${fmt(cp1y)} ${fmt(cp2x)},${fmt(cp2y)} ${fmt(p2.x)},${fmt(p2.y)}`,
+    );
+  }
+
+  return segments.join(' ');
 }
 
 /**
@@ -139,7 +197,11 @@ interface ChartCoord {
   x: number;
   y: number;
   ts: number;
-  row: LpHistoryRow;
+  lp: number;
+  /** 通常の試合は行データ、現在地点は null */
+  row: LpHistoryRow | null;
+  /** 右端に追加した現在地点かどうか */
+  isCurrent: boolean;
 }
 
 /**
@@ -184,19 +246,27 @@ function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: num
       const coord = coords[i];
       // 両端のラベルは見切れないように内側へ寄せる
       const anchor = i === 0 ? 'start' : i === lastIndex ? 'end' : 'middle';
+      const label = coord.isCurrent ? '現在' : formatJstShort(new Date(coord.ts));
       return `<line class="lp-grid-line lp-grid-line-v" x1="${coord.x.toFixed(1)}" y1="${PADDING.top}" x2="${coord.x.toFixed(1)}" y2="${bottom}" />
-        <text class="lp-axis-label lp-axis-label-x" x="${coord.x.toFixed(1)}" y="${bottom + 20}" text-anchor="${anchor}">${formatJstShort(new Date(coord.ts))}</text>`;
+        <text class="lp-axis-label lp-axis-label-x" x="${coord.x.toFixed(1)}" y="${bottom + 20}" text-anchor="${anchor}">${label}</text>`;
     })
     .join('');
 
-  // 折れ線（1点のみの場合は点を表示）
-  const polyline =
+  // 折れ線（なめらかに補間。1点のみの場合は点を表示）
+  const linePath =
     coords.length > 1
-      ? `<polyline class="lp-line" points="${coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ')}" />`
+      ? `<path class="lp-line" d="${buildLinePath(coords)}" />`
       : '';
   const singlePoint =
     coords.length === 1
       ? `<circle class="lp-point-single" cx="${coords[0].x.toFixed(1)}" cy="${coords[0].y.toFixed(1)}" r="4" />`
+      : '';
+
+  // 現在地点のマーカー
+  const current = coords[coords.length - 1];
+  const currentMarker =
+    current && current.isCurrent
+      ? `<circle class="lp-current-point" cx="${current.x.toFixed(1)}" cy="${current.y.toFixed(1)}" r="4" />`
       : '';
 
   // 軸線
@@ -209,8 +279,9 @@ function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: num
     <svg class="lp-chart-svg" viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LP推移グラフ">
       <g class="lp-grid">${yGrid}${xLabels}</g>
       ${axes}
-      ${polyline}
+      ${linePath}
       ${singlePoint}
+      ${currentMarker}
       <line class="lp-crosshair" x1="0" y1="${PADDING.top}" x2="0" y2="${bottom}" style="display: none;" />
       <circle class="lp-hover-point" cx="0" cy="0" r="5" style="display: none;" />
       <rect class="lp-overlay" x="${PADDING.left}" y="${PADDING.top}" width="${innerW}" height="${innerH}" fill="transparent" />
@@ -221,15 +292,21 @@ function createChartSvg(coords: ChartCoord[], yAxis: { ticks: number[]; min: num
 /**
  * ツールチップのHTMLを生成
  */
-function createTooltipHtml(row: LpHistoryRow): string {
+function createTooltipHtml(coord: ChartCoord): string {
+  const lp = `<div class="lp-tooltip-lp">LP <strong>${coord.lp.toLocaleString('en-US')}</strong><span class="lp-tooltip-note">${coord.isCurrent ? '最新の対戦時点' : '試合開始時'}</span></div>`;
+
+  if (coord.isCurrent || !coord.row) {
+    return `
+      <div class="lp-tooltip-date">現在</div>
+      ${lp}
+    `;
+  }
+
   return `
-    <div class="lp-tooltip-date">${escapeHtml(formatJstDateTime(parseUploadedAt(row.uploadedAt)))}</div>
-    <div class="lp-tooltip-lp">
-      LP <strong>${row.leaguePoint.toLocaleString('en-US')}</strong>
-      <span class="lp-tooltip-note">試合開始時</span>
-    </div>
-    <div class="lp-tooltip-opponent">vs ${escapeHtml(row.opponentCharacter)}</div>
-    <div class="lp-tooltip-result">${resultBadge(row.result)}</div>
+    <div class="lp-tooltip-date">${escapeHtml(formatJstDateTime(parseUploadedAt(coord.row.uploadedAt)))}</div>
+    ${lp}
+    <div class="lp-tooltip-opponent">vs ${escapeHtml(coord.row.opponentCharacter)}</div>
+    <div class="lp-tooltip-result">${resultBadge(coord.row.result)}</div>
   `;
 }
 
@@ -271,7 +348,7 @@ function attachTooltip(container: HTMLElement, coords: ChartCoord[]): void {
     crosshair.setAttribute('x2', coord.x.toFixed(1));
     crosshair.style.display = '';
 
-    tooltip.innerHTML = createTooltipHtml(coord.row);
+    tooltip.innerHTML = createTooltipHtml(coord);
     tooltip.style.display = 'block';
 
     const containerRect = container.getBoundingClientRect();
@@ -309,8 +386,11 @@ function attachTooltip(container: HTMLElement, coords: ChartCoord[]): void {
 
 /**
  * LP推移チャートを描画
+ *
+ * @param rows 試合ごとの LP（試合開始時点の値）
+ * @param currentLp 右端に追加する現在地点の LP（未指定なら追加しない）
  */
-export function renderLpChart(rows: LpHistoryRow[]): void {
+export function renderLpChart(rows: LpHistoryRow[], currentLp?: number): void {
   const container = document.getElementById(DOM_IDS.LP_CHART);
   if (!container) {
     console.error('[LpChart] Container not found');
@@ -322,11 +402,26 @@ export function renderLpChart(rows: LpHistoryRow[]): void {
     return;
   }
 
-  const parsed = rows.map((row) => ({ row, ts: parseUploadedAt(row.uploadedAt).getTime() }));
-  const tsMin = parsed[0].ts;
-  const tsMax = parsed[parsed.length - 1].ts;
+  const points: { row: LpHistoryRow | null; ts: number; lp: number; isCurrent: boolean }[] = rows.map(
+    (row) => ({
+      row,
+      ts: parseUploadedAt(row.uploadedAt).getTime(),
+      lp: row.leaguePoint,
+      isCurrent: false,
+    }),
+  );
 
-  const lps = rows.map((row) => row.leaguePoint);
+  if (currentLp !== undefined) {
+    const lastTs = points[points.length - 1].ts;
+    points.push({
+      row: null,
+      ts: Math.max(Date.now(), lastTs),
+      lp: currentLp,
+      isCurrent: true,
+    });
+  }
+
+  const lps = points.map((p) => p.lp);
   let lpMin = Math.min(...lps);
   let lpMax = Math.max(...lps);
   if (lpMin === lpMax) {
@@ -339,18 +434,17 @@ export function renderLpChart(rows: LpHistoryRow[]): void {
   const innerW = CHART_WIDTH - PADDING.left - PADDING.right;
   const innerH = CHART_HEIGHT - PADDING.top - PADDING.bottom;
 
-  const scaleX = (ts: number) =>
-    tsMax === tsMin
-      ? PADDING.left + innerW / 2
-      : PADDING.left + ((ts - tsMin) / (tsMax - tsMin)) * innerW;
+  const positions = computeEquidistantPositions(points.length, PADDING.left, innerW);
   const scaleY = (lp: number) =>
     PADDING.top + innerH - ((lp - yAxis.min) / (yAxis.max - yAxis.min)) * innerH;
 
-  const coords: ChartCoord[] = parsed.map((item) => ({
-    x: scaleX(item.ts),
-    y: scaleY(item.row.leaguePoint),
-    ts: item.ts,
-    row: item.row,
+  const coords: ChartCoord[] = points.map((point, index) => ({
+    x: positions[index],
+    y: scaleY(point.lp),
+    ts: point.ts,
+    lp: point.lp,
+    row: point.row,
+    isCurrent: point.isCurrent,
   }));
 
   container.innerHTML =

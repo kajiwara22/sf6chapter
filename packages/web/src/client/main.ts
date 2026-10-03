@@ -3,7 +3,7 @@
  */
 
 import { DOM_IDS } from './types';
-import { initDuckDB, loadParquetData, loadBattlelogParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory } from './search';
+import { initDuckDB, loadParquetData, loadBattlelogParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
 import { renderResults, clearResults } from './components/ResultsGrid';
 import { renderStats, clearStats } from './components/StatsPanel';
@@ -218,6 +218,28 @@ function showLpError(message: string | null): void {
 }
 
 /**
+ * 今日のJST日付（YYYY-MM-DD）
+ */
+function todayJst(): string {
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const y = jst.getUTCFullYear();
+  const mo = String(jst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(jst.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${d}`;
+}
+
+/**
+ * 現在地点（右端の追加点）を描画すべきかどうか
+ *
+ * 期間終了が未指定、または今日以降をカバーしている場合のみ追加する
+ * （sfbuff の cover_today? と同じ振る舞い）
+ */
+function shouldAddCurrentPoint(filters: LpHistoryFilters): boolean {
+  if (!filters.dateTo) return true;
+  return filters.dateTo >= todayJst();
+}
+
+/**
  * LP推移を表示
  */
 async function handleLpFilter(filters: LpHistoryFilters): Promise<void> {
@@ -229,8 +251,9 @@ async function handleLpFilter(filters: LpHistoryFilters): Promise<void> {
 
   try {
     const rows = await queryLpHistory(filters);
+    const currentLp = shouldAddCurrentPoint(filters) ? await getLatestLp() : null;
     console.log(`[App] LP history: ${rows.length} points`);
-    renderLpChart(rows);
+    renderLpChart(rows, currentLp ?? undefined);
   } catch (err) {
     console.error('[App] LP history error:', err);
     showLpError(`LP推移の取得に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
@@ -327,7 +350,8 @@ async function init(): Promise<void> {
 
     // 初期表示（フィルターなし、全期間）
     const initialLp = await queryLpHistory({});
-    renderLpChart(initialLp);
+    const currentLp = await getLatestLp();
+    renderLpChart(initialLp, currentLp ?? undefined);
 
     console.log('[App] LP history initialized');
   } catch (err) {

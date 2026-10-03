@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeLpAxisTicks, findNearestIndex } from './components/LpChart';
+import { computeLpAxisTicks, computeEquidistantPositions, buildLinePath, findNearestIndex } from './components/LpChart';
 
 describe('computeLpAxisTicks', () => {
   it('通常の値域は200刻みで目盛りを作る', () => {
@@ -55,5 +55,58 @@ describe('findNearestIndex', () => {
 
   it('空配列は -1', () => {
     expect(findNearestIndex([], 10)).toBe(-1);
+  });
+});
+
+describe('computeEquidistantPositions', () => {
+  it('各点を等間隔に配置する（時刻の長さは考慮しない）', () => {
+    expect(computeEquidistantPositions(3, 100, 300)).toEqual([100, 250, 400]);
+  });
+
+  it('両端は left と left + width になる', () => {
+    const positions = computeEquidistantPositions(5, 0, 400);
+    expect(positions[0]).toBe(0);
+    expect(positions[positions.length - 1]).toBe(400);
+    expect(positions).toEqual([0, 100, 200, 300, 400]);
+  });
+
+  it('1点のみの場合は中央に配置する', () => {
+    expect(computeEquidistantPositions(1, 100, 300)).toEqual([250]);
+  });
+
+  it('0点の場合は空配列', () => {
+    expect(computeEquidistantPositions(0, 100, 300)).toEqual([]);
+  });
+});
+
+describe('buildLinePath', () => {
+  it('2点未満は空文字', () => {
+    expect(buildLinePath([])).toBe('');
+    expect(buildLinePath([{ x: 0, y: 0 }])).toBe('');
+  });
+
+  it('2点は直線になる', () => {
+    expect(buildLinePath([{ x: 0, y: 0 }, { x: 10, y: 10 }])).toBe('M0.0,0.0 L10.0,10.0');
+  });
+
+  it('3点以上は3次ベジェ（C）で補間される', () => {
+    const path = buildLinePath([
+      { x: 0, y: 0 },
+      { x: 10, y: 20 },
+      { x: 20, y: 0 },
+    ]);
+    expect(path.startsWith('M0.0,0.0')).toBe(true);
+    expect((path.match(/C/g) ?? []).length).toBe(2);
+  });
+
+  it('水平に並んだ点は水平の曲線になる', () => {
+    const path = buildLinePath([
+      { x: 0, y: 50 },
+      { x: 10, y: 50 },
+      { x: 20, y: 50 },
+    ]);
+    // 制御点の y も 50 になる
+    expect(path).toContain('C');
+    expect(path.match(/50\.0/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });
