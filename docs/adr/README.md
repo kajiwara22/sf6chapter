@@ -51,6 +51,7 @@
 | [043](./043-dependabot-pip-to-uv-ecosystem-migration.md) | Dependabot エコシステムを `pip` から `uv` へ移行 | 採用 | 2026-05-21 |
 | [044](./044-yt-dlp-fragment-error-handling.md) | yt-dlp フラグメントエラー発生時のダウンロード中断 | 採用 | 2026-06-08 |
 | [045](./045-dependabot-takumi-guard-pypi-registry.md) | DependabotのPyPIレジストリをTakumi Guard経由に変更 | 採用 | 2026-06-11 |
+| [046](./046-lp-history-chart.md) | LP推移グラフのWeb表示機能 | 採用 | 2026-10-03 |
 
 ## ADRのフォーマット
 

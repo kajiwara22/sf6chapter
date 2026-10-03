@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow } from './types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow } from '@shared/types';
 
 let instance: DuckDBInstance | null = null;
 
@@ -691,6 +691,113 @@ export async function getMatchHistoryOpponentCharacters(): Promise<string[]> {
 
   const rows = result.toArray() as unknown as { character: string }[];
   return rows.map((row) => row.character);
+}
+
+/**
+ * round_results（各ラウンドの勝利方法IDのJSON配列）から勝利ラウンド数を数える
+ *
+ * Battlelog の round_results の各要素はラウンドの決着方法IDを表す（ADR-037）:
+ *   0=LOSS / 1=V / 2=C / 3=T / 5=OD / 6=SA / 7=CA / 8=P
+ * 値が 0 より大きいラウンドを勝利としてカウントする。
+ */
+export function countRoundWins(roundResultsJson: string | null | undefined): number {
+  if (!roundResultsJson) return 0;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(roundResultsJson);
+  } catch {
+    return 0;
+  }
+
+  if (!Array.isArray(parsed)) return 0;
+
+  let wins = 0;
+  for (const value of parsed) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) wins += 1;
+  }
+  return wins;
+}
+
+/**
+ * 自分視点・相手視点の round_results から勝敗を判定する
+ * 勝利ラウンド数が多い方を勝ちとし、同数なら引き分け（ADR-037 の判定規則）
+ */
+export function determineResultFromRounds(
+  myRounds: string | null | undefined,
+  oppRounds: string | null | undefined,
+): 'win' | 'loss' | 'draw' {
+  const myWins = countRoundWins(myRounds);
+  const oppWins = countRoundWins(oppRounds);
+
+  if (myWins > oppWins) return 'win';
+  if (myWins < oppWins) return 'loss';
+  return 'draw';
+}
+
+/**
+ * LP推移を取得（Ranked のみ、試合開始時点の LP を時系列で返す）
+ *
+ * - 各リプレイの league_point は「その試合を始める前」の値（ADR-046）
+ * - 勝敗は match_result ではなく round_results から算出する（ADR-037 の誤判定を避けるため）
+ */
+export async function queryLpHistory(filters: LpHistoryFilters): Promise<LpHistoryRow[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  // 期間フィルター（JST 指定を UTC に変換）
+  if (filters.dateFrom) {
+    const utcFrom = convertJstDateTimeToTimestamp(filters.dateFrom, false, filters.timeFrom);
+    conditions.push(`uploaded_at >= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcFrom);
+  }
+
+  if (filters.dateTo) {
+    const utcTo = convertJstDateTimeToTimestamp(filters.dateTo, true, filters.timeTo);
+    conditions.push(`uploaded_at <= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcTo);
+  }
+
+  const whereClause = conditions.length > 0 ? `AND ${conditions.join(' AND ')}` : '';
+
+  const query = `
+    SELECT
+      uploaded_at,
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p1_league_point
+           ELSE p2_league_point END AS league_point,
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p2_character_name
+           ELSE p1_character_name END AS opponent_character,
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p1_round_results
+           ELSE p2_round_results END AS my_rounds,
+      CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p2_round_results
+           ELSE p1_round_results END AS opp_rounds
+    FROM battlelog_replays
+    WHERE (p1_short_id = ${MY_PLAYER_ID} OR p2_short_id = ${MY_PLAYER_ID})
+      AND battle_type = 1
+      AND (CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN p1_league_point
+                ELSE p2_league_point END) > 0
+      ${whereClause}
+    ORDER BY uploaded_at ASC
+  `;
+
+  console.log('[DuckDB] Executing LP history query with params:', params);
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(...params);
+  await stmt.close();
+
+  const rows = result.toArray() as unknown as LpHistoryQueryRow[];
+
+  return rows.map((row) => ({
+    uploadedAt: String(row.uploaded_at),
+    leaguePoint: Number(row.league_point),
+    opponentCharacter: row.opponent_character,
+    result: determineResultFromRounds(row.my_rounds, row.opp_rounds),
+  }));
 }
 
 /**

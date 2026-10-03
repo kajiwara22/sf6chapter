@@ -105,6 +105,7 @@ sf6-chapter/
 - [x] Dependabot エコシステムを `pip` から `uv` へ移行（ADR-043）
 - [x] yt-dlp フラグメントエラー発生時のダウンロード中断（ADR-044）
 - [x] DependabotのPyPIレジストリをTakumi Guard経由に変更（ADR-045）
+- [x] LP推移グラフのWeb表示機能（ADR-046）
 
 ## 次のタスク
 
@@ -328,6 +329,7 @@ docker compose up -d
 - [043: Dependabot エコシステムを `pip` から `uv` へ移行](docs/adr/043-dependabot-pip-to-uv-ecosystem-migration.md)
 - [044: yt-dlp フラグメントエラー発生時のダウンロード中断](docs/adr/044-yt-dlp-fragment-error-handling.md)
 - [045: DependabotのPyPIレジストリをTakumi Guard経由に変更](docs/adr/045-dependabot-takumi-guard-pypi-registry.md)
+- [046: LP推移グラフのWeb表示機能](docs/adr/046-lp-history-chart.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

@@ -3,13 +3,14 @@
  */
 
 import { DOM_IDS } from './types';
-import { initDuckDB, loadParquetData, loadBattlelogParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters } from './search';
+import { initDuckDB, loadParquetData, loadBattlelogParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
 import { renderResults, clearResults } from './components/ResultsGrid';
 import { renderStats, clearStats } from './components/StatsPanel';
 import { renderMatchupChart, clearMatchupChart, initMatchupForm, updateMatchupCharacterSelect } from './components/MatchupChart';
 import { renderMatchHistory, clearMatchHistory, renderHistoryPagination, initHistoryForm, updateHistoryCharacterSelects } from './components/MatchHistory';
-import type { SearchFilters, MatchupChartFilters, MatchHistoryFilters } from '@shared/types';
+import { renderLpChart, clearLpChart, initLpForm } from './components/LpChart';
+import type { SearchFilters, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters } from '@shared/types';
 
 /**
  * ローディング表示
@@ -192,6 +193,53 @@ async function handleMatchupFilter(filters: MatchupChartFilters): Promise<void> 
 }
 
 /**
+ * LP推移ローディング表示
+ */
+function showLpLoading(show: boolean): void {
+  const loading = document.getElementById(DOM_IDS.LP_LOADING);
+  if (loading) {
+    loading.style.display = show ? 'flex' : 'none';
+  }
+}
+
+/**
+ * LP推移エラー表示
+ */
+function showLpError(message: string | null): void {
+  const error = document.getElementById(DOM_IDS.LP_ERROR);
+  if (error) {
+    if (message) {
+      error.textContent = message;
+      error.style.display = 'block';
+    } else {
+      error.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * LP推移を表示
+ */
+async function handleLpFilter(filters: LpHistoryFilters): Promise<void> {
+  console.log('[App] Querying LP history with filters:', filters);
+
+  showLpLoading(true);
+  showLpError(null);
+  clearLpChart();
+
+  try {
+    const rows = await queryLpHistory(filters);
+    console.log(`[App] LP history: ${rows.length} points`);
+    renderLpChart(rows);
+  } catch (err) {
+    console.error('[App] LP history error:', err);
+    showLpError(`LP推移の取得に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+  } finally {
+    showLpLoading(false);
+  }
+}
+
+/**
  * 初期化
  */
 async function init(): Promise<void> {
@@ -271,6 +319,20 @@ async function init(): Promise<void> {
     console.error('[App] Matchup/history initialization error:', err);
     showMatchupError(`マッチアップデータの読み込みに失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
     showHistoryError(`対戦履歴データの読み込みに失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+  }
+
+  // LP推移の初期化（battlelog_replays のみに依存。他タブの失敗に影響されないよう独立させる）
+  try {
+    initLpForm(handleLpFilter);
+
+    // 初期表示（フィルターなし、全期間）
+    const initialLp = await queryLpHistory({});
+    renderLpChart(initialLp);
+
+    console.log('[App] LP history initialized');
+  } catch (err) {
+    console.error('[App] LP history initialization error:', err);
+    showLpError(`LP推移データの読み込みに失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
   }
 }
 

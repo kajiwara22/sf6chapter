@@ -913,6 +913,126 @@ body {
 }
 
 /* ========================================
+   LP推移チャート
+   ======================================== */
+.lp-section {
+  margin-bottom: var(--space-xl);
+}
+
+.lp-note {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  margin-bottom: var(--space-md);
+}
+
+.lp-chart-container {
+  position: relative;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-md);
+}
+
+.lp-chart-svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.lp-line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.lp-point-single {
+  fill: var(--color-primary);
+}
+
+.lp-grid-line {
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 1;
+}
+
+.lp-grid-line-v {
+  stroke-dasharray: 4 4;
+}
+
+.lp-axis-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.lp-axis-label {
+  fill: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.lp-crosshair {
+  stroke: var(--color-text-muted);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.lp-hover-point {
+  fill: var(--color-primary);
+  stroke: var(--color-bg-card);
+  stroke-width: 2;
+}
+
+.lp-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.lp-tooltip-date {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin-bottom: 2px;
+}
+
+.lp-tooltip-lp {
+  color: var(--color-text);
+}
+
+.lp-tooltip-lp strong {
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.lp-tooltip-note {
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+  margin-left: 4px;
+}
+
+.lp-tooltip-opponent {
+  color: var(--color-text-secondary);
+}
+
+.lp-tooltip-result {
+  margin-top: 4px;
+}
+
+.lp-empty {
+  color: var(--color-text-muted);
+  padding: var(--space-xl);
+  text-align: center;
+}
+
+/* ========================================
    レスポンシブ
    ======================================== */
 @media (max-width: 768px) {
@@ -965,5 +1085,9 @@ body {
   .history-table th,
   .history-table td {
     padding: var(--space-xs) var(--space-sm);
+  }
+
+  .lp-chart-container {
+    padding: var(--space-sm);
   }
 }

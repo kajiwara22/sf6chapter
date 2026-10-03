@@ -59,6 +59,17 @@ export const DOM_IDS = {
   HISTORY_LOADING: 'history-loading',
   HISTORY_ERROR: 'history-error',
   HISTORY_PAGINATION: 'history-pagination',
+  // LP推移
+  TAB_LP: 'tab-lp',
+  VIEW_LP: 'view-lp',
+  LP_FORM: 'lp-form',
+  LP_DATE_FROM: 'lp-date-from',
+  LP_TIME_FROM: 'lp-time-from',
+  LP_DATE_TO: 'lp-date-to',
+  LP_TIME_TO: 'lp-time-to',
+  LP_CHART: 'lp-chart',
+  LP_LOADING: 'lp-loading',
+  LP_ERROR: 'lp-error',
 } as const;
 
 /** クエリ結果の行 */
@@ -113,4 +124,15 @@ export interface MatchHistoryQueryRow {
   uploaded_at: string;
   video_id: string | null;
   start_time: number | bigint | null;
+}
+
+/** LP推移のDuckDBクエリ結果行 */
+export interface LpHistoryQueryRow {
+  uploaded_at: string;
+  league_point: number | bigint;
+  opponent_character: string;
+  /** 自分視点の round_results（JSON配列文字列） */
+  my_rounds: string | null;
+  /** 相手視点の round_results（JSON配列文字列） */
+  opp_rounds: string | null;
 }
