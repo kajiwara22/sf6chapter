@@ -219,6 +219,30 @@ export interface MatchHistoryFilters {
   page?: number;
 }
 
+/** LP推移グラフの1点 */
+export interface LpHistoryRow {
+  /** 試合日時（DuckDB TIMESTAMP。Unixミリ秒数値文字列 or ISO文字列） */
+  uploadedAt: string;
+  /** 試合開始時点のLP */
+  leaguePoint: number;
+  /** 相手キャラクター名 */
+  opponentCharacter: string;
+  /** 勝敗（自分視点。round_results から算出） */
+  result: 'win' | 'loss' | 'draw';
+}
+
+/** LP推移グラフのフィルター */
+export interface LpHistoryFilters {
+  /** 期間（開始） YYYY-MM-DD（JST） */
+  dateFrom?: string;
+  /** 期間（終了） YYYY-MM-DD（JST） */
+  dateTo?: string;
+  /** 開始時刻 HH:MM（JST） */
+  timeFrom?: string;
+  /** 終了時刻 HH:MM（JST） */
+  timeTo?: string;
+}
+
 /** ヘルスチェックレスポンス */
 export interface HealthResponse {
   status: 'ok' | 'error';

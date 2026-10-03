@@ -64,6 +64,7 @@ pages.get('/', (c) => {
               <button id="tab-search" class="tab-btn tab-btn-active" data-view="view-search">対戦検索</button>
               <button id="tab-matchup" class="tab-btn" data-view="view-matchup">マッチアップ</button>
               <button id="tab-history" class="tab-btn" data-view="view-history">対戦履歴</button>
+              <button id="tab-lp" class="tab-btn" data-view="view-lp">LP推移</button>
             </nav>
 
             <!-- ========== 対戦検索ビュー ========== -->
@@ -324,6 +325,56 @@ pages.get('/', (c) => {
             </section>
 
             </div><!-- /view-history -->
+
+            <!-- ========== LP推移ビュー ========== -->
+            <div id="view-lp" class="tab-view">
+
+            <!-- LP推移フィルター -->
+            <section class="search-section">
+              <form id="lp-form" class="search-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="lp-date-from">期間（開始）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="lp-date-from" name="dateFrom" />
+                      <input type="time" id="lp-time-from" name="timeFrom" />
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="lp-date-to">期間（終了）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="lp-date-to" name="dateTo" />
+                      <input type="time" id="lp-time-to" name="timeTo" />
+                    </div>
+                  </div>
+
+                  <div class="form-group form-group-button">
+                    <button type="submit" class="btn-search">
+                      表示
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <!-- LP推移 ステータス -->
+            <section class="status-section">
+              <div id="lp-loading" class="status-message status-loading" style="display: none;">
+                <span class="spinner"></span>
+                読み込み中...
+              </div>
+              <div id="lp-error" class="status-message status-error" style="display: none;"></div>
+            </section>
+
+            <!-- LP推移チャート -->
+            <section class="lp-section">
+              <h2 class="section-title">LP推移</h2>
+              <p class="lp-note">ランクマッチのみ。各点は試合開始時点のLPです。</p>
+              <div id="lp-chart" class="lp-chart-container"></div>
+            </section>
+
+            </div><!-- /view-lp -->
 
           </main>
 
