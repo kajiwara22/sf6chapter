@@ -4,6 +4,7 @@
 
 import { DOM_IDS } from '../types';
 import type { MatchHistoryRow, MatchHistoryFilters } from '@shared/types';
+import { getRound, parseRoundIds } from '@shared/rounds';
 
 export type MatchHistoryFilterHandler = (filters: MatchHistoryFilters) => void;
 
@@ -14,12 +15,15 @@ const INPUT_TYPE_NAMES: Record<number, string> = {
 };
 
 /**
- * HTMLエスケープ
+ * HTMLエスケープ（DOM非依存。ユニットテスト可能にするため文字列置換で実装）
  */
 function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -48,6 +52,38 @@ function createResultBadge(result: 'win' | 'loss' | 'draw' | null): string {
     return `<span class="result-badge result-badge-draw">DRAW</span>`;
   }
   return '<span class="text-muted">-</span>';
+}
+
+/**
+ * ラウンドバッジ1つ分のHTMLを生成する（sfbuff 準拠、ADR-047）
+ */
+export function createRoundBadge(id: number): string {
+  const round = getRound(id);
+  const title = `${round.name}: ${round.description}`;
+  return `<span class="round-badge" style="background-color: ${round.backgroundColor}; color: ${round.textColor}" title="${escapeHtml(title)}">${escapeHtml(round.name)}</span>`;
+}
+
+/**
+ * 対戦履歴の「ラウンド」セルを生成する（ADR-047）
+ *
+ * 上段に自分、下段に相手のラウンドバッジを並べる。
+ * round_results がない（YouTube側のみの）行は "-" を返す。
+ */
+export function createRoundCell(row: MatchHistoryRow): string {
+  const myRounds = parseRoundIds(row.myRounds);
+  const oppRounds = parseRoundIds(row.oppRounds);
+
+  if (myRounds.length === 0 && oppRounds.length === 0) {
+    return '<span class="text-muted">-</span>';
+  }
+
+  const myBadges = myRounds.map(createRoundBadge).join('');
+  const oppBadges = oppRounds.map(createRoundBadge).join('');
+
+  return `<div class="round-list">
+      <div class="round-side round-side-self" title="自分">${myBadges}</div>
+      <div class="round-side round-side-opponent" title="相手">${oppBadges}</div>
+    </div>`;
 }
 
 /**
@@ -107,6 +143,7 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
       <td class="history-my-character">${escapeHtml(row.myCharacter)}</td>
       <td class="history-my-input">${createInputTypeBadge(row.myInputType)}</td>
       <td class="history-result">${createResultBadge(row.result)}</td>
+      <td class="history-round">${createRoundCell(row)}</td>
       <td class="history-opponent-name" title="${opponentNameTitle}">${opponentNameDisplay}</td>
       <td class="history-opponent-character">${escapeHtml(row.opponentCharacter)}</td>
       <td class="history-opponent-input">${createInputTypeBadge(row.opponentInputType)}</td>
@@ -123,6 +160,7 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
           <th>使用キャラ</th>
           <th>操作</th>
           <th>勝負</th>
+          <th>ラウンド</th>
           <th>相手名</th>
           <th>相手キャラ</th>
           <th>相手操作</th>

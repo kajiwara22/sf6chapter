@@ -175,8 +175,12 @@ export interface MatchHistoryRow {
   myCharacter: string;
   /** 自入力タイプ（0=クラシック, 1=モダン）。YouTube側のみの場合はnull */
   myInputType: number | null;
-  /** 勝敗（自分視点）。YouTube側のみでresultがない場合はnull */
+  /** 勝敗（自分視点）。round_results から算出し、YouTube側のみの場合は matches の result にフォールバック */
   result: 'win' | 'loss' | 'draw' | null;
+  /** 自分視点の各ラウンド決着方法IDのJSON配列文字列。YouTube側のみの場合はnull */
+  myRounds: string | null;
+  /** 相手視点の各ラウンド決着方法IDのJSON配列文字列。YouTube側のみの場合はnull */
+  oppRounds: string | null;
   /** 相手プレイヤーID（fighter_id）。YouTube側のみの場合はnull */
   opponentName: string | null;
   /** 相手キャラクター名（Battlelog or matches由来） */

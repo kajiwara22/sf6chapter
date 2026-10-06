@@ -126,6 +126,10 @@ export interface MatchHistoryQueryRow {
   uploaded_at: string;
   video_id: string | null;
   start_time: number | bigint | null;
+  /** 自分視点の round_results（JSON配列文字列）。YouTube側のみの場合はnull */
+  my_rounds: string | null;
+  /** 相手視点の round_results（JSON配列文字列）。YouTube側のみの場合はnull */
+  opp_rounds: string | null;
 }
 
 /** LP推移のDuckDBクエリ結果行 */

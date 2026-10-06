@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertJstDateToUtc, convertJstDateTimeToTimestamp, countRoundWins, determineResultFromRounds } from './search';
+import { convertJstDateToUtc, convertJstDateTimeToTimestamp } from './search';
 
 describe('convertJstDateToUtc', () => {
   describe('isEndOfDay=false（開始日: JST 00:00:00 → UTC 前日 15:00:00）', () => {
@@ -94,54 +94,4 @@ describe('convertJstDateTimeToTimestamp', () => {
   });
 });
 
-describe('countRoundWins', () => {
-  it('NULL / 空文字は 0 勝', () => {
-    expect(countRoundWins(null)).toBe(0);
-    expect(countRoundWins(undefined)).toBe(0);
-    expect(countRoundWins('')).toBe(0);
-  });
 
-  it('不正なJSONは 0 勝', () => {
-    expect(countRoundWins('invalid')).toBe(0);
-    expect(countRoundWins('{"a":1}')).toBe(0);
-  });
-
-  it('通常勝利（1）を数える', () => {
-    expect(countRoundWins('[1,1]')).toBe(2);
-    expect(countRoundWins('[1,0,1]')).toBe(2);
-  });
-
-  it('0 は負けとして数えない', () => {
-    expect(countRoundWins('[0,0]')).toBe(0);
-    expect(countRoundWins('[1,0]')).toBe(1);
-  });
-
-  it('0 以外の勝利方法ID（2/3/5/6/7/8）を勝利として数える（ADR-037）', () => {
-    expect(countRoundWins('[0,2,0]')).toBe(1);
-    expect(countRoundWins('[5,1]')).toBe(2);
-    expect(countRoundWins('[6,1,0]')).toBe(2);
-    expect(countRoundWins('[8,1]')).toBe(2);
-    expect(countRoundWins('[7,3]')).toBe(2);
-  });
-});
-
-describe('determineResultFromRounds', () => {
-  it('勝利ラウンド数が多い方を勝ちとする', () => {
-    expect(determineResultFromRounds('[1,1]', '[0,0]')).toBe('win');
-    expect(determineResultFromRounds('[0,0]', '[1,1]')).toBe('loss');
-  });
-
-  it('ADR-037の具体例（Chip KO の 2 を単純合計すると draw になるケース）', () => {
-    // P1: [1,0,1] → 2勝 / P2: [0,2,0] → 1勝
-    expect(determineResultFromRounds('[1,0,1]', '[0,2,0]')).toBe('win');
-  });
-
-  it('同数は引き分け', () => {
-    expect(determineResultFromRounds('[1,0]', '[1,0]')).toBe('draw');
-    expect(determineResultFromRounds('[0,0]', '[0]')).toBe('draw');
-  });
-
-  it('round_results が NULL 同士は引き分け', () => {
-    expect(determineResultFromRounds(null, null)).toBe('draw');
-  });
-});

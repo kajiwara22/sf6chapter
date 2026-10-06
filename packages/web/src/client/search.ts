@@ -5,6 +5,11 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow } from './types';
 import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow } from '@shared/types';
+import { determineResultFromRounds } from '@shared/rounds';
+
+// ラウンド判定は shared/rounds.ts に集約（ADR-047）。既存の利用箇所向けに re-export する。
+export { countRoundWins, determineResultFromRounds, parseRoundIds, getRound, ROUNDS } from '@shared/rounds';
+export type { Round, RoundOutcome } from '@shared/rounds';
 
 let instance: DuckDBInstance | null = null;
 
@@ -642,7 +647,13 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
       b.replay_id,
       COALESCE(b.uploaded_at, m.videoPublishedAt::TIMESTAMP) AS uploaded_at,
       m.videoId AS video_id,
-      m.startTime AS start_time
+      m.startTime AS start_time,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p1_round_results
+           WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p2_round_results
+           ELSE NULL END AS my_rounds,
+      CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_round_results
+           WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p1_round_results
+           ELSE NULL END AS opp_rounds
     FROM battlelog_replays b
     FULL OUTER JOIN matches m ON b.replay_id = m.battlelogReplayId
     ${whereClause}
@@ -657,19 +668,33 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
 
   const rows = result.toArray() as unknown as MatchHistoryQueryRow[];
 
-  return rows.map((row) => ({
-    myCharacter: row.my_character,
-    myInputType: row.my_input_type != null ? Number(row.my_input_type) : null,
-    result: (row.result as 'win' | 'loss' | 'draw') ?? null,
-    opponentName: row.opponent_name ?? null,
-    opponentCharacter: row.opponent_character,
-    opponentInputType: row.opponent_input_type != null ? Number(row.opponent_input_type) : null,
-    battleTypeName: row.battle_type_name ?? null,
-    replayId: row.replay_id ?? null,
-    uploadedAt: String(row.uploaded_at),  // DuckDBのTIMESTAMPはUnixミリ秒の数値で返る
-    videoId: row.video_id ?? null,
-    startTime: row.start_time != null ? Number(row.start_time) : null,
-  }));
+  return rows.map((row) => {
+    const myRounds = row.my_rounds ?? null;
+    const oppRounds = row.opp_rounds ?? null;
+
+    // Battlelog の行は round_results 起点で勝敗を判定する（ADR-047）。
+    // round_results が無い（YouTube側のみの）行は matches の result にフォールバックする。
+    const resultValue: MatchHistoryRow['result'] =
+      myRounds != null && oppRounds != null
+        ? determineResultFromRounds(myRounds, oppRounds)
+        : ((row.result as MatchHistoryRow['result']) ?? null);
+
+    return {
+      myCharacter: row.my_character,
+      myInputType: row.my_input_type != null ? Number(row.my_input_type) : null,
+      result: resultValue,
+      myRounds,
+      oppRounds,
+      opponentName: row.opponent_name ?? null,
+      opponentCharacter: row.opponent_character,
+      opponentInputType: row.opponent_input_type != null ? Number(row.opponent_input_type) : null,
+      battleTypeName: row.battle_type_name ?? null,
+      replayId: row.replay_id ?? null,
+      uploadedAt: String(row.uploaded_at),  // DuckDBのTIMESTAMPはUnixミリ秒の数値で返る
+      videoId: row.video_id ?? null,
+      startTime: row.start_time != null ? Number(row.start_time) : null,
+    };
+  });
 }
 
 /**
@@ -691,49 +716,6 @@ export async function getMatchHistoryOpponentCharacters(): Promise<string[]> {
 
   const rows = result.toArray() as unknown as { character: string }[];
   return rows.map((row) => row.character);
-}
-
-/**
- * round_results（各ラウンドの勝利方法IDのJSON配列）から勝利ラウンド数を数える
- *
- * Battlelog の round_results の各要素はラウンドの決着方法IDを表す（ADR-037）:
- *   0=LOSS / 1=V / 2=C / 3=T / 5=OD / 6=SA / 7=CA / 8=P
- * 値が 0 より大きいラウンドを勝利としてカウントする。
- */
-export function countRoundWins(roundResultsJson: string | null | undefined): number {
-  if (!roundResultsJson) return 0;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(roundResultsJson);
-  } catch {
-    return 0;
-  }
-
-  if (!Array.isArray(parsed)) return 0;
-
-  let wins = 0;
-  for (const value of parsed) {
-    const n = Number(value);
-    if (Number.isFinite(n) && n > 0) wins += 1;
-  }
-  return wins;
-}
-
-/**
- * 自分視点・相手視点の round_results から勝敗を判定する
- * 勝利ラウンド数が多い方を勝ちとし、同数なら引き分け（ADR-037 の判定規則）
- */
-export function determineResultFromRounds(
-  myRounds: string | null | undefined,
-  oppRounds: string | null | undefined,
-): 'win' | 'loss' | 'draw' {
-  const myWins = countRoundWins(myRounds);
-  const oppWins = countRoundWins(oppRounds);
-
-  if (myWins > oppWins) return 'win';
-  if (myWins < oppWins) return 'loss';
-  return 'draw';
 }
 
 /**
