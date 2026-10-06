@@ -5,8 +5,8 @@ description = "SF6 Battlelogレポート生成ツール（AI分析連携用Markd
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "duckdb>=1.5.5",
-    "boto3>=1.43.103",
+    "duckdb>=1.5.6",
+    "boto3>=1.43.108",
     "pytz>=2026.4",
 ]
 
@@ -19,7 +19,7 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.9",
+    "ruff>=0.16.10",
 ]
 
 [tool.ruff]
