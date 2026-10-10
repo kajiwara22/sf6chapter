@@ -247,6 +247,104 @@ export interface LpHistoryFilters {
   timeTo?: string;
 }
 
+/** gauges JSON の1サイド分の時系列データ（ADR-048） */
+export interface GaugeSideData {
+  /** ラウンド内で HUD を計測できた最初の経過秒 */
+  visibleFrom: number;
+  /** ラウンド内で HUD を計測できた最後の経過秒 */
+  visibleTo: number;
+  /** ドライブを計測できたサンプル率（0〜1、1.0 に近いほど良好） */
+  coverage: number;
+  /** ドライブ本数の変化点列 [経過秒, 本数(0〜6)] */
+  drive: [number, number][];
+  /** バーンアウト期間 [開始経過秒, 終了経過秒] */
+  driveBurnout: [number, number][];
+  /** SAストック数の変化点列 [経過秒, ストック(0〜3)] */
+  sa: [number, number][];
+  /** 次ストックへの進捗の変化点列 [経過秒, 進捗(0〜1)] */
+  saProgress: [number, number][];
+  /** CA（クリティカルアート）表示期間 [開始経過秒, 終了経過秒] */
+  saCriticalArt: [number, number][];
+}
+
+/** gauges JSON の1ラウンド分（ADR-048） */
+export interface GaugeRound {
+  /** ラウンド番号（1始まり） */
+  round: number;
+  /** ラウンド開始の動画内絶対時刻（秒） */
+  roundStartTime: number;
+  /** ラウンド終了の動画内絶対時刻（秒） */
+  roundEndTime: number;
+  /** ラウンド終了理由（next_round / match_end など） */
+  endReason: string;
+  /** ROUND バナーを検出できたか */
+  bannerDetected: boolean;
+  /** 1P 側の時系列データ */
+  player1: GaugeSideData;
+  /** 2P 側の時系列データ */
+  player2: GaugeSideData;
+}
+
+/** gauges/{matchId}.json の内容（ADR-048） */
+export interface GaugeData {
+  /** YouTube動画ID */
+  videoId: string;
+  /** 試合ID（matches.id と一致） */
+  matchId: string;
+  /** 動画から検出したラウンド数 */
+  detectedRoundCount?: number;
+  /** Battlelog の round_results のラウンド数 */
+  battlelogRoundCount?: number | null;
+  /** 動画と Battlelog のラウンド数が一致したか */
+  roundCountMatch?: boolean | null;
+  /** ラウンド一覧 */
+  rounds: GaugeRound[];
+}
+
+/** round_stats.parquet の1行（ADR-048） */
+export interface RoundStatsRow {
+  /** YouTube動画ID */
+  videoId: string;
+  /** 試合ID（matches.id と一致） */
+  matchId: string;
+  /** ラウンド番号（1始まり） */
+  round: number;
+  /** サイド（生データのまま） */
+  side: 'player1' | 'player2';
+  /** キャラクター名（matches に無い場合は null） */
+  character: string | null;
+  /** HUD 表示区間の開始（動画内絶対秒） */
+  roundStartTime: number;
+  /** HUD 表示区間の終了（動画内絶対秒） */
+  roundEndTime: number;
+  /** HUD 表示区間の長さ（秒） */
+  durationSec: number;
+  /** ドライブ本数の最小値 */
+  driveMin: number | null;
+  /** ドライブ本数の時間重み付き平均 */
+  driveAvg: number | null;
+  /** ドライブ本数の最終値 */
+  driveEnd: number | null;
+  /** 到達した最大 SA ストック数 */
+  saMax: number | null;
+  /** SA ストックが減少した回数 */
+  saUsedCount: number | null;
+  /** 計測できたサンプル率 */
+  detectionCoverage: number | null;
+}
+
+/** 自分視点判定用の Battlelog サイド情報 */
+export interface MatchBattlelogSides {
+  /** Battlelog 1P のプレイヤー short_id */
+  p1ShortId: number;
+  /** Battlelog 2P のプレイヤー short_id */
+  p2ShortId: number;
+  /** Battlelog 1P のキャラクター名 */
+  p1Character: string;
+  /** Battlelog 2P のキャラクター名 */
+  p2Character: string;
+}
+
 /** ヘルスチェックレスポンス */
 export interface HealthResponse {
   status: 'ok' | 'error';

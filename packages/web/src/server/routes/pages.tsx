@@ -161,6 +161,11 @@ pages.get('/', (c) => {
               </div>
             </section>
 
+            <!-- ゲージ詳細パネル（ADR-048） -->
+            <section class="match-detail-section">
+              <div id="match-detail" class="match-detail" style="display: none;"></div>
+            </section>
+
             </div><!-- /view-search -->
 
             <!-- ========== マッチアップチャートビュー ========== -->

@@ -126,6 +126,71 @@ api.get('/data/index/battlelog_replays.parquet', async (context) => {
 });
 
 /**
+ * GET /api/data/index/round_stats.parquet
+ * ラウンド統計 Parquet ファイルの Presigned URL を返却（ADR-048）
+ */
+api.get('/data/index/round_stats.parquet', async (context) => {
+  try {
+    const { R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_BUCKET_NAME,R2_SECRET_ACCESS_KEY } = env(context)
+    const s3Client = createS3Client(R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY);
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: 'round_stats.parquet',
+    });
+
+    const expiresIn = 3600; // 1時間
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+    const response: PresignedUrlResponse = {
+      url,
+      expiresIn,
+    };
+
+    return context.json(response);
+  } catch (error) {
+    console.error('Failed to generate presigned URL for round_stats.parquet:', error);
+    return context.json({ error: 'Failed to generate presigned URL' }, 500);
+  }
+});
+
+/**
+ * GET /api/data/gauges/:filename
+ * ゲージ詳細JSON（gauges/{matchId}.json）の Presigned URL を返却（ADR-048）
+ *
+ * ファイル名は matchId（例: DSgD_bQhxp0_21.json）のみを許可する。
+ */
+api.get('/data/gauges/:filename', async (context) => {
+  const filename = context.req.param('filename');
+
+  // パストラバーサル防止 + JSONのみ許可
+  if (!filename.endsWith('.json') || filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+    return context.json({ error: 'Invalid gauge filename' }, 400);
+  }
+
+  try {
+    const { R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_BUCKET_NAME,R2_SECRET_ACCESS_KEY } = env(context)
+    const s3Client = createS3Client(R2_ENDPOINT_URL,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY);
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `gauges/${filename}`,
+    });
+
+    const expiresIn = 3600; // 1時間
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+    const response: PresignedUrlResponse = {
+      url,
+      expiresIn,
+    };
+
+    return context.json(response);
+  } catch (error) {
+    console.error('Failed to generate presigned URL for gauges:', error);
+    return context.json({ error: 'Failed to generate presigned URL' }, 500);
+  }
+});
+
+/**
  * GET /api/data/videos/:filename
  * 生JSONファイルを取得（デバッグ用）- 従来通りR2 Bindingから取得
  */

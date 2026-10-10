@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, MatchBattlelogSidesQueryRow } from './types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, MatchBattlelogSides } from '@shared/types';
 import { determineResultFromRounds } from '@shared/rounds';
 
 // ラウンド判定は shared/rounds.ts に集約（ADR-047）。既存の利用箇所向けに re-export する。
@@ -134,6 +134,37 @@ export async function loadBattlelogParquetData(): Promise<void> {
   `);
 
   console.log('[DuckDB] Battlelog Parquet data loaded (battlelog_replays table)');
+}
+
+/**
+ * ラウンド統計（round_stats.parquet）をロード（ADR-048）
+ *
+ * ファイルが存在しない場合は例外を投げる。呼び出し側で catch して
+ * 「集計データなし」扱いにすること。
+ */
+export async function loadRoundStatsParquetData(): Promise<void> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  console.log('[DuckDB] Loading round_stats Parquet data...');
+
+  // 1. APIからPresigned URLを取得
+  const presignedUrl = await getPresignedUrl('/api/data/index/round_stats.parquet');
+
+  // 2. Presigned URLからParquetデータをダウンロード
+  const parquetData = await downloadParquet(presignedUrl);
+
+  // 3. DuckDBに登録
+  await instance.db.registerFileBuffer('round_stats.parquet', new Uint8Array(parquetData));
+
+  // 4. round_statsテーブルを作成
+  await instance.conn.query(`
+    CREATE TABLE IF NOT EXISTS round_stats AS
+    SELECT * FROM read_parquet('round_stats.parquet')
+  `);
+
+  console.log('[DuckDB] round_stats Parquet data loaded (round_stats table)');
 }
 
 /**
@@ -377,7 +408,7 @@ export async function getCharacters(): Promise<string[]> {
 }
 
 /** 自分のプレイヤーID */
-const MY_PLAYER_ID = 1319673732;
+export const MY_PLAYER_ID = 1319673732;
 
 /** 入力タイプ名のマッピング */
 const INPUT_TYPE_NAMES: Record<number, string> = {
@@ -811,6 +842,131 @@ export async function getLatestLp(): Promise<number | null> {
   if (rows.length === 0) return null;
 
   return Number(rows[0].league_point);
+}
+
+/** gauges JSON の簡易キャッシュ（matchId -> GaugeData） */
+const gaugesCache = new Map<string, GaugeData>();
+
+/**
+ * gauges/{matchId}.json を取得する（ADR-048）
+ *
+ * - Presigned URL 経由で R2 からオンデマンド取得する
+ * - matchId 単位でキャッシュし、同じ試合の再表示では再取得しない
+ * - ファイルが存在しない場合は null を返し、例外を投げない（画面を壊さないため）
+ */
+export async function fetchGaugesJson(matchId: string): Promise<GaugeData | null> {
+  const cached = gaugesCache.get(matchId);
+  if (cached) return cached;
+
+  try {
+    const presignedUrl = await getPresignedUrl(`/api/data/gauges/${encodeURIComponent(matchId)}.json`);
+    const response = await fetch(presignedUrl);
+    if (!response.ok) {
+      console.warn(`[DuckDB] gauges JSON not found for ${matchId}: ${response.status}`);
+      return null;
+    }
+
+    const data = (await response.json()) as GaugeData;
+    gaugesCache.set(matchId, data);
+    return data;
+  } catch (error) {
+    console.warn(`[DuckDB] Failed to fetch gauges JSON for ${matchId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * gauges JSON の簡易キャッシュをクリアする
+ */
+export function clearGaugesCache(): void {
+  gaugesCache.clear();
+}
+
+/**
+ * 試合単位のラウンド統計を取得する（ADR-048）
+ *
+ * round_stats テーブルが存在しない（round_stats.parquet 未配置）場合は
+ * 呼び出し側で catch して空配列にすること。
+ */
+export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const query = `
+    SELECT
+      videoId, matchId, round, side, character,
+      roundStartTime, roundEndTime, durationSec,
+      driveMin, driveAvg, driveEnd, saMax, saUsedCount, detectionCoverage
+    FROM round_stats
+    WHERE matchId = $1
+    ORDER BY round ASC, side ASC
+  `;
+
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(matchId);
+  await stmt.close();
+
+  const rows = result.toArray() as unknown as RoundStatsQueryRow[];
+
+  return rows.map((row) => ({
+    videoId: row.videoId,
+    matchId: row.matchId,
+    round: Number(row.round),
+    side: row.side === 'player2' ? 'player2' : 'player1',
+    character: row.character ?? null,
+    roundStartTime: Number(row.roundStartTime),
+    roundEndTime: Number(row.roundEndTime),
+    durationSec: Number(row.durationSec),
+    driveMin: row.driveMin == null ? null : Number(row.driveMin),
+    driveAvg: row.driveAvg == null ? null : Number(row.driveAvg),
+    driveEnd: row.driveEnd == null ? null : Number(row.driveEnd),
+    saMax: row.saMax == null ? null : Number(row.saMax),
+    saUsedCount: row.saUsedCount == null ? null : Number(row.saUsedCount),
+    detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
+  }));
+}
+
+/**
+ * 試合に対応する Battlelog の両サイド情報を取得する（ADR-048 の自分視点判定用）
+ *
+ * matches.battlelogReplayId を経由して battlelog_replays を引き、
+ * p1/p2 の short_id とキャラクター名を返す。未マッチ・テーブル未ロード時は null。
+ */
+export async function queryMatchBattlelogSides(matchId: string): Promise<MatchBattlelogSides | null> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  try {
+    const query = `
+      SELECT
+        b.p1_short_id, b.p2_short_id,
+        b.p1_character_name, b.p2_character_name
+      FROM matches m
+      JOIN battlelog_replays b ON b.replay_id = m.battlelogReplayId
+      WHERE m.id = $1
+      LIMIT 1
+    `;
+
+    const stmt = await instance.conn.prepare(query);
+    const result = await stmt.query(matchId);
+    await stmt.close();
+
+    const rows = result.toArray() as unknown as MatchBattlelogSidesQueryRow[];
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      p1ShortId: Number(row.p1_short_id),
+      p2ShortId: Number(row.p2_short_id),
+      p1Character: row.p1_character_name ?? '',
+      p2Character: row.p2_character_name ?? '',
+    };
+  } catch (error) {
+    console.warn(`[DuckDB] Failed to query battlelog sides for ${matchId}:`, error);
+    return null;
+  }
 }
 
 /**

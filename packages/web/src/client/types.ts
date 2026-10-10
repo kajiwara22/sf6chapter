@@ -72,6 +72,8 @@ export const DOM_IDS = {
   LP_ERROR: 'lp-error',
   LP_MA_ENABLED: 'lp-ma-enabled',
   LP_MA_WINDOW: 'lp-ma-window',
+  // ゲージ詳細パネル（ADR-048）
+  MATCH_DETAIL: 'match-detail',
 } as const;
 
 /** クエリ結果の行 */
@@ -141,4 +143,30 @@ export interface LpHistoryQueryRow {
   my_rounds: string | null;
   /** 相手視点の round_results（JSON配列文字列） */
   opp_rounds: string | null;
+}
+
+/** round_stats のDuckDBクエリ結果行（ADR-048） */
+export interface RoundStatsQueryRow {
+  videoId: string;
+  matchId: string;
+  round: number | bigint;
+  side: string;
+  character: string | null;
+  roundStartTime: number | bigint;
+  roundEndTime: number | bigint;
+  durationSec: number | bigint;
+  driveMin: number | bigint | null;
+  driveAvg: number | bigint | null;
+  driveEnd: number | bigint | null;
+  saMax: number | bigint | null;
+  saUsedCount: number | bigint | null;
+  detectionCoverage: number | bigint | null;
+}
+
+/** Battlelog サイド情報のDuckDBクエリ結果行（ADR-048） */
+export interface MatchBattlelogSidesQueryRow {
+  p1_short_id: number | bigint;
+  p2_short_id: number | bigint;
+  p1_character_name: string | null;
+  p2_character_name: string | null;
 }

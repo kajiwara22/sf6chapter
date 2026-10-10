@@ -1138,6 +1138,364 @@ body {
 }
 
 /* ========================================
+   ゲージ詳細パネル（ADR-048）
+   ======================================== */
+.match-card-clickable {
+  cursor: pointer;
+}
+
+.match-detail-hint {
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.match-detail-section {
+  margin-top: var(--space-lg);
+}
+
+.match-detail {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-hover);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-lg);
+}
+
+.match-detail-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.match-detail-header {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+  padding-right: 40px;
+}
+
+.match-detail-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.match-detail-title h3 {
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.match-detail-time {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.match-detail-players {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.875rem;
+}
+
+.match-detail-player1 strong {
+  color: var(--color-primary);
+}
+
+.match-detail-player2 strong {
+  color: var(--color-accent);
+}
+
+.match-detail-vs {
+  color: var(--color-text-muted);
+  font-family: var(--font-display);
+  letter-spacing: 0.15em;
+}
+
+.match-detail-youtube {
+  color: var(--color-error);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+}
+
+.match-detail-youtube:hover {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.match-detail-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px 10px;
+}
+
+.match-detail-close:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+/* ゲージチャート */
+.gg-rounds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.gg-round {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.gg-round-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.gg-round-title {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  letter-spacing: 0.04em;
+}
+
+.gg-round-time {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.gg-round-warning {
+  color: var(--color-warning);
+  font-size: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+
+.gg-round-link {
+  margin-left: auto;
+  color: var(--color-error);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.gg-round-link:hover {
+  text-decoration: underline;
+}
+
+.gg-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-xs);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.gg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gg-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.gg-legend-swatch-player1 {
+  background: var(--color-primary);
+}
+
+.gg-legend-swatch-player2 {
+  background: var(--color-accent);
+}
+
+.gg-legend-note {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.gg-chart-block + .gg-chart-block {
+  margin-top: var(--space-sm);
+}
+
+.gg-chart-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin-bottom: 2px;
+}
+
+.gg-svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.gg-plot-bg {
+  fill: rgba(0, 0, 0, 0.18);
+}
+
+.gg-grid-line {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1;
+}
+
+.gg-grid-line-v {
+  stroke-dasharray: 4 4;
+}
+
+.gg-axis-line {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.gg-axis-label {
+  fill: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.gg-band-player1 {
+  fill: rgba(255, 77, 77, 0.16);
+}
+
+.gg-band-player2 {
+  fill: rgba(0, 212, 255, 0.16);
+}
+
+.gg-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.gg-line-player1 {
+  stroke: var(--color-primary);
+}
+
+.gg-line-player2 {
+  stroke: var(--color-accent);
+}
+
+.gg-marker-player1 {
+  fill: var(--color-primary);
+  opacity: 0.9;
+}
+
+.gg-marker-player2 {
+  fill: var(--color-accent);
+  opacity: 0.9;
+}
+
+/* 集計テーブル */
+.gg-stats-label {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: var(--space-xs);
+}
+
+.gg-stats-scroll {
+  overflow-x: auto;
+}
+
+.gg-stats-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+.gg-stats-table th,
+.gg-stats-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-xs) var(--space-sm);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.gg-stats-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.gg-stats-table td:first-child,
+.gg-stats-table td:nth-child(2),
+.gg-stats-table td:nth-child(3),
+.gg-stats-table th:first-child,
+.gg-stats-table th:nth-child(2),
+.gg-stats-table th:nth-child(3) {
+  text-align: left;
+}
+
+.gg-stats-side-player1 {
+  color: var(--color-primary);
+}
+
+.gg-stats-side-player2 {
+  color: var(--color-accent);
+}
+
+.gg-empty {
+  color: var(--color-text-muted);
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.gg-notice {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  color: var(--color-warning);
+  font-size: 0.8125rem;
+  padding: var(--space-xs) var(--space-sm);
+}
+
+.gg-loading {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+.gg-error {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  color: var(--color-error);
+  padding: var(--space-sm) var(--space-md);
+}
+
+/* ========================================
    レスポンシブ
    ======================================== */
 @media (max-width: 768px) {
