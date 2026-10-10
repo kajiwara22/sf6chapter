@@ -360,6 +360,9 @@ class SF6ChapterProcessor:
             match_gauges["detectedRoundCount"] = detected
             match_gauges["battlelogRoundCount"] = expected
             match_gauges["roundCountMatch"] = None if expected is None else detected == expected
+            # ADR-051: 試合の勝敗をゲージ詳細 JSON にも保持（未マッチ時は None）
+            match_gauges["player1Result"] = chapter.get("player1_result")
+            match_gauges["player2Result"] = chapter.get("player2_result")
             if expected is not None and detected != expected:
                 logger.warning(
                     "[Gauge] round count mismatch for %s: detected=%d battlelog=%d",
@@ -378,9 +381,23 @@ class SF6ChapterProcessor:
         self.gauge_analyzer.write_samples_csv(gauge_dir / "gauges_samples.csv")
         self.gauge_analyzer.save_snapshots(gauge_dir / "roi")
 
-        # 集計用の行（round_stats.parquet）。カウンター計測結果（ADR-049）も同じ行にマージする
+        # 集計用の行（round_stats.parquet）。カウンター計測結果（ADR-049）とラウンド勝敗（ADR-051）も同じ行にマージする
         counter_result = getattr(self, "counter_result", None)
-        stats_rows = build_round_stats_rows(self.gauge_result, matches, counter_result=counter_result)
+        round_results_by_match = {
+            chapter["matchId"]: {
+                "player1": chapter.get("player1_round_results") or [],
+                "player2": chapter.get("player2_round_results") or [],
+            }
+            for chapter in chapters_with_result
+            if chapter.get("matchId")
+            and (chapter.get("player1_round_results") is not None or chapter.get("player2_round_results") is not None)
+        }
+        stats_rows = build_round_stats_rows(
+            self.gauge_result,
+            matches,
+            counter_result=counter_result,
+            round_results_by_match=round_results_by_match,
+        )
 
         # ADR-050: 体力の実数値計算に使う最大体力表の確認（未知キャラは警告）
         health_table = load_character_health(str(default_health_path(app_root)))

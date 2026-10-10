@@ -56,6 +56,7 @@
 | [048](./048-round-drive-sa-gauge-timeline-capture.md) | ラウンド単位のドライブゲージ・SAゲージ時系列取得 | 採用 | 2026-10-10 |
 | [049](./049-round-counter-count-capture.md) | ラウンド単位のカウンター・パニッシュカウンター回数取得 | 採用 | 2026-10-10 |
 | [050](./050-health-gauge-timeline-and-integrated-view.md) | ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示 | 採用 | 2026-10-10 |
+| [051](./051-match-detail-page-and-round-stats-redesign.md) | ゲージ詳細ページの独立化とラウンド集計項目の改善視点での再設計 | 採用 | 2026-10-10 |
 
 ## ADRのフォーマット
 

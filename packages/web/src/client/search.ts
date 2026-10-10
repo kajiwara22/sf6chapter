@@ -340,6 +340,62 @@ export async function searchMatches(filters: SearchFilters): Promise<Match[]> {
 }
 
 /**
+ * 試合IDで1件取得する（ゲージ詳細ページ用、ADR-051）
+ *
+ * 見つからない場合は null を返す。
+ */
+export async function queryMatchById(matchId: string): Promise<Match | null> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const query = `
+    SELECT
+      id, videoId, videoTitle, videoPublishedAt, startTime,
+      player1.character as player1_character, player1.side as player1_side, player1.result as player1_result,
+      player2.character as player2_character, player2.side as player2_side, player2.result as player2_result,
+      detectedAt, confidence,
+      battlelogMatched, battlelogConfidence, battlelogReplayId, battlelogTimeDiff
+    FROM matches
+    WHERE id = $1
+    LIMIT 1
+  `;
+
+  const stmt = await instance.conn.prepare(query);
+  const result = await stmt.query(matchId);
+  await stmt.close();
+
+  const rows = result.toArray() as unknown as any[];
+  if (rows.length === 0) return null;
+
+  const row = rows[0];
+  return {
+    id: row.id,
+    videoId: row.videoId,
+    videoTitle: row.videoTitle,
+    videoPublishedAt: row.videoPublishedAt,
+    startTime: Number(row.startTime),
+    endTime: undefined,
+    player1: {
+      character: row.player1_character,
+      side: row.player1_side as 'left' | 'right',
+      result: (row.player1_result as 'win' | 'loss' | undefined) ?? undefined,
+    },
+    player2: {
+      character: row.player2_character,
+      side: row.player2_side as 'left' | 'right',
+      result: (row.player2_result as 'win' | 'loss' | undefined) ?? undefined,
+    },
+    detectedAt: row.detectedAt,
+    confidence: row.confidence,
+    battlelogMatched: row.battlelogMatched ?? undefined,
+    battlelogConfidence: (row.battlelogConfidence as 'high' | 'medium' | 'low' | undefined) ?? undefined,
+    battlelogReplayId: row.battlelogReplayId ?? undefined,
+    battlelogTimeDiff: row.battlelogTimeDiff ?? undefined,
+  };
+}
+
+/**
  * 統計情報を取得
  */
 export async function getStats(): Promise<Stats> {
@@ -993,11 +1049,38 @@ async function roundStatsHasHealthColumns(): Promise<boolean> {
   try {
     const info = await instance.conn.query("PRAGMA table_info('round_stats')");
     const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
-    roundStatsHealthColumnsCache = names.includes('healthMin') && names.includes('healthAvg') && names.includes('healthEnd');
+    roundStatsHealthColumnsCache = names.includes('healthMin') && names.includes('healthEnd');
   } catch {
     roundStatsHealthColumnsCache = false;
   }
   return roundStatsHealthColumnsCache;
+}
+
+/**
+ * round_stats に改善指標列（ADR-051）が存在するかを判定する
+ *
+ * 旧 Parquet（ADR-051 適用前に生成されたもの）には列が無いため、
+ * SELECT で列参照エラーにならないよう存在確認してから問い合わせる。
+ */
+let roundStatsImprovementColumnsCache: boolean | null = null;
+
+async function roundStatsHasImprovementColumns(): Promise<boolean> {
+  if (roundStatsImprovementColumnsCache !== null) return roundStatsImprovementColumnsCache;
+  if (!instance) return false;
+  try {
+    const info = await instance.conn.query("PRAGMA table_info('round_stats')");
+    const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
+    roundStatsImprovementColumnsCache =
+      names.includes('roundResult') &&
+      names.includes('roundMethod') &&
+      names.includes('saLeftAtEnd') &&
+      names.includes('maxHitTaken') &&
+      names.includes('burnoutCount') &&
+      names.includes('burnoutSec');
+  } catch {
+    roundStatsImprovementColumnsCache = false;
+  }
+  return roundStatsImprovementColumnsCache;
 }
 
 /**
@@ -1049,13 +1132,15 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
 
   const withCounters = await roundStatsHasCounterColumns();
   const withHealth = await roundStatsHasHealthColumns();
+  const withImprovement = await roundStatsHasImprovementColumns();
   const query = `
     SELECT
       videoId, matchId, round, side, character,
       roundStartTime, roundEndTime, durationSec,
-      driveMin, driveAvg, driveEnd, saMax, saUsedCount, detectionCoverage
+      driveMin, driveEnd, saMax, saUsedCount, detectionCoverage
       ${withCounters ? ', counterCount, punishCounterCount' : ''}
-      ${withHealth ? ', healthMin, healthAvg, healthEnd' : ''}
+      ${withHealth ? ', healthMin, healthEnd' : ''}
+      ${withImprovement ? ', roundResult, roundMethod, saLeftAtEnd, maxHitTaken, burnoutCount, burnoutSec' : ''}
     FROM round_stats
     WHERE matchId = $1
     ORDER BY round ASC, side ASC
@@ -1076,17 +1161,24 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     roundStartTime: Number(row.roundStartTime),
     roundEndTime: Number(row.roundEndTime),
     durationSec: Number(row.durationSec),
+    roundResult:
+      row.roundResult === 'win' || row.roundResult === 'loss' || row.roundResult === 'draw'
+        ? row.roundResult
+        : null,
+    roundMethod: row.roundMethod == null ? null : String(row.roundMethod),
     driveMin: row.driveMin == null ? null : Number(row.driveMin),
-    driveAvg: row.driveAvg == null ? null : Number(row.driveAvg),
     driveEnd: row.driveEnd == null ? null : Number(row.driveEnd),
     saMax: row.saMax == null ? null : Number(row.saMax),
     saUsedCount: row.saUsedCount == null ? null : Number(row.saUsedCount),
+    saLeftAtEnd: row.saLeftAtEnd == null ? null : Number(row.saLeftAtEnd),
     detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
+    healthMin: row.healthMin == null ? null : Number(row.healthMin),
+    healthEnd: row.healthEnd == null ? null : Number(row.healthEnd),
+    maxHitTaken: row.maxHitTaken == null ? null : Number(row.maxHitTaken),
+    burnoutCount: row.burnoutCount == null ? null : Number(row.burnoutCount),
+    burnoutSec: row.burnoutSec == null ? null : Number(row.burnoutSec),
     counterCount: row.counterCount == null ? null : Number(row.counterCount),
     punishCounterCount: row.punishCounterCount == null ? null : Number(row.punishCounterCount),
-    healthMin: row.healthMin == null ? null : Number(row.healthMin),
-    healthAvg: row.healthAvg == null ? null : Number(row.healthAvg),
-    healthEnd: row.healthEnd == null ? null : Number(row.healthEnd),
   }));
 }
 
@@ -1094,7 +1186,7 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
  * 試合に対応する Battlelog の両サイド情報を取得する（ADR-048 の自分視点判定用）
  *
  * matches.battlelogReplayId を経由して battlelog_replays を引き、
- * p1/p2 の short_id とキャラクター名を返す。未マッチ・テーブル未ロード時は null。
+ * p1/p2 の short_id・キャラクター名・LP/MR を返す。未マッチ・テーブル未ロード時は null。
  */
 export async function queryMatchBattlelogSides(matchId: string): Promise<MatchBattlelogSides | null> {
   if (!instance) {
@@ -1105,7 +1197,9 @@ export async function queryMatchBattlelogSides(matchId: string): Promise<MatchBa
     const query = `
       SELECT
         b.p1_short_id, b.p2_short_id,
-        b.p1_character_name, b.p2_character_name
+        b.p1_character_name, b.p2_character_name,
+        b.p1_league_point, b.p2_league_point,
+        b.p1_master_rating, b.p2_master_rating
       FROM matches m
       JOIN battlelog_replays b ON b.replay_id = m.battlelogReplayId
       WHERE m.id = $1
@@ -1125,6 +1219,10 @@ export async function queryMatchBattlelogSides(matchId: string): Promise<MatchBa
       p2ShortId: Number(row.p2_short_id),
       p1Character: row.p1_character_name ?? '',
       p2Character: row.p2_character_name ?? '',
+      p1LeaguePoint: row.p1_league_point == null ? null : Number(row.p1_league_point),
+      p2LeaguePoint: row.p2_league_point == null ? null : Number(row.p2_league_point),
+      p1MasterRating: row.p1_master_rating == null ? null : Number(row.p1_master_rating),
+      p2MasterRating: row.p2_master_rating == null ? null : Number(row.p2_master_rating),
     };
   } catch (error) {
     console.warn(`[DuckDB] Failed to query battlelog sides for ${matchId}:`, error);

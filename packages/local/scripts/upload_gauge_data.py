@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""round_stats / gauges の R2 反映 CLI（ADR-048/049/050）
+"""round_stats / gauges の R2 反映 CLI（ADR-048/049/050/051）
 
 `intermediate/{videoId}/` に出力済みの計測結果を R2 に反映する。
 
 アップロードするもの:
 - `gauges/{matchId}.json`        … Web 詳細パネル用の変化点（ドライブ・SA・体力）
-- `round_stats.parquet`          … 集計（1行=1ラウンド×1サイド。カウンター・体力列を含む）
+- `round_stats.parquet`          … 集計（1行=1ラウンド×1サイド。勝敗・ゲージ・体力・バーンアウト・カウンター列を含む）
 - `config/character_health.json` … 実 HP 計算用の最大体力表（単一ソース）
 
 入力（`analyze_counters.py` / `analyze_gauges.py` / 本線パイプラインが出力）:
@@ -75,18 +75,24 @@ def load_env_file(path: Path) -> None:
     logger.info("[Env] %s から %d 件の環境変数を読み込みました", path, loaded)
 
 
-def parse_round_count(round_results: Any) -> int | None:
-    """Battlelog の round_results（`'[0, 0]'` 形式の文字列）からラウンド数を返す"""
-    if round_results is None:
-        return None
-    if isinstance(round_results, str):
+def parse_round_results(value: Any) -> list[int]:
+    """Battlelog の round_results（`'[0, 0]'` 形式の文字列）を int のリストにする"""
+    if value is None:
+        return []
+    if isinstance(value, str):
         try:
-            round_results = json.loads(round_results)
+            value = json.loads(value)
         except (ValueError, TypeError):
-            return None
-    if isinstance(round_results, list):
-        return len(round_results)
-    return None
+            return []
+    if isinstance(value, list):
+        return [int(item) for item in value]
+    return []
+
+
+def parse_round_count(round_results: Any) -> int | None:
+    """Battlelog の round_results からラウンド数を返す"""
+    results = parse_round_results(round_results)
+    return len(results) if results else None
 
 
 def _get_bytes(s3_client: Any, bucket: str, key: str) -> bytes | None:
@@ -102,67 +108,75 @@ def _get_bytes(s3_client: Any, bucket: str, key: str) -> bytes | None:
         raise
 
 
-class RoundCountResolver:
-    """Battlelog のラウンド数を matchId 単位で解決する（ADR-048 決定4）"""
+class BattlelogResolver:
+    """Battlelog のラウンド結果（勝敗・勝利方法・ラウンド数）を matchId 単位で解決する（ADR-048/051）"""
 
     def __init__(self, s3_client: Any, bucket: str):
         self.s3_client = s3_client
         self.bucket = bucket
-        self._battlelog_cache: dict[str, int | None] | None = None
+        self._battlelog_cache: dict[str, dict[str, Any]] | None = None
 
-    def _replay_round_counts(self) -> dict[str, int | None]:
-        """battlelog_replays.parquet を replay_id → ラウンド数 の辞書にする（初回のみ取得）"""
+    def _replay_data(self) -> dict[str, dict[str, Any]]:
+        """battlelog_replays.parquet を replay_id → ラウンド結果 の辞書にする（初回のみ取得）"""
         if self._battlelog_cache is not None:
             return self._battlelog_cache
 
-        counts: dict[str, int | None] = {}
+        data: dict[str, dict[str, Any]] = {}
         raw = _get_bytes(self.s3_client, self.bucket, "battlelog_replays.parquet")
         if raw is None:
-            logger.warning("[RoundCount] battlelog_replays.parquet が R2 にありません（突合をスキップ）")
-            self._battlelog_cache = counts
-            return counts
+            logger.warning("[Battlelog] battlelog_replays.parquet が R2 にありません（突合をスキップ）")
+            self._battlelog_cache = data
+            return data
 
         table = pq.read_table(io.BytesIO(raw))
         for row in table.to_pylist():
             replay_id = row.get("replay_id")
             if not replay_id:
                 continue
-            count = parse_round_count(row.get("p1_round_results"))
-            if count is None:
-                count = parse_round_count(row.get("p2_round_results"))
-            counts[replay_id] = count
-        self._battlelog_cache = counts
-        return counts
+            player1 = parse_round_results(row.get("p1_round_results"))
+            player2 = parse_round_results(row.get("p2_round_results"))
+            data[replay_id] = {
+                "roundCount": max(len(player1), len(player2)) if (player1 or player2) else None,
+                "player1": player1,
+                "player2": player2,
+            }
+        self._battlelog_cache = data
+        return data
 
-    def resolve(self, video_id: str) -> dict[str, int]:
-        """videoId の matchId → ラウンド数 を返す（取得できない場合は空辞書）"""
+    def resolve(self, video_id: str) -> dict[str, dict[str, Any]]:
+        """videoId の matchId → Battlelog ラウンド結果を返す（取得できない場合は空辞書）"""
         raw = _get_bytes(self.s3_client, self.bucket, f"videos/{video_id}.json")
         if raw is None:
-            logger.warning("[RoundCount] videos/%s.json が R2 にありません（突合をスキップ）", video_id)
+            logger.warning("[Battlelog] videos/%s.json が R2 にありません（突合をスキップ）", video_id)
             return {}
 
         try:
             video_data = json.loads(raw)
         except ValueError:
-            logger.warning("[RoundCount] videos/%s.json の解析に失敗しました", video_id)
+            logger.warning("[Battlelog] videos/%s.json の解析に失敗しました", video_id)
             return {}
 
-        replay_counts = self._replay_round_counts()
-        resolved: dict[str, int] = {}
+        replay_data = self._replay_data()
+        resolved: dict[str, dict[str, Any]] = {}
         for chapter in video_data.get("chapters", []):
             match_id = chapter.get("matchId")
-            replay_id = chapter.get("replay_id")
-            if not match_id or not replay_id:
+            if not match_id:
                 continue
-            count = replay_counts.get(replay_id)
-            if count is not None:
-                resolved[match_id] = count
+            info = replay_data.get(chapter.get("replay_id") or "") or {}
+            resolved[match_id] = {
+                "roundCount": info.get("roundCount"),
+                "player1": info.get("player1", []),
+                "player2": info.get("player2", []),
+                # ADR-051: 試合の勝敗をゲージ詳細 JSON にも保持する
+                "player1Result": chapter.get("player1_result"),
+                "player2Result": chapter.get("player2_result"),
+            }
         return resolved
 
 
 def apply_round_count_flags(
     gauge_result: dict[str, Any],
-    round_counts: dict[str, int],
+    round_counts: dict[str, int | None],
 ) -> None:
     """gauges JSON に検出ラウンド数と Battlelog ラウンド数の突合結果を付与する（main.py と同じ形式）"""
     for match_id, match_gauges in (gauge_result.get("matches") or {}).items():
@@ -191,7 +205,7 @@ def load_json(path: Path) -> Any:
 def build_video_rows(
     video_id: str,
     intermediate_dir: Path,
-    round_counts: dict[str, int],
+    battlelog_info: dict[str, dict[str, Any]],
     health_warn: bool = True,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """1 動画分の gauges JSON と round_stats 行を組み立てる
@@ -207,7 +221,14 @@ def build_video_rows(
     matches = load_json(video_dir / "matches.json") or []
     counter_result = load_json(video_dir / "counters" / "counters.json")
 
+    round_counts = {match_id: info.get("roundCount") for match_id, info in battlelog_info.items()}
     apply_round_count_flags(gauge_result, round_counts)
+
+    # ADR-051: 試合の勝敗をゲージ詳細 JSON に付与する
+    for match_id, match_gauges in (gauge_result.get("matches") or {}).items():
+        info = battlelog_info.get(match_id) or {}
+        match_gauges["player1Result"] = info.get("player1Result")
+        match_gauges["player2Result"] = info.get("player2Result")
 
     if health_warn:
         health_table = load_character_health(str(default_health_path(project_root)))
@@ -218,7 +239,17 @@ def build_video_rows(
         }
         health_table.warn_unknown(characters)
 
-    stats_rows = build_round_stats_rows(gauge_result, matches, counter_result=counter_result)
+    round_results_by_match = {
+        match_id: {"player1": info.get("player1") or [], "player2": info.get("player2") or []}
+        for match_id, info in battlelog_info.items()
+        if info.get("player1") or info.get("player2")
+    }
+    stats_rows = build_round_stats_rows(
+        gauge_result,
+        matches,
+        counter_result=counter_result,
+        round_results_by_match=round_results_by_match,
+    )
 
     # matches.json に無い試合（検出が分割されたケース。ADR-048 の既知制約）は videoId が null に
     # なるため、対象動画の videoId で補完する（null のままだと再処理時に置換されず残留する）
@@ -268,13 +299,13 @@ def main() -> None:
         parser.error("--video-id または --all を指定してください")
 
     uploader = R2Uploader()
-    resolver = RoundCountResolver(uploader.s3_client, uploader.bucket_name)
+    resolver = BattlelogResolver(uploader.s3_client, uploader.bucket_name)
     logger.info("[R2] bucket=%s videos=%s dry_run=%s", uploader.bucket_name, video_ids, args.dry_run)
 
     total_rows = 0
     for video_id in video_ids:
-        round_counts = resolver.resolve(video_id)
-        gauges_by_match, stats_rows = build_video_rows(video_id, intermediate_dir, round_counts)
+        battlelog_info = resolver.resolve(video_id)
+        gauges_by_match, stats_rows = build_video_rows(video_id, intermediate_dir, battlelog_info)
         total_rows += len(stats_rows)
 
         matched = sum(1 for gauges in gauges_by_match.values() if gauges.get("roundCountMatch") is True)

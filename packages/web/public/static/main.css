@@ -1581,3 +1581,128 @@ body {
     padding: var(--space-sm);
   }
 }
+
+/* ============================================
+   ゲージ詳細ページ（ADR-051）
+   ============================================ */
+.match-detail-page {
+  padding: var(--space-lg) 0;
+}
+
+.match-detail-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.match-detail-back {
+  align-self: flex-start;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.match-detail-back:hover {
+  text-decoration: underline;
+}
+
+.match-detail-page-title {
+  color: var(--color-text);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.match-detail-summary {
+  align-items: center;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.match-detail-summary-main {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.match-detail-summary-meta {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: var(--space-sm);
+}
+
+.match-detail-result {
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+}
+
+.match-detail-result.result-win {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success, #22c55e);
+}
+
+.match-detail-result.result-loss {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-error, #ef4444);
+}
+
+.match-detail-result.result-unknown {
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+}
+
+.match-detail-score {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.match-detail-matchup {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.match-detail-lp {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.gg-result {
+  font-weight: 700;
+}
+
+.gg-result-win {
+  color: var(--color-success, #22c55e);
+}
+
+.gg-result-loss {
+  color: var(--color-error, #ef4444);
+}
+
+.gg-result-draw {
+  color: var(--color-text-muted);
+}
+
+.gg-stats-row-loss {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.gg-note {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+

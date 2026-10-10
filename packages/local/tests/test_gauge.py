@@ -608,9 +608,103 @@ class TestHealthRoundStats:
         p1 = rows[0]
         assert p1["healthMin"] == 0.0
         assert p1["healthEnd"] == 0.0
-        assert p1["healthAvg"] is not None and 0.0 < p1["healthAvg"] < 100.0
+        # ADR-051: 100% -> 40% の 60% が最大被弾
+        assert p1["maxHitTaken"] == 60.0
 
         p2 = rows[1]
         assert p2["healthMin"] is None
-        assert p2["healthAvg"] is None
         assert p2["healthEnd"] is None
+        assert p2["maxHitTaken"] is None
+
+
+class TestImprovementRoundStats:
+    """ADR-051 の改善指標（勝敗・勝利方法・バーンアウト・SA 使い残し）"""
+
+    def _gauge_result(self):
+        return {
+            "matches": {
+                "vid_100": {
+                    "matchId": "vid_100",
+                    "rounds": [
+                        {
+                            "round": 1,
+                            "roundStartTime": 100.0,
+                            "roundEndTime": 150.0,
+                            "player1": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 49.0,
+                                "coverage": 0.9,
+                                "health": [[1.0, 100.0], [10.0, 30.0]],
+                                "drive": [[1.0, 6.0], [5.0, 0.0]],
+                                "sa": [[1.0, 0], [20.0, 1], [30.0, 2]],
+                                "driveBurnout": [[5.0, 12.5], [30.0, 33.0]],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                            "player2": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 49.0,
+                                "coverage": 0.9,
+                                "health": [[1.0, 100.0], [45.0, 5.0]],
+                                "drive": [[1.0, 6.0]],
+                                "sa": [[1.0, 0], [40.0, 1]],
+                                "driveBurnout": [],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+    def test_win_loss_method_and_derived_metrics(self):
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+        # 1P が CA（7）で勝利したラウンド
+        round_results = {"vid_100": {"player1": [7], "player2": [0]}}
+
+        rows = build_round_stats_rows(self._gauge_result(), matches, round_results_by_match=round_results)
+        p1, p2 = rows[0], rows[1]
+
+        assert p1["roundResult"] == "win"
+        assert p2["roundResult"] == "loss"
+        assert p1["roundMethod"] == "CA"
+        assert p2["roundMethod"] == "CA"  # 勝者の方法を両サイドに持たせる
+
+        assert p1["maxHitTaken"] == 70.0
+        assert p2["maxHitTaken"] == 95.0
+        assert p1["burnoutCount"] == 2
+        assert p1["burnoutSec"] == 10.5
+        assert p1["saLeftAtEnd"] == 2
+        assert p2["saLeftAtEnd"] == 1
+
+    def test_draw_and_unmeasured(self):
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+        round_results = {"vid_100": {"player1": [4], "player2": [4]}}
+
+        rows = build_round_stats_rows(self._gauge_result(), matches, round_results_by_match=round_results)
+        assert rows[0]["roundResult"] == "draw"
+        assert rows[0]["roundMethod"] is None
+
+        # round_results が無い場合は勝敗不明（null）
+        rows_unknown = build_round_stats_rows(self._gauge_result(), matches)
+        assert rows_unknown[0]["roundResult"] is None
+        assert rows_unknown[0]["roundMethod"] is None
+
+    def test_burnout_is_null_without_drive_series(self):
+        gauge_result = self._gauge_result()
+        for side in ("player1", "player2"):
+            gauge_result["matches"]["vid_100"]["rounds"][0][side]["drive"] = []
+        gauge_result["matches"]["vid_100"]["rounds"][0]["player2"]["sa"] = []
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+
+        rows = build_round_stats_rows(gauge_result, matches)
+        assert rows[0]["burnoutCount"] is None
+        assert rows[0]["burnoutSec"] is None
+        assert rows[1]["saLeftAtEnd"] is None

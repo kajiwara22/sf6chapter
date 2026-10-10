@@ -321,11 +321,15 @@ export interface GaugeData {
   battlelogRoundCount?: number | null;
   /** 動画と Battlelog のラウンド数が一致したか */
   roundCountMatch?: boolean | null;
+  /** 1P の試合勝敗（ADR-051。未マッチ時は null） */
+  player1Result?: 'win' | 'loss' | null;
+  /** 2P の試合勝敗（ADR-051。未マッチ時は null） */
+  player2Result?: 'win' | 'loss' | null;
   /** ラウンド一覧 */
   rounds: GaugeRound[];
 }
 
-/** round_stats.parquet の1行（ADR-048） */
+/** round_stats.parquet の1行（ADR-048/049/050/051） */
 export interface RoundStatsRow {
   /** YouTube動画ID */
   videoId: string;
@@ -343,28 +347,36 @@ export interface RoundStatsRow {
   roundEndTime: number;
   /** HUD 表示区間の長さ（秒） */
   durationSec: number;
+  /** ラウンドの勝敗（ADR-051、Battlelog 未マッチ時は null） */
+  roundResult: 'win' | 'loss' | 'draw' | null;
+  /** 勝利方法コード（V/C/T/OD/SA/CA/P。引き分け・未マッチ時は null） */
+  roundMethod: string | null;
   /** ドライブ本数の最小値 */
   driveMin: number | null;
-  /** ドライブ本数の時間重み付き平均 */
-  driveAvg: number | null;
   /** ドライブ本数の最終値 */
   driveEnd: number | null;
   /** 到達した最大 SA ストック数 */
   saMax: number | null;
   /** SA ストックが減少した回数 */
   saUsedCount: number | null;
+  /** ラウンド終了時の SA ストック（ADR-051） */
+  saLeftAtEnd: number | null;
   /** 計測できたサンプル率 */
   detectionCoverage: number | null;
+  /** ラウンド内の最小体力％（ADR-050、未計測時は null） */
+  healthMin: number | null;
+  /** ラウンド内の最終体力％（ADR-050、未計測時は null） */
+  healthEnd: number | null;
+  /** 最大の単発被弾％（ADR-051、未計測時は null） */
+  maxHitTaken: number | null;
+  /** バーンアウト回数（ADR-051、未計測時は null） */
+  burnoutCount: number | null;
+  /** バーンアウト累計秒（ADR-051、未計測時は null） */
+  burnoutSec: number | null;
   /** COUNTER 回数（ADR-049、未計測時は null） */
   counterCount: number | null;
   /** PUNISH COUNTER 回数（ADR-049、未計測時は null） */
   punishCounterCount: number | null;
-  /** ラウンド内の最小体力％（ADR-050、未計測・旧Parquetでは null） */
-  healthMin?: number | null;
-  /** ラウンド内の時間重み付き平均体力％（ADR-050、未計測・旧Parquetでは null） */
-  healthAvg?: number | null;
-  /** ラウンド内の最終体力％（ADR-050、未計測・旧Parquetでは null） */
-  healthEnd?: number | null;
 }
 
 /** キャラクター別最大体力表（config/character_health.json、ADR-050） */
@@ -385,6 +397,14 @@ export interface MatchBattlelogSides {
   p1Character: string;
   /** Battlelog 2P のキャラクター名 */
   p2Character: string;
+  /** Battlelog 1P の LP（取得できない場合は null） */
+  p1LeaguePoint?: number | null;
+  /** Battlelog 2P の LP */
+  p2LeaguePoint?: number | null;
+  /** Battlelog 1P の MR */
+  p1MasterRating?: number | null;
+  /** Battlelog 2P の MR */
+  p2MasterRating?: number | null;
 }
 
 /** ヘルスチェックレスポンス */

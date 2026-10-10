@@ -11,13 +11,12 @@ import manifest from '../manifest.json';
 const pages = new Hono();
 
 /**
- * GET /
- * メインページ
+ * アプリの HTML を生成する
  *
- * 開発時: Viteが /src/client/main.ts を自動変換
- * 本番時: manifest.jsonからビルド済みアセットのパスを取得
+ * `/`（タブ UI）と `/matches/:matchId`（ゲージ詳細ページ、ADR-051）で共通のシェルを使う。
+ * どちらのビューを表示するかはクライアントが location.pathname で判定する。
  */
-pages.get('/', (c) => {
+function renderAppHtml() {
   // 開発環境判定
   // Vite開発サーバー経由の場合は NODE_ENV が設定されていない、または 'development'
   // Cloudflare Pages本番環境では process が存在しないか、NODE_ENV が 'production'
@@ -37,8 +36,7 @@ pages.get('/', (c) => {
     }
   }
 
-  return c.html(
-    html`<!DOCTYPE html>
+  return html`<!DOCTYPE html>
     <html lang="ja">
       <head>
         <meta charset="UTF-8" />
@@ -159,11 +157,6 @@ pages.get('/', (c) => {
               <div id="no-results" class="status-message" style="display: none;">
                 検索結果がありません
               </div>
-            </section>
-
-            <!-- ゲージ詳細パネル（ADR-048） -->
-            <section class="match-detail-section">
-              <div id="match-detail" class="match-detail" style="display: none;"></div>
             </section>
 
             </div><!-- /view-search -->
@@ -416,8 +409,19 @@ pages.get('/', (c) => {
         <!-- クライアントサイドスクリプト -->
         <script type="module" src="${scriptSrc}"></script>
       </body>
-    </html>`
-  );
-});
+    </html>`;
+}
+
+/**
+ * GET /
+ * メインページ（対戦検索などのタブ UI）
+ */
+pages.get('/', (c) => c.html(renderAppHtml()));
+
+/**
+ * GET /matches/:matchId
+ * ゲージ詳細ページ（ADR-051）
+ */
+pages.get('/matches/:matchId', (c) => c.html(renderAppHtml()));
 
 export { pages };

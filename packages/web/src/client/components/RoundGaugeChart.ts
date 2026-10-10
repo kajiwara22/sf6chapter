@@ -633,14 +633,23 @@ export function buildRoundStatsTableHtml(
     if (value == null || !Number.isFinite(value)) return '-';
     return value.toFixed(digits);
   };
-  const formatPercent = (value: number | null | undefined): string => {
-    if (value == null || !Number.isFinite(value)) return '-';
-    return `${Math.round(value * 100)}%`;
-  };
   // 未計測（null）は '-'、計測済み 0 件は '0' と区別する（ADR-049）
   const formatInt = (value: number | null | undefined): string => {
     if (value == null || !Number.isFinite(value)) return '-';
     return String(Math.round(value));
+  };
+  // 勝敗は一目で分かるよう記号にする（ADR-051）
+  const formatResult = (result: RoundStatsRow['roundResult']): string => {
+    if (result === 'win') return '<span class="gg-result gg-result-win">○</span>';
+    if (result === 'loss') return '<span class="gg-result gg-result-loss">×</span>';
+    if (result === 'draw') return '<span class="gg-result gg-result-draw">△</span>';
+    return '-';
+  };
+  const formatBurnout = (count: number | null, sec: number | null): string => {
+    if (count == null && sec == null) return '-';
+    const countText = count == null ? '-' : `${Math.round(count)}回`;
+    const secText = sec == null ? '-' : `${sec.toFixed(1)}s`;
+    return `${countText} / ${secText}`;
   };
 
   const tableRows = rows
@@ -649,21 +658,21 @@ export function buildRoundStatsTableHtml(
       const character = row.character ? escapeHtml(row.character) : '-';
       const maxHealth = resolveMaxHealth(row.character, characterHealth);
       return `
-        <tr>
+        <tr class="gg-stats-row-${row.roundResult ?? 'unknown'}">
           <td>Round ${row.round}</td>
           <td class="gg-stats-side gg-stats-side-${row.side}">${escapeHtml(sideLabel)}</td>
           <td>${character}</td>
-          <td>${formatValue(row.driveMin)}</td>
-          <td>${formatValue(row.driveAvg)}</td>
-          <td>${formatValue(row.driveEnd)}</td>
-          <td>${row.saMax == null ? '-' : Math.round(row.saMax)}</td>
-          <td>${row.saUsedCount == null ? '-' : Math.round(row.saUsedCount)}</td>
-          <td>${formatPercent(row.detectionCoverage)}</td>
+          <td>${formatResult(row.roundResult)}</td>
+          <td>${row.roundMethod ? escapeHtml(row.roundMethod) : '-'}</td>
           <td>${formatHealthValue(row.healthMin, maxHealth)}</td>
-          <td>${formatHealthValue(row.healthAvg, maxHealth)}</td>
           <td>${formatHealthValue(row.healthEnd, maxHealth)}</td>
+          <td>${formatHealthValue(row.maxHitTaken, maxHealth)}</td>
+          <td>${formatValue(row.driveMin)} → ${formatValue(row.driveEnd)}</td>
+          <td>${formatBurnout(row.burnoutCount, row.burnoutSec)}</td>
+          <td>${formatInt(row.saMax)} / ${formatInt(row.saUsedCount)} / ${formatInt(row.saLeftAtEnd)}</td>
           <td class="gg-stats-counter">${formatInt(row.counterCount)}</td>
           <td class="gg-stats-counter">${formatInt(row.punishCounterCount)}</td>
+          <td>${formatValue(row.durationSec)}</td>
         </tr>
       `;
     })
@@ -679,17 +688,17 @@ export function buildRoundStatsTableHtml(
               <th>ラウンド</th>
               <th>サイド</th>
               <th>キャラ</th>
-              <th>ドライブ最小</th>
-              <th>ドライブ平均</th>
-              <th>ドライブ終了</th>
-              <th>SA最大</th>
-              <th>SA使用</th>
-              <th>計測率</th>
+              <th>勝敗</th>
+              <th title="勝利方法: V=通常 C=Chip T=TimeUp OD SA CA P=Perfect">方法</th>
               <th>体力最小</th>
-              <th>体力平均</th>
-              <th>体力終了</th>
+              <th>残体力</th>
+              <th title="最大の単発被弾">最大被弾</th>
+              <th title="最小 → ラウンド終了">ドライブ</th>
+              <th title="回数 / 累計秒">バーンアウト</th>
+              <th title="最大 / 使用 / 残し">SA</th>
               <th title="COUNTER">カウンタ</th>
               <th title="PUNISH COUNTER">パニッシュ</th>
+              <th>時間</th>
             </tr>
           </thead>
           <tbody>${tableRows}</tbody>

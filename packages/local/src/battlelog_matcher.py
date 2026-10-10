@@ -347,6 +347,9 @@ class BattlelogMatcher:
                             len(replay.get("player1_info", {}).get("round_results") or []),
                             len(replay.get("player2_info", {}).get("round_results") or []),
                         ),
+                        # ADR-051: ラウンド単位の勝敗・勝利方法（round_stats に反映する）
+                        "player1_round_results": list(replay.get("player1_info", {}).get("round_results") or []),
+                        "player2_round_results": list(replay.get("player2_info", {}).get("round_results") or []),
                     }
 
             except Exception as e:
@@ -366,6 +369,8 @@ class BattlelogMatcher:
                 "replay_id": None,
                 "uploaded_at": None,
                 "time_difference_seconds": None,
+                "player1_round_results": None,
+                "player2_round_results": None,
                 "details": f"No matching replay found within {tolerance_seconds}s",
             }
 
@@ -389,5 +394,7 @@ class BattlelogMatcher:
             "uploaded_at": best_match["uploaded_at"],
             "time_difference_seconds": int(best_match["time_difference"]),
             "round_count": best_match.get("round_count"),
+            "player1_round_results": best_match.get("player1_round_results"),
+            "player2_round_results": best_match.get("player2_round_results"),
             "details": f"Matched (time_diff={best_match['time_difference']:.1f}s)",
         }

@@ -313,12 +313,19 @@ describe('buildRoundStatsTableHtml', () => {
     roundStartTime: 21,
     roundEndTime: 72,
     durationSec: 51,
+    roundResult: 'win',
+    roundMethod: 'CA',
     driveMin: 0,
-    driveAvg: 4.2,
     driveEnd: 6,
     saMax: 2,
     saUsedCount: 1,
+    saLeftAtEnd: 1,
     detectionCoverage: 0.958,
+    healthMin: 25.8,
+    healthEnd: 30.2,
+    maxHitTaken: 60.0,
+    burnoutCount: 1,
+    burnoutSec: 7.5,
     counterCount: 3,
     punishCounterCount: 1,
   };
@@ -332,8 +339,10 @@ describe('buildRoundStatsTableHtml', () => {
     expect(html).toContain('Round 1');
     expect(html).toContain('自分');
     expect(html).toContain('GOUKI');
-    expect(html).toContain('4.2');
-    expect(html).toContain('96%');
+    expect(html).toContain('○');
+    expect(html).toContain('CA');
+    expect(html).toContain('0.0 → 6.0');
+    expect(html).toContain('1回 / 7.5s');
   });
 
   it('カウンター・パニッシュカウンター回数を表示する（ADR-049）', () => {
@@ -396,12 +405,19 @@ const healthStatsRow = (side: 'player1' | 'player2', character: string | null): 
   roundStartTime: 0,
   roundEndTime: 1,
   durationSec: 1,
+  roundResult: null,
+  roundMethod: null,
   driveMin: null,
-  driveAvg: null,
   driveEnd: null,
   saMax: null,
   saUsedCount: null,
+  saLeftAtEnd: null,
   detectionCoverage: null,
+  healthMin: null,
+  healthEnd: null,
+  maxHitTaken: null,
+  burnoutCount: null,
+  burnoutSec: null,
   counterCount: null,
   punishCounterCount: null,
 });
@@ -519,10 +535,10 @@ describe('resolveSideCharacters', () => {
   });
 });
 
-describe('buildRoundStatsTableHtml の体力列（ADR-050）', () => {
+describe('buildRoundStatsTableHtml の体力列（ADR-050/051）', () => {
   it('最大体力表があれば実 HP を併記する', () => {
     const html = buildRoundStatsTableHtml(
-      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: 25.8, healthAvg: 47, healthEnd: 25.8 }],
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: 25.8, healthEnd: 25.8, maxHitTaken: 30 }],
       plainLabels,
       healthTable,
     );
@@ -532,10 +548,23 @@ describe('buildRoundStatsTableHtml の体力列（ADR-050）', () => {
 
   it('旧 Parquet（health 列が null / 未設定）は "-"', () => {
     const html = buildRoundStatsTableHtml(
-      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: null, healthAvg: null, healthEnd: null }],
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: null, healthEnd: null, maxHitTaken: null }],
       plainLabels,
       healthTable,
     );
     expect(html).toContain('>-</td>');
+  });
+});
+
+describe('buildRoundStatsTableHtml の改善指標（ADR-051）', () => {
+  it('勝敗・方法・SA 残しを表示する', () => {
+    const html = buildRoundStatsTableHtml(
+      [{ ...healthStatsRow('player1', 'GOUKI'), roundResult: 'loss', roundMethod: 'CA', saLeftAtEnd: 3 }],
+      plainLabels,
+      healthTable,
+    );
+    expect(html).toContain('×');
+    expect(html).toContain('gg-result-loss');
+    expect(html).toContain('3');
   });
 });

@@ -149,7 +149,7 @@ export interface LpHistoryQueryRow {
   opp_rounds: string | null;
 }
 
-/** round_stats のDuckDBクエリ結果行（ADR-048） */
+/** round_stats のDuckDBクエリ結果行（ADR-048/051） */
 export interface RoundStatsQueryRow {
   videoId: string;
   matchId: string;
@@ -159,22 +159,31 @@ export interface RoundStatsQueryRow {
   roundStartTime: number | bigint;
   roundEndTime: number | bigint;
   durationSec: number | bigint;
+  /** ラウンド勝敗（ADR-051、旧Parquetでは未定義） */
+  roundResult?: string | null;
+  /** 勝利方法コード（ADR-051） */
+  roundMethod?: string | null;
   driveMin: number | bigint | null;
-  driveAvg: number | bigint | null;
   driveEnd: number | bigint | null;
   saMax: number | bigint | null;
   saUsedCount: number | bigint | null;
+  /** ラウンド終了時の SA ストック（ADR-051） */
+  saLeftAtEnd?: number | bigint | null;
   detectionCoverage: number | bigint | null;
+  /** 最小体力％（ADR-050、未計測・旧Parquetではnull） */
+  healthMin?: number | bigint | null;
+  /** 最終体力％（ADR-050、未計測・旧Parquetではnull） */
+  healthEnd?: number | bigint | null;
+  /** 最大の単発被弾％（ADR-051） */
+  maxHitTaken?: number | bigint | null;
+  /** バーンアウト回数（ADR-051） */
+  burnoutCount?: number | bigint | null;
+  /** バーンアウト累計秒（ADR-051） */
+  burnoutSec?: number | bigint | null;
   /** カウンター回数（ADR-049、未計測・旧Parquetではnull） */
   counterCount?: number | bigint | null;
   /** パニッシュカウンター回数（ADR-049、未計測・旧Parquetではnull） */
   punishCounterCount?: number | bigint | null;
-  /** 最小体力％（ADR-050、未計測・旧Parquetではnull） */
-  healthMin?: number | bigint | null;
-  /** 平均体力％（ADR-050、未計測・旧Parquetではnull） */
-  healthAvg?: number | bigint | null;
-  /** 最終体力％（ADR-050、未計測・旧Parquetではnull） */
-  healthEnd?: number | bigint | null;
 }
 
 /** round_stats のカウンター列のDuckDBクエリ結果行（ADR-049） */
@@ -186,10 +195,14 @@ export interface RoundCounterQueryRow {
   punishCounterCount: number | bigint | null;
 }
 
-/** Battlelog サイド情報のDuckDBクエリ結果行（ADR-048） */
+/** Battlelog サイド情報のDuckDBクエリ結果行（ADR-048/051） */
 export interface MatchBattlelogSidesQueryRow {
   p1_short_id: number | bigint;
   p2_short_id: number | bigint;
   p1_character_name: string | null;
   p2_character_name: string | null;
+  p1_league_point: number | bigint | null;
+  p2_league_point: number | bigint | null;
+  p1_master_rating: number | bigint | null;
+  p2_master_rating: number | bigint | null;
 }

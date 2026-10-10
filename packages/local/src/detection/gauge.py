@@ -1018,64 +1018,144 @@ def _counter_count_lookup(
     return lookup
 
 
+# Battlelog round_results の勝利方法コード（ADR-037）。0=LOSS / 4=DRAW は勝ちではないので含めない
+_ROUND_METHOD_CODES: dict[int, str] = {1: "V", 2: "C", 3: "T", 5: "OD", 6: "SA", 7: "CA", 8: "P"}
+
+
+def _round_value_lookup(
+    round_results_by_match: dict[str, dict[str, list[int]]] | None,
+) -> dict[tuple[str, int, str], int]:
+    """Battlelog のラウンド結果配列を (matchId, round, side) の索引に直す（ADR-051）"""
+    lookup: dict[tuple[str, int, str], int] = {}
+    for match_id, sides in (round_results_by_match or {}).items():
+        for side in SIDES:
+            for index, value in enumerate(sides.get(side) or [], start=1):
+                lookup[(match_id, index, side)] = int(value)
+    return lookup
+
+
+def _round_result(value: int | None) -> str | None:
+    """round_results の値からそのサイドの勝敗を返す（4=DRAW、0=LOSS、他=WIN）"""
+    if value is None:
+        return None
+    if value == 4:
+        return "draw"
+    return "win" if value > 0 else "loss"
+
+
+def _round_method(value1: int | None, value2: int | None) -> str | None:
+    """そのラウンドの勝利方法コードを返す（勝者の値から取る。引き分け・未計測は None）"""
+    for value in (value1, value2):
+        if value is not None and value in _ROUND_METHOD_CODES:
+            return _ROUND_METHOD_CODES[value]
+    return None
+
+
+def _max_drop(events: list[list[float]]) -> float | None:
+    """体力の変化点列から最大の単発被弾（％）を求める（ADR-051）"""
+    if not events:
+        return None
+    biggest = 0.0
+    for (_, previous), (_, current) in zip(events, events[1:], strict=False):
+        drop = float(previous) - float(current)
+        if drop > biggest:
+            biggest = drop
+    return round(biggest, 1)
+
+
+def _burnout_stats(periods: list[list[float]]) -> tuple[int, float]:
+    """バーンアウト期間の回数と累計秒を求める（ADR-051）"""
+    total = sum(max(0.0, float(end) - float(start)) for start, end in periods)
+    return len(periods), round(total, 1)
+
+
+def _last_value(events: list[list[float]]) -> float | None:
+    """変化点列の最終値を返す（ADR-051 のラウンド終了時ストックなど）"""
+    if not events:
+        return None
+    return float(events[-1][1])
+
+
 def build_round_stats_rows(
     gauge_result: dict[str, Any],
     matches: list[dict[str, Any]],
     counter_result: dict[str, Any] | None = None,
+    round_results_by_match: dict[str, dict[str, list[int]]] | None = None,
 ) -> list[dict[str, Any]]:
-    """ゲージ計測結果（とカウンター計測結果）から round_stats.parquet の行を組み立てる
+    """ゲージ計測結果（とカウンター・ラウンド勝敗）から round_stats.parquet の行を組み立てる
 
     Args:
         gauge_result: GaugeAnalyzer.build() の戻り値
         matches: main.py の match 辞書リスト（id / videoId / player1 / player2 を含む）
         counter_result: CounterAnalyzer.build() の戻り値（ADR-049）。None の場合は未計測として None を入れる
+        round_results_by_match: matchId -> {"player1": [round_results], "player2": [...]} の辞書（ADR-051）。
+            Battlelog 未マッチ・未計測の場合は None（roundResult / roundMethod が null になる）
 
     Returns:
         1行 = 1ラウンド x 1サイド の辞書リスト
     """
     match_map = {match.get("id"): match for match in matches}
     counter_lookup = _counter_count_lookup(counter_result)
+    value_lookup = _round_value_lookup(round_results_by_match)
     rows: list[dict[str, Any]] = []
 
     for match_id, match_gauges in (gauge_result.get("matches") or {}).items():
         match = match_map.get(match_id, {})
         for round_data in match_gauges.get("rounds", []):
+            round_index = int(round_data.get("round", 0))
+            round_method = _round_method(
+                value_lookup.get((match_id, round_index, "player1")),
+                value_lookup.get((match_id, round_index, "player2")),
+            )
             for side in SIDES:
                 payload = round_data.get(side) or {}
                 drive_events = payload.get("drive") or []
                 sa_events = payload.get("sa") or []
+                health_events = payload.get("health") or []
                 visible_from = float(payload.get("visibleFrom") or 0.0)
                 visible_to = float(payload.get("visibleTo") or 0.0)
                 round_start = float(round_data.get("roundStartTime", 0.0))
 
-                drive_min, drive_avg, drive_end = _series_stats(drive_events, visible_to)
-                health_min, health_avg, health_end = _series_stats(payload.get("health") or [], visible_to)
+                drive_min, _, drive_end = _series_stats(drive_events, visible_to)
+                health_min, _, health_end = _series_stats(health_events, visible_to)
                 sa_values = [int(event[1]) for event in sa_events]
                 sa_used = sum(
                     1 for previous, current in zip(sa_values, sa_values[1:], strict=False) if current < previous
                 )
+                # 未計測（HUD 非表示などで時系列が空）は null、計測済み 0 件は 0 と区別する
+                if drive_events:
+                    burnout_count, burnout_sec = _burnout_stats(payload.get("driveBurnout") or [])
+                else:
+                    burnout_count, burnout_sec = None, None
+                sa_left = _last_value(sa_events)
+                max_hit = _max_drop(health_events)
 
                 player = match.get(side) or {}
-                counter_counts = counter_lookup.get((match_id, int(round_data.get("round", 0)), side))
+                counter_counts = counter_lookup.get((match_id, round_index, side))
+                round_result = _round_result(value_lookup.get((match_id, round_index, side)))
                 rows.append(
                     {
                         "videoId": match.get("videoId"),
                         "matchId": match_id,
-                        "round": int(round_data.get("round", 0)),
+                        "round": round_index,
                         "side": side,
                         "character": player.get("character"),
                         "roundStartTime": int(round(round_start + visible_from)),
                         "roundEndTime": int(round(round_start + visible_to)),
                         "durationSec": round(max(0.0, visible_to - visible_from), 2),
+                        "roundResult": round_result,
+                        "roundMethod": round_method,
                         "driveMin": drive_min,
-                        "driveAvg": drive_avg,
                         "driveEnd": drive_end,
                         "saMax": max(sa_values) if sa_values else None,
                         "saUsedCount": sa_used,
+                        "saLeftAtEnd": None if sa_left is None else int(sa_left),
                         "detectionCoverage": payload.get("coverage"),
                         "healthMin": health_min,
-                        "healthAvg": health_avg,
                         "healthEnd": health_end,
+                        "maxHitTaken": max_hit,
+                        "burnoutCount": burnout_count,
+                        "burnoutSec": burnout_sec,
                         "counterCount": None if counter_counts is None else counter_counts[0],
                         "punishCounterCount": None if counter_counts is None else counter_counts[1],
                     }

@@ -119,9 +119,10 @@ class R2Uploader:
         )
 
     def _get_round_stats_schema(self) -> pa.Schema:
-        """round_stats.parquet用のスキーマ（ADR-048）
+        """round_stats.parquet用のスキーマ（ADR-048/049/050/051）
 
-        1行 = 1ラウンド x 1サイド。ラウンド単位のゲージ統計を保持する。
+        1行 = 1ラウンド x 1サイド。ラウンド単位のゲージ統計と勝敗を保持する。
+        ADR-051 で driveAvg / healthAvg を削除し、勝敗・被弾・バーンアウト・SA使い残しを追加した。
         """
         return pa.schema(
             [
@@ -133,19 +134,27 @@ class R2Uploader:
                 pa.field("roundStartTime", pa.int64()),
                 pa.field("roundEndTime", pa.int64()),
                 pa.field("durationSec", pa.float64()),
+                # ADR-051: ラウンド勝敗と勝利方法（Battlelog round_results。未マッチ時は null）
+                pa.field("roundResult", pa.string(), nullable=True),
+                pa.field("roundMethod", pa.string(), nullable=True),
                 pa.field("driveMin", pa.float64(), nullable=True),
-                pa.field("driveAvg", pa.float64(), nullable=True),
                 pa.field("driveEnd", pa.float64(), nullable=True),
                 pa.field("saMax", pa.int32(), nullable=True),
                 pa.field("saUsedCount", pa.int32()),
+                # ADR-051: ラウンド終了時の SA ストック（使い残しの検知）
+                pa.field("saLeftAtEnd", pa.int32(), nullable=True),
                 pa.field("detectionCoverage", pa.float64(), nullable=True),
+                # ADR-050: 体力（％）のラウンド統計（未計測時は null）
+                pa.field("healthMin", pa.float64(), nullable=True),
+                pa.field("healthEnd", pa.float64(), nullable=True),
+                # ADR-051: 最大の単発被弾（％）
+                pa.field("maxHitTaken", pa.float64(), nullable=True),
+                # ADR-051: バーンアウト回数・累計秒（未計測時は null）
+                pa.field("burnoutCount", pa.int32(), nullable=True),
+                pa.field("burnoutSec", pa.float64(), nullable=True),
                 # ADR-049: カウンター・パニッシュカウンター回数（未計測時は null）
                 pa.field("counterCount", pa.int32(), nullable=True),
                 pa.field("punishCounterCount", pa.int32(), nullable=True),
-                # ADR-050: 体力（％）のラウンド統計（未計測時は null）
-                pa.field("healthMin", pa.float64(), nullable=True),
-                pa.field("healthAvg", pa.float64(), nullable=True),
-                pa.field("healthEnd", pa.float64(), nullable=True),
             ]
         )
 

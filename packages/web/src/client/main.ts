@@ -3,9 +3,10 @@
  */
 
 import { DOM_IDS } from './types';
-import { initDuckDB, loadParquetData, loadBattlelogParquetData, loadRoundStatsParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, MY_PLAYER_ID } from './search';
+import { initDuckDB, loadParquetData, loadBattlelogParquetData, loadRoundStatsParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, queryMatchById, MY_PLAYER_ID } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
-import { renderResults, clearResults, showMatchDetailLoading, renderMatchDetail, showMatchDetailError, clearMatchDetail } from './components/ResultsGrid';
+import { renderResults, clearResults } from './components/ResultsGrid';
+import { parseMatchDetailPath, renderMatchDetailPage, renderMatchDetailPageError, renderMatchDetailPageLoading } from './components/MatchDetailPage';
 import { resolveGaugeSideLabels } from './components/RoundGaugeChart';
 import { renderStats, clearStats } from './components/StatsPanel';
 import { renderMatchupChart, clearMatchupChart, initMatchupForm, updateMatchupCharacterSelect } from './components/MatchupChart';
@@ -101,7 +102,6 @@ async function handleSearch(filters: SearchFilters): Promise<void> {
   showLoading(true);
   showError(null);
   clearResults();
-  clearMatchDetail();
 
   try {
     const matches = await searchMatches(filters);
@@ -116,32 +116,65 @@ async function handleSearch(filters: SearchFilters): Promise<void> {
 }
 
 /**
- * 検索結果カードのクリックでゲージ詳細パネルを表示する（ADR-048）
+ * 検索結果カードのクリックでゲージ詳細ページへ遷移する（ADR-051）
  */
-async function handleMatchSelect(match: Match): Promise<void> {
-  console.log(`[App] Loading gauge detail for match ${match.id}`);
-  showMatchDetailLoading(match);
+function handleMatchSelect(match: Match): void {
+  window.location.assign(`/matches/${encodeURIComponent(match.id)}`);
+}
+
+/**
+ * ゲージ詳細ページ（`/matches/{matchId}`）を初期化する（ADR-051）
+ *
+ * 直接 URL を開いた場合でも表示できるよう、必要なデータを都度ロードする。
+ * battlelog / round_stats は無くても描画できるよう個別に試行する。
+ */
+async function initMatchDetailPage(matchId: string): Promise<void> {
+  console.log(`[App] Initializing match detail page: ${matchId}`);
+  let match: Match | null = null;
+  renderMatchDetailPageLoading(null, matchId);
 
   try {
-    const [gauges, roundStats, battlelogSides, characterHealth] = await Promise.all([
-      fetchGaugesJson(match.id),
-      queryRoundStats(match.id).catch(() => []),
-      queryMatchBattlelogSides(match.id).catch(() => null),
-      fetchCharacterHealthTable(),
+    await initDuckDB();
+    await loadParquetData();
+
+    match = await queryMatchById(matchId);
+    if (!match) {
+      renderMatchDetailPageError(null, matchId, `試合が見つかりません: ${matchId}`);
+      return;
+    }
+
+    try {
+      await loadBattlelogParquetData();
+    } catch (battlelogErr) {
+      console.warn('[App] battlelog_replays.parquet の読み込みに失敗しました:', battlelogErr);
+    }
+    try {
+      await loadRoundStatsParquetData();
+    } catch (statsErr) {
+      console.warn('[App] round_stats.parquet の読み込みに失敗しました:', statsErr);
+    }
+
+    const [gauges, roundStats, battlelog, characterHealth] = await Promise.all([
+      fetchGaugesJson(matchId).catch(() => null),
+      queryRoundStats(matchId).catch(() => []),
+      queryMatchBattlelogSides(matchId).catch(() => null),
+      fetchCharacterHealthTable().catch(() => null),
     ]);
 
     const labels = resolveGaugeSideLabels({
       player1Character: match.player1.character,
       player2Character: match.player2.character,
       myPlayerId: MY_PLAYER_ID,
-      battlelog: battlelogSides,
+      battlelog,
     });
 
-    renderMatchDetail(match, { gauges, roundStats, labels, characterHealth });
+    renderMatchDetailPage(match, { gauges, roundStats, labels, battlelog, characterHealth });
+    console.log('[App] Match detail page initialized');
   } catch (err) {
-    console.error('[App] Match detail error:', err);
-    showMatchDetailError(
+    console.error('[App] Match detail page error:', err);
+    renderMatchDetailPageError(
       match,
+      matchId,
       `ゲージデータの取得に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`,
     );
   }
@@ -421,9 +454,19 @@ async function init(): Promise<void> {
   }
 }
 
-// DOMContentLoadedで初期化
+// DOMContentLoadedで初期化（`/matches/{matchId}` はゲージ詳細ページとして初期化する。ADR-051）
+const matchDetailId = parseMatchDetailPath(window.location.pathname);
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', () => {
+    if (matchDetailId) {
+      void initMatchDetailPage(matchDetailId);
+    } else {
+      void init();
+    }
+  });
+} else if (matchDetailId) {
+  void initMatchDetailPage(matchDetailId);
 } else {
-  init();
+  void init();
 }
