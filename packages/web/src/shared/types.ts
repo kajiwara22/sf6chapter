@@ -285,6 +285,10 @@ export interface GaugeSideData {
   saProgress: [number, number][];
   /** CA（クリティカルアート）表示期間 [開始経過秒, 終了経過秒] */
   saCriticalArt: [number, number][];
+  /** 体力を計測できたサンプル率（ADR-050、旧データは undefined） */
+  healthCoverage?: number;
+  /** 現在体力％の変化点列 [経過秒, 体力%(0〜100)]（ADR-050、旧データは undefined） */
+  health?: [number, number][];
 }
 
 /** gauges JSON の1ラウンド分（ADR-048） */
@@ -355,6 +359,20 @@ export interface RoundStatsRow {
   counterCount: number | null;
   /** PUNISH COUNTER 回数（ADR-049、未計測時は null） */
   punishCounterCount: number | null;
+  /** ラウンド内の最小体力％（ADR-050、未計測・旧Parquetでは null） */
+  healthMin?: number | null;
+  /** ラウンド内の時間重み付き平均体力％（ADR-050、未計測・旧Parquetでは null） */
+  healthAvg?: number | null;
+  /** ラウンド内の最終体力％（ADR-050、未計測・旧Parquetでは null） */
+  healthEnd?: number | null;
+}
+
+/** キャラクター別最大体力表（config/character_health.json、ADR-050） */
+export interface CharacterHealthTable {
+  /** 表に無いキャラクターに適用する最大体力 */
+  default: number;
+  /** 正規名 → 最大体力 */
+  characters: Record<string, number>;
 }
 
 /** 自分視点判定用の Battlelog サイド情報 */

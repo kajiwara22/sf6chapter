@@ -169,6 +169,12 @@ export interface RoundStatsQueryRow {
   counterCount?: number | bigint | null;
   /** パニッシュカウンター回数（ADR-049、未計測・旧Parquetではnull） */
   punishCounterCount?: number | bigint | null;
+  /** 最小体力％（ADR-050、未計測・旧Parquetではnull） */
+  healthMin?: number | bigint | null;
+  /** 平均体力％（ADR-050、未計測・旧Parquetではnull） */
+  healthAvg?: number | bigint | null;
+  /** 最終体力％（ADR-050、未計測・旧Parquetではnull） */
+  healthEnd?: number | bigint | null;
 }
 
 /** round_stats のカウンター列のDuckDBクエリ結果行（ADR-049） */

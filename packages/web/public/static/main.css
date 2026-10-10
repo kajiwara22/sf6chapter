@@ -1422,6 +1422,16 @@ body {
   stroke: var(--color-accent);
 }
 
+/* 体力は 3 系列の中で区別できるよう太線にする（ADR-050） */
+.gg-line-health {
+  stroke-width: 3;
+}
+
+.gg-empty-health {
+  padding: var(--space-sm);
+  text-align: left;
+}
+
 .gg-marker-player1 {
   fill: var(--color-primary);
   opacity: 0.9;

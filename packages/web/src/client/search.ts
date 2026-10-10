@@ -4,7 +4,7 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides } from '@shared/types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable } from '@shared/types';
 import { determineResultFromRounds } from '@shared/rounds';
 
 // ラウンド判定は shared/rounds.ts に集約（ADR-047）。既存の利用箇所向けに re-export する。
@@ -910,6 +910,54 @@ export function clearGaugesCache(): void {
   gaugesCache.clear();
 }
 
+/** キャラクター別最大体力表のキャッシュ（ADR-050、undefined = 未取得、null = 取得失敗） */
+let characterHealthCache: CharacterHealthTable | null | undefined;
+/** 取得中の Promise（同時呼び出しの重複防止） */
+let characterHealthInFlight: Promise<CharacterHealthTable | null> | null = null;
+
+/**
+ * config/character_health.json（キャラクター別最大体力表）を取得する（ADR-050）
+ *
+ * - Presigned URL 経由で R2 からオンデマンド取得し、1回だけ取得してキャッシュする
+ * - ファイルが存在しない・取得失敗時は null を返し、例外を投げない
+ */
+export async function fetchCharacterHealthTable(): Promise<CharacterHealthTable | null> {
+  if (characterHealthCache !== undefined) return characterHealthCache;
+  if (characterHealthInFlight) return characterHealthInFlight;
+
+  characterHealthInFlight = (async () => {
+    try {
+      const presignedUrl = await getPresignedUrl('/api/data/config/character_health.json');
+      const response = await fetch(presignedUrl);
+      if (!response.ok) {
+        console.warn(`[DuckDB] character_health.json not found: ${response.status}`);
+        characterHealthCache = null;
+        return null;
+      }
+
+      const data = (await response.json()) as CharacterHealthTable;
+      characterHealthCache = data;
+      return data;
+    } catch (error) {
+      console.warn('[DuckDB] Failed to fetch character_health.json:', error);
+      characterHealthCache = null;
+      return null;
+    } finally {
+      characterHealthInFlight = null;
+    }
+  })();
+
+  return characterHealthInFlight;
+}
+
+/**
+ * キャラクター別最大体力表のキャッシュをクリアする
+ */
+export function clearCharacterHealthCache(): void {
+  characterHealthCache = undefined;
+  characterHealthInFlight = null;
+}
+
 /**
  * round_stats にカウンター列（ADR-049）が存在するかを判定する
  *
@@ -929,6 +977,27 @@ async function roundStatsHasCounterColumns(): Promise<boolean> {
     roundStatsCounterColumnsCache = false;
   }
   return roundStatsCounterColumnsCache;
+}
+
+/**
+ * round_stats に体力集計列（ADR-050）が存在するかを判定する
+ *
+ * 旧 Parquet（ADR-050 適用前に生成されたもの）には列が無いため、
+ * SELECT で列参照エラーにならないよう存在確認してから問い合わせる。
+ */
+let roundStatsHealthColumnsCache: boolean | null = null;
+
+async function roundStatsHasHealthColumns(): Promise<boolean> {
+  if (roundStatsHealthColumnsCache !== null) return roundStatsHealthColumnsCache;
+  if (!instance) return false;
+  try {
+    const info = await instance.conn.query("PRAGMA table_info('round_stats')");
+    const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
+    roundStatsHealthColumnsCache = names.includes('healthMin') && names.includes('healthAvg') && names.includes('healthEnd');
+  } catch {
+    roundStatsHealthColumnsCache = false;
+  }
+  return roundStatsHealthColumnsCache;
 }
 
 /**
@@ -979,12 +1048,14 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
   }
 
   const withCounters = await roundStatsHasCounterColumns();
+  const withHealth = await roundStatsHasHealthColumns();
   const query = `
     SELECT
       videoId, matchId, round, side, character,
       roundStartTime, roundEndTime, durationSec,
       driveMin, driveAvg, driveEnd, saMax, saUsedCount, detectionCoverage
       ${withCounters ? ', counterCount, punishCounterCount' : ''}
+      ${withHealth ? ', healthMin, healthAvg, healthEnd' : ''}
     FROM round_stats
     WHERE matchId = $1
     ORDER BY round ASC, side ASC
@@ -1013,6 +1084,9 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
     counterCount: row.counterCount == null ? null : Number(row.counterCount),
     punishCounterCount: row.punishCounterCount == null ? null : Number(row.punishCounterCount),
+    healthMin: row.healthMin == null ? null : Number(row.healthMin),
+    healthAvg: row.healthAvg == null ? null : Number(row.healthAvg),
+    healthEnd: row.healthEnd == null ? null : Number(row.healthEnd),
   }));
 }
 

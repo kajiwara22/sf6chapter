@@ -10,7 +10,7 @@
  * 生データの 1P/2P は書き換えず、表示ラベルだけを `GaugeSideLabels` で自分視点に変換する。
  */
 
-import type { GaugeData, GaugeRound, GaugeSideData, RoundStatsRow } from '@shared/types';
+import type { CharacterHealthTable, GaugeData, GaugeRound, GaugeSideData, RoundStatsRow } from '@shared/types';
 
 /** ゲージのサイド（生データのまま） */
 export type GaugeSide = 'player1' | 'player2';
@@ -30,7 +30,10 @@ export const DRIVE_MAX = 6;
 /** SAゲージの最大ストック数 */
 export const SA_MAX = 3;
 
-/** チャートの描画幅（viewBox 座標。drive / sa で共通） */
+/** 体力の最大値（％、ADR-050） */
+export const HEALTH_MAX = 100;
+
+/** チャートの描画幅（viewBox 座標。drive / sa / health で共通） */
 const CHART_WIDTH = 900;
 
 /** ドライブチャートの高さ */
@@ -38,6 +41,9 @@ const DRIVE_HEIGHT = 150;
 
 /** SAチャートの高さ */
 const SA_HEIGHT = 110;
+
+/** 体力チャートの高さ（ADR-050） */
+const HEALTH_HEIGHT = 130;
 
 /** 余白（drive / sa で共通） */
 const PADDING = { top: 10, right: 12, bottom: 22, left: 32 };
@@ -64,8 +70,8 @@ export interface SpanWithSide {
 /** `buildGaugeSvg` の引数 */
 export interface GaugeSvgParams {
   /** チャート種別（viewBox の高さとクラスに使う） */
-  variant: 'drive' | 'sa';
-  /** 縦軸の最大値（drive=6 / sa=3） */
+  variant: 'drive' | 'sa' | 'health';
+  /** 縦軸の最大値（drive=6 / sa=3 / health=100） */
   maxValue: number;
   /** 縦軸の目盛り */
   yTicks: number[];
@@ -77,6 +83,8 @@ export interface GaugeSvgParams {
   bands?: SpanWithSide[];
   /** マーカーとして描く期間（CA） */
   markers?: SpanWithSide[];
+  /** 系列ごとのネイティブツールチップ（SVG title）。体力の実HP併記に使う（ADR-050） */
+  titles?: Partial<Record<GaugeSide, string>>;
   /** スクリーンリーダー用ラベル */
   ariaLabel: string;
 }
@@ -170,6 +178,22 @@ export function buildStepPath(
 }
 
 /**
+ * 体力系列のステップパスを生成する（ADR-050）
+ *
+ * `health` が無い・空のときは空文字を返し、呼び出し側で「体力データなし」を表示する。
+ * 描画自体はドライブ・SA と同じステップ方式（`buildStepPath`）を共有する。
+ */
+export function buildHealthPath(
+  events: GaugeEvent[] | null | undefined,
+  scaleX: (time: number) => number,
+  scaleY: (value: number) => number,
+  endTime: number,
+): string {
+  if (!events || events.length === 0) return '';
+  return buildStepPath(events, scaleX, scaleY, endTime);
+}
+
+/**
  * サイドの時系列データを取得する（欠損時は空データを返す）
  */
 function getSide(round: GaugeRound, side: GaugeSide): GaugeSideData | null {
@@ -181,9 +205,9 @@ function getSide(round: GaugeRound, side: GaugeSide): GaugeSideData | null {
  * 汎用のゲージチャート SVG を生成する（純関数）
  */
 export function buildGaugeSvg(params: GaugeSvgParams): string {
-  const { variant, maxValue, yTicks, duration, series, bands = [], markers = [], ariaLabel } = params;
+  const { variant, maxValue, yTicks, duration, series, bands = [], markers = [], titles = {}, ariaLabel } = params;
 
-  const height = variant === 'drive' ? DRIVE_HEIGHT : SA_HEIGHT;
+  const height = variant === 'drive' ? DRIVE_HEIGHT : variant === 'sa' ? SA_HEIGHT : HEALTH_HEIGHT;
   const innerW = CHART_WIDTH - PADDING.left - PADDING.right;
   const innerH = height - PADDING.top - PADDING.bottom;
   const right = CHART_WIDTH - PADDING.right;
@@ -229,9 +253,13 @@ export function buildGaugeSvg(params: GaugeSvgParams): string {
   // 折れ線（ステップ）
   const seriesHtml = series
     .map((item) => {
-      const path = buildStepPath(item.events, scaleX, scaleY, safeDuration);
+      const path = variant === 'health'
+        ? buildHealthPath(item.events, scaleX, scaleY, safeDuration)
+        : buildStepPath(item.events, scaleX, scaleY, safeDuration);
       if (!path) return '';
-      return `<path class="gg-line gg-line-${item.side}" d="${path}" />`;
+      const title = titles[item.side];
+      const titleHtml = title ? `<title>${escapeHtml(title)}</title>` : '';
+      return `<path class="gg-line gg-line-${variant} gg-line-${item.side}" d="${path}">${titleHtml}</path>`;
     })
     .join('');
 
@@ -329,6 +357,123 @@ export function sideText(label: GaugeSideLabel, side: GaugeSide): string {
   return side === 'player1' ? '1P' : '2P';
 }
 
+/** ゲージチャートの表示コンテキスト（ADR-050） */
+export interface GaugeChartContext {
+  /** キャラクター別最大体力表（未取得時は null）。実 HP の計算に使う */
+  characterHealth?: CharacterHealthTable | null;
+  /** サイドごとのキャラクター名（round_stats.character を優先、無ければ matches の値） */
+  characters?: Partial<Record<GaugeSide, string | null>>;
+}
+
+/**
+ * キャラクターの最大体力を表から引く（ADR-050）
+ *
+ * 表が無い場合は null（％のみ表示）。表に無いキャラクターは既定値にフォールバックする。
+ */
+export function resolveMaxHealth(
+  character: string | null | undefined,
+  table: CharacterHealthTable | null | undefined,
+): number | null {
+  if (!table) return null;
+  const characters = table.characters ?? {};
+  const key = (character ?? '').trim().toUpperCase();
+  const value = key ? characters[key] : undefined;
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  return typeof table.default === 'number' && Number.isFinite(table.default) && table.default > 0
+    ? table.default
+    : null;
+}
+
+/**
+ * 体力％を表示用文字列にする（ADR-050）
+ *
+ * 最大体力が分かっていれば `62.6%（6260 / 10000）`、無ければ `62.6%` のように％のみ。
+ */
+export function formatHealthValue(
+  percent: number | null | undefined,
+  maxHealth: number | null | undefined,
+): string {
+  if (percent == null || !Number.isFinite(percent)) return '-';
+  const pct = `${percent.toFixed(1)}%`;
+  if (maxHealth == null || !Number.isFinite(maxHealth) || maxHealth <= 0) return pct;
+  const hp = Math.round((percent * maxHealth) / 100);
+  return `${pct}（${hp} / ${maxHealth}）`;
+}
+
+/**
+ * ラウンドに体力データが含まれるかを判定する（ADR-050）
+ */
+export function hasHealthData(round: GaugeRound): boolean {
+  const p1 = round.player1?.health ?? [];
+  const p2 = round.player2?.health ?? [];
+  return p1.length > 0 || p2.length > 0;
+}
+
+/**
+ * サイドごとのキャラクター名を解決する（ADR-050）
+ *
+ * `round_stats.character` を優先し、無ければ `matches` の値を用いる。
+ */
+export function resolveSideCharacters(
+  matchCharacters: Partial<Record<GaugeSide, string | null>> | null | undefined,
+  roundStats: RoundStatsRow[],
+): { player1: string | null; player2: string | null } {
+  const fromStats = (side: GaugeSide): string | null =>
+    roundStats.find((row) => row.side === side && row.character)?.character ?? null;
+  return {
+    player1: fromStats('player1') ?? matchCharacters?.player1 ?? null,
+    player2: fromStats('player2') ?? matchCharacters?.player2 ?? null,
+  };
+}
+
+/**
+ * 体力ゲージの SVG を生成する（ADR-050）
+ *
+ * 実 HP はツールチップ（SVG title）に併記する。最大体力表が無ければ％のみ。
+ */
+export function buildHealthSvg(
+  round: GaugeRound,
+  labels: GaugeSideLabels,
+  context?: GaugeChartContext,
+): string {
+  const duration = getRoundDuration(round);
+  const p1 = getSide(round, 'player1');
+  const p2 = getSide(round, 'player2');
+  const table = context?.characterHealth ?? null;
+  const characters = context?.characters ?? {};
+  const events1 = p1?.health ?? [];
+  const events2 = p2?.health ?? [];
+
+  const titles: Partial<Record<GaugeSide, string>> = {};
+  const addTitle = (
+    side: GaugeSide,
+    character: string | null,
+    events: GaugeEvent[],
+  ): void => {
+    if (events.length === 0) return;
+    const maxHealth = resolveMaxHealth(character, table);
+    const first = events[0];
+    const last = events[events.length - 1];
+    const name = character ? ` ${character}` : '';
+    titles[side] = `${sideText(labels[side], side)}${name}: 開始 ${formatHealthValue(first[1], maxHealth)} / 終了 ${formatHealthValue(last[1], maxHealth)}`;
+  };
+  addTitle('player1', characters.player1 ?? null, events1);
+  addTitle('player2', characters.player2 ?? null, events2);
+
+  return buildGaugeSvg({
+    variant: 'health',
+    maxValue: HEALTH_MAX,
+    yTicks: [0, 25, 50, 75, 100],
+    duration,
+    series: [
+      { side: 'player1', events: events1 },
+      { side: 'player2', events: events2 },
+    ],
+    titles,
+    ariaLabel: `Round ${round.round} 体力推移（${sideText(labels.player1, 'player1')} / ${sideText(labels.player2, 'player2')}）`,
+  });
+}
+
 /**
  * キャラクター名を比較用に正規化する（大文字・前後空白除去）
  */
@@ -391,7 +536,12 @@ export function resolveGaugeSideLabels(input: {
  *
  * ヘッダーに YouTube リンク（ラウンド開始時点）を併記する。
  */
-export function buildRoundGaugeHtml(videoId: string, round: GaugeRound, labels: GaugeSideLabels): string {
+export function buildRoundGaugeHtml(
+  videoId: string,
+  round: GaugeRound,
+  labels: GaugeSideLabels,
+  context?: GaugeChartContext,
+): string {
   const start = round.roundStartTime;
   const end = round.roundEndTime;
   const youtubeUrl = buildYoutubeUrl(videoId, start);
@@ -401,9 +551,21 @@ export function buildRoundGaugeHtml(videoId: string, round: GaugeRound, labels: 
     <div class="gg-legend">
       <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player1"></span>${escapeHtml(sideText(labels.player1, 'player1'))}</span>
       <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player2"></span>${escapeHtml(sideText(labels.player2, 'player2'))}</span>
-      <span class="gg-legend-note">帯: バーンアウト / マーカー: CA</span>
+      <span class="gg-legend-note">帯: バーンアウト / マーカー: CA / 体力: 太線</span>
     </div>
   `;
+
+  const healthBlock = hasHealthData(round)
+    ? `
+      <div class="gg-chart-block">
+        <div class="gg-chart-label">体力（0〜${HEALTH_MAX}%）</div>
+        ${buildHealthSvg(round, labels, context)}
+      </div>`
+    : `
+      <div class="gg-chart-block">
+        <div class="gg-chart-label">体力（0〜${HEALTH_MAX}%）</div>
+        <p class="gg-empty gg-empty-health">体力データなし</p>
+      </div>`;
 
   return `
     <section class="gg-round">
@@ -414,6 +576,7 @@ export function buildRoundGaugeHtml(videoId: string, round: GaugeRound, labels: 
         <a class="gg-round-link" href="${youtubeUrl}" target="_blank" rel="noopener">YouTubeで見る</a>
       </div>
       ${legend}
+      ${healthBlock}
       <div class="gg-chart-block">
         <div class="gg-chart-label">ドライブ（0〜${DRIVE_MAX}）</div>
         ${buildDriveSvg(round, labels)}
@@ -429,11 +592,16 @@ export function buildRoundGaugeHtml(videoId: string, round: GaugeRound, labels: 
 /**
  * gauges JSON の全ラウンドを描画する。データが無い場合は「ゲージデータなし」を返す。
  */
-export function buildGaugeRoundsHtml(videoId: string, gauges: GaugeData | null, labels: GaugeSideLabels): string {
+export function buildGaugeRoundsHtml(
+  videoId: string,
+  gauges: GaugeData | null,
+  labels: GaugeSideLabels,
+  context?: GaugeChartContext,
+): string {
   if (!gauges || !Array.isArray(gauges.rounds) || gauges.rounds.length === 0) {
     return '<p class="gg-empty">ゲージデータなし</p>';
   }
-  return gauges.rounds.map((round) => buildRoundGaugeHtml(videoId, round, labels)).join('');
+  return gauges.rounds.map((round) => buildRoundGaugeHtml(videoId, round, labels, context)).join('');
 }
 
 /**
@@ -449,22 +617,28 @@ export function buildGaugeNoticeHtml(gauges: GaugeData | null): string {
 
 /**
  * round_stats の集計テーブルを生成する。データが無い場合は「集計データなし」を返す。
+ *
+ * `characterHealth` を渡すと体力列に実 HP を併記する（ADR-050）。
  */
-export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSideLabels): string {
+export function buildRoundStatsTableHtml(
+  rows: RoundStatsRow[],
+  labels: GaugeSideLabels,
+  characterHealth?: CharacterHealthTable | null,
+): string {
   if (!rows || rows.length === 0) {
     return '<p class="gg-empty">集計データなし</p>';
   }
 
-  const formatValue = (value: number | null, digits = 1): string => {
+  const formatValue = (value: number | null | undefined, digits = 1): string => {
     if (value == null || !Number.isFinite(value)) return '-';
     return value.toFixed(digits);
   };
-  const formatPercent = (value: number | null): string => {
+  const formatPercent = (value: number | null | undefined): string => {
     if (value == null || !Number.isFinite(value)) return '-';
     return `${Math.round(value * 100)}%`;
   };
   // 未計測（null）は '-'、計測済み 0 件は '0' と区別する（ADR-049）
-  const formatInt = (value: number | null): string => {
+  const formatInt = (value: number | null | undefined): string => {
     if (value == null || !Number.isFinite(value)) return '-';
     return String(Math.round(value));
   };
@@ -473,6 +647,7 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
     .map((row) => {
       const sideLabel = sideText(labels[row.side], row.side);
       const character = row.character ? escapeHtml(row.character) : '-';
+      const maxHealth = resolveMaxHealth(row.character, characterHealth);
       return `
         <tr>
           <td>Round ${row.round}</td>
@@ -484,6 +659,9 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
           <td>${row.saMax == null ? '-' : Math.round(row.saMax)}</td>
           <td>${row.saUsedCount == null ? '-' : Math.round(row.saUsedCount)}</td>
           <td>${formatPercent(row.detectionCoverage)}</td>
+          <td>${formatHealthValue(row.healthMin, maxHealth)}</td>
+          <td>${formatHealthValue(row.healthAvg, maxHealth)}</td>
+          <td>${formatHealthValue(row.healthEnd, maxHealth)}</td>
           <td class="gg-stats-counter">${formatInt(row.counterCount)}</td>
           <td class="gg-stats-counter">${formatInt(row.punishCounterCount)}</td>
         </tr>
@@ -507,6 +685,9 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
               <th>SA最大</th>
               <th>SA使用</th>
               <th>計測率</th>
+              <th>体力最小</th>
+              <th>体力平均</th>
+              <th>体力終了</th>
               <th title="COUNTER">カウンタ</th>
               <th title="PUNISH COUNTER">パニッシュ</th>
             </tr>

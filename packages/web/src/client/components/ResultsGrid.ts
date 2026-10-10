@@ -5,12 +5,14 @@
  */
 
 import { DOM_IDS } from '../types';
-import type { Match, GaugeData, RoundStatsRow } from '@shared/types';
+import type { Match, GaugeData, RoundStatsRow, CharacterHealthTable } from '@shared/types';
 import {
   buildGaugeNoticeHtml,
   buildGaugeRoundsHtml,
   buildRoundStatsTableHtml,
+  resolveSideCharacters,
   sideText,
+  type GaugeChartContext,
   type GaugeSideLabels,
 } from './RoundGaugeChart';
 
@@ -172,6 +174,8 @@ export interface MatchDetailData {
   roundStats: RoundStatsRow[];
   /** 自分視点の表示ラベル */
   labels: GaugeSideLabels;
+  /** キャラクター別最大体力表（ADR-050、未取得時は null） */
+  characterHealth?: CharacterHealthTable | null;
 }
 
 /**
@@ -200,12 +204,20 @@ function createDetailHeader(match: Match, labels: GaugeSideLabels): string {
  * 詳細パネルの中身を生成する
  */
 function createDetailHtml(match: Match, data: MatchDetailData): string {
+  // 実 HP 表示用のキャラ名は round_stats.character を優先し、無ければ matches の値を使う（ADR-050）
+  const context: GaugeChartContext = {
+    characterHealth: data.characterHealth ?? null,
+    characters: resolveSideCharacters(
+      { player1: match.player1.character, player2: match.player2.character },
+      data.roundStats,
+    ),
+  };
   return `
     <div class="match-detail-inner">
       ${createDetailHeader(match, data.labels)}
       ${buildGaugeNoticeHtml(data.gauges)}
-      <div class="gg-rounds">${buildGaugeRoundsHtml(match.videoId, data.gauges, data.labels)}</div>
-      ${buildRoundStatsTableHtml(data.roundStats, data.labels)}
+      <div class="gg-rounds">${buildGaugeRoundsHtml(match.videoId, data.gauges, data.labels, context)}</div>
+      ${buildRoundStatsTableHtml(data.roundStats, data.labels, data.characterHealth ?? null)}
     </div>
   `;
 }

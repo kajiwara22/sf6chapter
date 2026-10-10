@@ -3,6 +3,9 @@ import {
   buildDriveSvg,
   buildGaugeNoticeHtml,
   buildGaugeRoundsHtml,
+  buildHealthPath,
+  buildHealthSvg,
+  buildRoundGaugeHtml,
   buildRoundStatsTableHtml,
   buildSaSvg,
   buildStepPath,
@@ -10,14 +13,19 @@ import {
   computeTimeTicks,
   DRIVE_MAX,
   formatClock,
+  formatHealthValue,
   formatSeconds,
   getRoundDuration,
+  HEALTH_MAX,
+  hasHealthData,
   resolveGaugeSideLabels,
+  resolveMaxHealth,
+  resolveSideCharacters,
   SA_MAX,
   sideText,
   type GaugeSideLabels,
 } from './components/RoundGaugeChart';
-import type { GaugeData, GaugeRound, RoundStatsRow } from '@shared/types';
+import type { CharacterHealthTable, GaugeData, GaugeRound, RoundStatsRow } from '@shared/types';
 
 /** ADR-048 のデータモデル例に近いラウンド */
 const round: GaugeRound = {
@@ -348,5 +356,186 @@ describe('buildRoundStatsTableHtml', () => {
     );
     expect(unmeasured).toContain('>-</td>');
     expect(zero).toContain('>0</td>');
+  });
+});
+
+/** ADR-050 のデータモデル例に近い体力付きラウンド */
+const roundWithHealth: GaugeRound = {
+  ...round,
+  player1: {
+    ...round.player1,
+    healthCoverage: 0.94,
+    health: [
+      [0.62, 100.0],
+      [3.14, 89.4],
+      [7.05, 76.2],
+    ],
+  },
+  player2: {
+    ...round.player2,
+    healthCoverage: 0.8,
+    health: [
+      [0.5, 100.0],
+      [10, 69.3],
+    ],
+  },
+};
+
+/** ADR-050 の最大体力表（一部キャラのみ） */
+const healthTable: CharacterHealthTable = {
+  default: 10000,
+  characters: { GOUKI: 9000, MARISA: 10500, ZANGIEF: 11000 },
+};
+
+const healthStatsRow = (side: 'player1' | 'player2', character: string | null): RoundStatsRow => ({
+  videoId: 'vid',
+  matchId: 'vid_1',
+  round: 1,
+  side,
+  character,
+  roundStartTime: 0,
+  roundEndTime: 1,
+  durationSec: 1,
+  driveMin: null,
+  driveAvg: null,
+  driveEnd: null,
+  saMax: null,
+  saUsedCount: null,
+  detectionCoverage: null,
+  counterCount: null,
+  punishCounterCount: null,
+});
+
+describe('buildHealthPath', () => {
+  const scaleX = (t: number) => t * 10;
+  const scaleY = (v: number) => v;
+
+  it('health が無い・空なら空文字', () => {
+    expect(buildHealthPath(undefined, scaleX, scaleY, 10)).toBe('');
+    expect(buildHealthPath([], scaleX, scaleY, 10)).toBe('');
+  });
+
+  it('ドライブ・SA と同じステップ描画になる', () => {
+    const events: [number, number][] = [
+      [0, 100],
+      [2, 50],
+    ];
+    expect(buildHealthPath(events, scaleX, scaleY, 4)).toBe(buildStepPath(events, scaleX, scaleY, 4));
+  });
+});
+
+describe('formatHealthValue', () => {
+  it('最大体力があれば実 HP を併記する', () => {
+    expect(formatHealthValue(62.6, 10000)).toBe('62.6%（6260 / 10000）');
+  });
+
+  it('最大体力が無ければ％のみ', () => {
+    expect(formatHealthValue(62.6, null)).toBe('62.6%');
+    expect(formatHealthValue(62.6, undefined)).toBe('62.6%');
+  });
+
+  it('境界値 0% / 100% を扱える', () => {
+    expect(formatHealthValue(0, 9000)).toBe('0.0%（0 / 9000）');
+    expect(formatHealthValue(100, 9000)).toBe('100.0%（9000 / 9000）');
+  });
+
+  it('null は "-"', () => {
+    expect(formatHealthValue(null, 9000)).toBe('-');
+  });
+});
+
+describe('resolveMaxHealth', () => {
+  it('表に無いキャラクターは既定値', () => {
+    expect(resolveMaxHealth('JP', healthTable)).toBe(10000);
+  });
+
+  it('大文字小文字・空白を無視する', () => {
+    expect(resolveMaxHealth(' gouki ', healthTable)).toBe(9000);
+  });
+
+  it('表が無ければ null', () => {
+    expect(resolveMaxHealth('GOUKI', null)).toBeNull();
+  });
+});
+
+describe('hasHealthData', () => {
+  it('health があれば true', () => {
+    expect(hasHealthData(roundWithHealth)).toBe(true);
+  });
+
+  it('旧データ（health 無し）は false', () => {
+    expect(hasHealthData(round)).toBe(false);
+  });
+});
+
+describe('buildHealthSvg', () => {
+  it('体力系列を太線クラスで描画し、ツールチップに実 HP を併記する', () => {
+    const svg = buildHealthSvg(roundWithHealth, plainLabels, {
+      characterHealth: healthTable,
+      characters: { player1: 'GOUKI', player2: 'JP' },
+    });
+    expect(svg).toContain('gg-line-health gg-line-player1');
+    expect(svg).toContain('gg-line-health gg-line-player2');
+    expect(svg).toContain('9000 / 9000');
+    expect(svg).toContain(`>${HEALTH_MAX}</text>`);
+  });
+
+  it('最大体力表が無ければツールチップは％のみ', () => {
+    const svg = buildHealthSvg(roundWithHealth, plainLabels, { characters: { player1: 'GOUKI' } });
+    expect(svg).toContain('100.0%');
+    expect(svg).not.toContain(' / 9000');
+  });
+});
+
+describe('buildRoundGaugeHtml の体力段（ADR-050）', () => {
+  it('体力ありなら体力チャートを描画する', () => {
+    const html = buildRoundGaugeHtml('vid', roundWithHealth, plainLabels);
+    expect(html).toContain('体力（0〜100%）');
+    expect(html).toContain('gg-line-health');
+  });
+
+  it('体力なしなら「体力データなし」を表示し、ドライブ/SA は残す', () => {
+    const html = buildRoundGaugeHtml('vid', round, plainLabels);
+    expect(html).toContain('体力データなし');
+    expect(html).toContain('gg-line-drive');
+    expect(html).toContain('gg-line-sa');
+  });
+});
+
+describe('resolveSideCharacters', () => {
+  it('round_stats.character を優先する', () => {
+    const { player1, player2 } = resolveSideCharacters(
+      { player1: 'MATCH_P1', player2: 'MATCH_P2' },
+      [healthStatsRow('player1', 'GOUKI'), healthStatsRow('player2', null)],
+    );
+    expect(player1).toBe('GOUKI');
+    expect(player2).toBe('MATCH_P2');
+  });
+
+  it('round_stats が空なら matches の値', () => {
+    const { player1, player2 } = resolveSideCharacters({ player1: 'JP', player2: 'KEN' }, []);
+    expect(player1).toBe('JP');
+    expect(player2).toBe('KEN');
+  });
+});
+
+describe('buildRoundStatsTableHtml の体力列（ADR-050）', () => {
+  it('最大体力表があれば実 HP を併記する', () => {
+    const html = buildRoundStatsTableHtml(
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: 25.8, healthAvg: 47, healthEnd: 25.8 }],
+      plainLabels,
+      healthTable,
+    );
+    expect(html).toContain('体力最小');
+    expect(html).toContain('2322 / 9000');
+  });
+
+  it('旧 Parquet（health 列が null / 未設定）は "-"', () => {
+    const html = buildRoundStatsTableHtml(
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: null, healthAvg: null, healthEnd: null }],
+      plainLabels,
+      healthTable,
+    );
+    expect(html).toContain('>-</td>');
   });
 });

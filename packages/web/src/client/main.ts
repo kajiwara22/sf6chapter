@@ -3,7 +3,7 @@
  */
 
 import { DOM_IDS } from './types';
-import { initDuckDB, loadParquetData, loadBattlelogParquetData, loadRoundStatsParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, MY_PLAYER_ID } from './search';
+import { initDuckDB, loadParquetData, loadBattlelogParquetData, loadRoundStatsParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, MY_PLAYER_ID } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
 import { renderResults, clearResults, showMatchDetailLoading, renderMatchDetail, showMatchDetailError, clearMatchDetail } from './components/ResultsGrid';
 import { resolveGaugeSideLabels } from './components/RoundGaugeChart';
@@ -123,10 +123,11 @@ async function handleMatchSelect(match: Match): Promise<void> {
   showMatchDetailLoading(match);
 
   try {
-    const [gauges, roundStats, battlelogSides] = await Promise.all([
+    const [gauges, roundStats, battlelogSides, characterHealth] = await Promise.all([
       fetchGaugesJson(match.id),
       queryRoundStats(match.id).catch(() => []),
       queryMatchBattlelogSides(match.id).catch(() => null),
+      fetchCharacterHealthTable(),
     ]);
 
     const labels = resolveGaugeSideLabels({
@@ -136,7 +137,7 @@ async function handleMatchSelect(match: Match): Promise<void> {
       battlelog: battlelogSides,
     });
 
-    renderMatchDetail(match, { gauges, roundStats, labels });
+    renderMatchDetail(match, { gauges, roundStats, labels, characterHealth });
   } catch (err) {
     console.error('[App] Match detail error:', err);
     showMatchDetailError(
