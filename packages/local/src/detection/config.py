@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.logger import get_logger
+from .gauge import GaugeAnalysisParams
 
 logger = get_logger()
 
@@ -45,6 +46,7 @@ class DetectionParams:
     recognize_frame_offset_threshold: float  # 動的オフセット選択の閾値（標準偏差の差分）
     result_detection: ResultDetectionParams  # RESULT画面検出パラメータ
     profile: str  # 使用したプロファイル名
+    gauge_analysis: GaugeAnalysisParams | None = None  # ゲージ計測パラメータ（ADR-048）
 
     def to_dict(self) -> dict[str, Any]:
         """辞書形式に変換"""
@@ -63,6 +65,7 @@ class DetectionParams:
             "recognize_frame_offset": self.recognize_frame_offset,
             "recognize_frame_offset_alt": self.recognize_frame_offset_alt,
             "recognize_frame_offset_threshold": self.recognize_frame_offset_threshold,
+            "gauge_analysis": self.gauge_analysis.to_dict() if self.gauge_analysis else None,
         }
 
     def log_params(self) -> None:
@@ -93,6 +96,11 @@ class DetectionParams:
             logger.info("    win_threshold:            %.2f", self.result_detection.win_threshold)
             logger.info("    result_screen_search_region: %s", self.result_detection.result_screen_search_region)
             logger.info("    win_text_search_region:   %s", self.result_detection.win_text_search_region)
+        if self.gauge_analysis is not None:
+            self.gauge_analysis.log_params()
+        else:
+            logger.info("  [Gauge Analysis]")
+            logger.info("    enabled:                  False (未設定)")
         logger.info("=" * 60)
 
 
@@ -173,6 +181,10 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         win_text_search_region=win_text_search_region,
     )
 
+    # ゲージ計測パラメータ（ADR-048）。未設定の場合は None（計測なし）
+    gauge_section = config.get("gauge_analysis")
+    gauge_analysis = GaugeAnalysisParams.from_dict(gauge_section) if gauge_section else None
+
     # DetectionParamsに変換
     params = DetectionParams(
         template_path=str(params_dict["template_path"]),
@@ -190,6 +202,7 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         recognize_frame_offset_threshold=float(params_dict.get("recognize_frame_offset_threshold", 5.0)),
         result_detection=result_detection,
         profile=profile,
+        gauge_analysis=gauge_analysis,
     )
 
     # パラメータの妥当性チェック

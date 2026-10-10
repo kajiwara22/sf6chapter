@@ -81,6 +81,78 @@
       }
     }
   },
+  "gauge_analysis": {
+    "description": "ラウンド単位のドライブゲージ・SAゲージ計測（ADR-048）。座標は base_width x base_height 基準で、実フレームサイズに比例拡大して使う",
+    "enabled": true,
+    "base_width": 1920,
+    "base_height": 1080,
+    "sample_interval_sec": 0.1,
+    "banner_scale": 0.5,
+    "banner_sample_interval_sec": 0.25,
+    "drive_roi": {
+      "player1": [574, 110, 880, 138],
+      "player2": [1040, 110, 1346, 138]
+    },
+    "sa_digit_roi": {
+      "player1": [45, 938, 195, 1075],
+      "player2": [1725, 938, 1875, 1075]
+    },
+    "sa_bar_roi": {
+      "player1": [145, 996, 400, 1014],
+      "player2": [1520, 996, 1775, 1014]
+    },
+    "round_banner_search_region": [530, 400, 1130, 690],
+    "thresholds": {
+      "drive_filled_v": 150,
+      "drive_filled_s": 100,
+      "drive_filled_h_min": 25,
+      "drive_filled_h_max": 60,
+      "drive_column_fill_ratio": 0.5,
+      "drive_detect_min_fraction": 0.03,
+      "drive_smoothing_window": 7,
+      "drive_max_gap_sec": 1.0,
+      "drive_event_epsilon": 0.3,
+      "hud_flicker_tolerance_sec": 0.5,
+      "burnout_min_duration_sec": 1.0,
+      "burnout_merge_gap_sec": 1.0,
+      "sa_digit_min_score": 0.45,
+      "sa_max_gap_sec": 1.0,
+      "sa_progress_event_epsilon": 0.3,
+      "ca_merge_gap_sec": 1.0,
+      "sa_bar_filled_v": 140,
+      "sa_bar_filled_s": 100,
+      "round_banner_threshold": 0.35
+    },
+    "templates": {
+      "sa_digits": {
+        "0": "./template/gauge/sa_digit_0.png",
+        "1": "./template/gauge/sa_digit_1.png",
+        "2": "./template/gauge/sa_digit_2.png",
+        "3": "./template/gauge/sa_digit_3.png",
+        "ca": "./template/gauge/sa_digit_ca.png"
+      },
+      "round_banner": "./template/gauge/round_banner.png"
+    },
+    "calibration": {
+      "description": "フルゲージ時の生計測値の補正係数（1.0 で無補正）。実データで検証したうえで調整する",
+      "drive_fill_scale": {
+        "player1": 1.0,
+        "player2": 1.0
+      }
+    },
+    "thresholds_guide": {
+      "drive_filled_v": "ドライブゲージ充填セルと判定する明度の下限",
+      "burnout_min_duration_sec": "バーンアウトと確定する最小継続時間（単発の誤検出を除外）",
+      "burnout_merge_gap_sec": "この秒数以内のバーンアウト区間は同一期間として結合する",
+      "hud_flicker_tolerance_sec": "HUD可視判定の細かな振れを吸収する許容秒数",
+      "drive_smoothing_window": "ドライブ本数のメディアン平滑化の点数",
+      "drive_event_epsilon": "ドライブ本数の変化点とみなす最小差",
+      "sa_progress_event_epsilon": "SAバー進捗の変化点とみなす最小差",
+      "ca_merge_gap_sec": "この秒数以内のCA表示区間は同一期間として結合する",
+      "sa_digit_min_score": "SAの数字（0〜3, CA）テンプレートマッチの採用下限。下回る場合はHUD非表示・未計測として扱う",
+      "round_banner_threshold": "ROUNDバナー検出の閾値（0.5倍縮小画像で照合）"
+    }
+  },
   "result_detection_guide": {
     "description": "RESULT画面検出パラメータの設定ガイド",
     "enabled": "true で有効化、false で無効化",

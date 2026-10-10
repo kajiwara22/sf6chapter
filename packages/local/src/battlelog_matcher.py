@@ -233,6 +233,7 @@ class BattlelogMatcher:
                 "replay_id": str | None,
                 "uploaded_at": int | None,
                 "time_difference_seconds": int | None,
+                "round_count": int | None,
                 "details": str,
             }
         """
@@ -341,6 +342,11 @@ class BattlelogMatcher:
                         "player2_character": p2_char,
                         "player2_result": p2_result,
                         "confidence": confidence,
+                        # ADR-048: ラウンド数検証用（round_results の長い方の件数）
+                        "round_count": max(
+                            len(replay.get("player1_info", {}).get("round_results") or []),
+                            len(replay.get("player2_info", {}).get("round_results") or []),
+                        ),
                     }
 
             except Exception as e:
@@ -382,5 +388,6 @@ class BattlelogMatcher:
             "replay_id": best_match["replay_id"],
             "uploaded_at": best_match["uploaded_at"],
             "time_difference_seconds": int(best_match["time_difference"]),
+            "round_count": best_match.get("round_count"),
             "details": f"Matched (time_diff={best_match['time_difference']:.1f}s)",
         }

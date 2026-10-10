@@ -20,12 +20,14 @@ sys.path.insert(0, str(app_root))
 from src.battlelog_matcher import BattlelogMatcher, CharacterNormalizer
 from src.character import UNKNOWN_CHARACTER, CharacterRecognizer
 from src.detection import (
+    GaugeAnalyzer,
     MatchDetection,
     ResultScreenDetector,
     TemplateMatcher,
     get_available_profiles,
     load_detection_params,
 )
+from src.detection.gauge import build_round_stats_rows
 from src.firestore import FirestoreClient
 from src.sf6_battlelog import BattlelogCacheManager, BattlelogCollector, BattlelogSiteClient
 from src.storage import R2Uploader
@@ -100,6 +102,9 @@ class SF6ChapterProcessor:
         )
         self.battlelog_matcher = BattlelogMatcher(normalizer=self.character_normalizer)
 
+        self.gauge_analyzer: GaugeAnalyzer | None = None
+        self.gauge_result: dict[str, Any] | None = None
+
         # RESULT画面検出器の初期化
         self.result_detector = _initialize_result_screen_detector(self.app_root, self.detection_params)
         if self.result_detector:
@@ -117,6 +122,15 @@ class SF6ChapterProcessor:
         """
         # 2. テンプレートマッチングで対戦シーンを検出
         logger.info("[2/6] Detecting match scenes...")
+
+        # ADR-048: ゲージ計測器（同一デコードループに相乗りする）
+        gauge_analyzer = None
+        if self.detection_params.gauge_analysis and self.detection_params.gauge_analysis.enabled:
+            gauge_analyzer = GaugeAnalyzer(self.detection_params.gauge_analysis, self.app_root)
+        self.matcher.set_gauge_analyzer(gauge_analyzer)
+        self.gauge_analyzer = gauge_analyzer
+        self.gauge_result = None
+
         detections = self.matcher.detect_matches(
             video_path=video_path,
             crop_region=self.detection_params.crop_region,
@@ -187,6 +201,10 @@ class SF6ChapterProcessor:
             except Exception:
                 logger.exception("Error processing recognition result for match %d", i)
                 continue
+
+        # ADR-048: 検出済みの試合範囲でゲージ計測結果をラウンド単位に構築する
+        if gauge_analyzer is not None and matches:
+            self.gauge_result = gauge_analyzer.build([(match["id"], float(match["startTime"])) for match in matches])
 
         return matches, chapters
 
@@ -294,6 +312,70 @@ class SF6ChapterProcessor:
 
         return video_data
 
+    def _save_gauge_data(
+        self,
+        video_id: str,
+        matches: list[dict[str, Any]],
+        chapters_with_result: list[dict[str, Any]],
+        video_intermediate_dir: Path,
+    ) -> None:
+        """ゲージ計測結果を中間ファイル・R2・round_stats.parquet に保存する（ADR-048）
+
+        - 中間ファイル: gauges/gauges.json, gauges/gauges_samples.csv, gauges/roi/*.png
+        - R2: gauges/{match_id}.json（Web詳細表示用）と round_stats.parquet（集計用）
+        - Battlelog の round_results とラウンド数を突合する（ADR-048 決定4）
+        """
+        import json
+
+        if not self.gauge_analyzer or not self.gauge_result:
+            logger.info("[Gauge] No gauge data to save")
+            return
+
+        # ラウンド数の検証（Battlelog round_results との突合）
+        chapter_map = {chapter.get("matchId"): chapter for chapter in chapters_with_result}
+        for match_id, match_gauges in (self.gauge_result.get("matches") or {}).items():
+            chapter = chapter_map.get(match_id) or {}
+            expected = chapter.get("round_count")
+            detected = len(match_gauges.get("rounds", []))
+            match_gauges["detectedRoundCount"] = detected
+            match_gauges["battlelogRoundCount"] = expected
+            match_gauges["roundCountMatch"] = None if expected is None else detected == expected
+            if expected is not None and detected != expected:
+                logger.warning(
+                    "[Gauge] round count mismatch for %s: detected=%d battlelog=%d",
+                    match_id,
+                    detected,
+                    expected,
+                )
+
+        # 中間ファイル（目視検証用、ADR-048 決定7）
+        gauge_dir = video_intermediate_dir / "gauges"
+        gauge_dir.mkdir(parents=True, exist_ok=True)
+        json_path = gauge_dir / "gauges.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(self.gauge_result, f, ensure_ascii=False, indent=2)
+        logger.info("✅ Saved gauge analysis: %s", json_path)
+        self.gauge_analyzer.write_samples_csv(gauge_dir / "gauges_samples.csv")
+        self.gauge_analyzer.save_snapshots(gauge_dir / "roi")
+
+        # 集計用の行（round_stats.parquet）
+        stats_rows = build_round_stats_rows(self.gauge_result, matches)
+        stats_preview_path = gauge_dir / "round_stats_preview.json"
+        with open(stats_preview_path, "w", encoding="utf-8") as f:
+            json.dump(stats_rows, f, ensure_ascii=False, indent=2)
+
+        if self.enable_r2 and self.r2_uploader:
+            for match_id, match_gauges in (self.gauge_result.get("matches") or {}).items():
+                self.r2_uploader.upload_json({"videoId": video_id, **match_gauges}, f"gauges/{match_id}.json")
+
+            # ラウンド統計が無い試合はラウンドが検出できていないため、その videoId の既存行だけ削除する
+            if stats_rows:
+                self.r2_uploader.update_parquet_table(stats_rows, "round_stats.parquet", video_id=video_id)
+        else:
+            logger.info("[Gauge] R2 upload disabled (ENABLE_R2=false): %s", stats_preview_path)
+
+        logger.info("[Gauge] Saved %d round stat rows", len(stats_rows))
+
     def process_video(self, message_data: dict[str, Any]) -> None:
         """
         動画処理のメインフロー
@@ -352,6 +434,9 @@ class SF6ChapterProcessor:
 
             # 5-6. ストレージ保存
             video_data = self._save_to_storage(video_id, message_data, chapters_with_result, matches)
+
+            # ADR-048: ゲージ計測結果の保存（中間ファイル・R2・round_stats.parquet）
+            self._save_gauge_data(video_id, matches, chapters_with_result, video_intermediate_dir)
 
             # 最終結果を保存
             self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_result)

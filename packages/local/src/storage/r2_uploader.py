@@ -118,6 +118,30 @@ class R2Uploader:
             ]
         )
 
+    def _get_round_stats_schema(self) -> pa.Schema:
+        """round_stats.parquet用のスキーマ（ADR-048）
+
+        1行 = 1ラウンド x 1サイド。ラウンド単位のゲージ統計を保持する。
+        """
+        return pa.schema(
+            [
+                pa.field("videoId", pa.string()),
+                pa.field("matchId", pa.string()),
+                pa.field("round", pa.int32()),
+                pa.field("side", pa.string()),
+                pa.field("character", pa.string(), nullable=True),
+                pa.field("roundStartTime", pa.int64()),
+                pa.field("roundEndTime", pa.int64()),
+                pa.field("durationSec", pa.float64()),
+                pa.field("driveMin", pa.float64(), nullable=True),
+                pa.field("driveAvg", pa.float64(), nullable=True),
+                pa.field("driveEnd", pa.float64(), nullable=True),
+                pa.field("saMax", pa.int32(), nullable=True),
+                pa.field("saUsedCount", pa.int32()),
+                pa.field("detectionCoverage", pa.float64(), nullable=True),
+            ]
+        )
+
     def upload_parquet(
         self,
         data: list[dict[str, Any]],
@@ -138,6 +162,8 @@ class R2Uploader:
         # matches.parquetの場合はスキーマを自動選択
         if key == "matches.parquet" and schema is None:
             schema = self._get_matches_schema()
+        elif key == "round_stats.parquet" and schema is None:
+            schema = self._get_round_stats_schema()
 
         # Parquetファイル作成
         table = pa.Table.from_pylist(data, schema=schema) if schema else pa.Table.from_pylist(data)
@@ -228,6 +254,8 @@ class R2Uploader:
         # matches.parquetの場合はスキーマを自動選択
         if key == "matches.parquet" and schema is None:
             schema = self._get_matches_schema()
+        elif key == "round_stats.parquet" and schema is None:
+            schema = self._get_round_stats_schema()
 
         try:
             # 既存データを取得
