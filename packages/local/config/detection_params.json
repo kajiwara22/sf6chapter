@@ -153,6 +153,37 @@
       "round_banner_threshold": "ROUNDバナー検出の閾値（0.5倍縮小画像で照合）"
     }
   },
+  "counter_analysis": {
+    "description": "ラウンド単位のカウンター・パニッシュカウンター回数（ADR-049）。座標は base_width x base_height 基準で、実フレームサイズに比例拡大して使う",
+    "enabled": true,
+    "base_width": 1920,
+    "base_height": 1080,
+    "sample_interval_sec": 0.1,
+    "roi": {
+      "player1": [30, 455, 430, 555],
+      "player2": [1440, 455, 1920, 555]
+    },
+    "templates": {
+      "counter": {
+        "player1": "./template/counter/counter_left.png",
+        "player2": "./template/counter/counter_right.png"
+      },
+      "punish_counter": {
+        "player1": "./template/counter/punish_left.png",
+        "player2": "./template/counter/punish_right.png"
+      }
+    },
+    "thresholds": {
+      "match_score": 0.7,
+      "min_duration_sec": 0.4,
+      "merge_gap_sec": 0.25
+    },
+    "thresholds_guide": {
+      "match_score": "バナーが表示されていると判定するマッチスコアの下限（グレースケール TM_CCOEFF_NORMED）。実測で陽性 0.85〜1.0 / 非該当 ≤0.46",
+      "min_duration_sec": "カウンター 1 回と確定する ON 区間の最小継続時間。単発の誤検出を除外する",
+      "merge_gap_sec": "この秒数以内の空白は同一バナーの検出ゆらぎとみなして連結する。超えると別のカウンターとして数える"
+    }
+  },
   "result_detection_guide": {
     "description": "RESULT画面検出パラメータの設定ガイド",
     "enabled": "true で有効化、false で無効化",

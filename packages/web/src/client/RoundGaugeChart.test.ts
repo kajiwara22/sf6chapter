@@ -311,6 +311,8 @@ describe('buildRoundStatsTableHtml', () => {
     saMax: 2,
     saUsedCount: 1,
     detectionCoverage: 0.958,
+    counterCount: 3,
+    punishCounterCount: 1,
   };
 
   it('データが無ければ「集計データなし」', () => {
@@ -324,5 +326,27 @@ describe('buildRoundStatsTableHtml', () => {
     expect(html).toContain('GOUKI');
     expect(html).toContain('4.2');
     expect(html).toContain('96%');
+  });
+
+  it('カウンター・パニッシュカウンター回数を表示する（ADR-049）', () => {
+    const html = buildRoundStatsTableHtml([row], selfP1Labels);
+    expect(html).toContain('カウンタ');
+    expect(html).toContain('パニッシュ');
+    expect(html).toContain('gg-stats-counter');
+    expect(html).toContain('>3</td>');
+    expect(html).toContain('>1</td>');
+  });
+
+  it('未計測（null）は "-"、0 件は "0" と區別する', () => {
+    const unmeasured = buildRoundStatsTableHtml(
+      [{ ...row, counterCount: null, punishCounterCount: null }],
+      selfP1Labels,
+    );
+    const zero = buildRoundStatsTableHtml(
+      [{ ...row, counterCount: 0, punishCounterCount: 0 }],
+      selfP1Labels,
+    );
+    expect(unmeasured).toContain('>-</td>');
+    expect(zero).toContain('>0</td>');
   });
 });

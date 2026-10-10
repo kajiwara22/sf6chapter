@@ -463,6 +463,11 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
     if (value == null || !Number.isFinite(value)) return '-';
     return `${Math.round(value * 100)}%`;
   };
+  // 未計測（null）は '-'、計測済み 0 件は '0' と区別する（ADR-049）
+  const formatInt = (value: number | null): string => {
+    if (value == null || !Number.isFinite(value)) return '-';
+    return String(Math.round(value));
+  };
 
   const tableRows = rows
     .map((row) => {
@@ -479,6 +484,8 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
           <td>${row.saMax == null ? '-' : Math.round(row.saMax)}</td>
           <td>${row.saUsedCount == null ? '-' : Math.round(row.saUsedCount)}</td>
           <td>${formatPercent(row.detectionCoverage)}</td>
+          <td class="gg-stats-counter">${formatInt(row.counterCount)}</td>
+          <td class="gg-stats-counter">${formatInt(row.punishCounterCount)}</td>
         </tr>
       `;
     })
@@ -500,6 +507,8 @@ export function buildRoundStatsTableHtml(rows: RoundStatsRow[], labels: GaugeSid
               <th>SA最大</th>
               <th>SA使用</th>
               <th>計測率</th>
+              <th title="COUNTER">カウンタ</th>
+              <th title="PUNISH COUNTER">パニッシュ</th>
             </tr>
           </thead>
           <tbody>${tableRows}</tbody>

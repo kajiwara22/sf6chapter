@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, MatchBattlelogSides } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
+import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides } from '@shared/types';
 import { determineResultFromRounds } from '@shared/rounds';
 
 // ラウンド判定は shared/rounds.ts に集約（ADR-047）。既存の利用箇所向けに re-export する。
@@ -684,7 +684,9 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
            ELSE NULL END AS my_rounds,
       CASE WHEN b.p1_short_id = ${MY_PLAYER_ID} THEN b.p2_round_results
            WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN b.p1_round_results
-           ELSE NULL END AS opp_rounds
+           ELSE NULL END AS opp_rounds,
+      m.id AS match_id,
+      CASE WHEN b.p2_short_id = ${MY_PLAYER_ID} THEN 'player2' ELSE 'player1' END AS self_side
     FROM battlelog_replays b
     FULL OUTER JOIN matches m ON b.replay_id = m.battlelogReplayId
     ${whereClause}
@@ -699,7 +701,7 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
 
   const rows = result.toArray() as unknown as MatchHistoryQueryRow[];
 
-  return rows.map((row) => {
+  const mapped: MatchHistoryRow[] = rows.map((row) => {
     const myRounds = row.my_rounds ?? null;
     const oppRounds = row.opp_rounds ?? null;
 
@@ -724,8 +726,34 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
       uploadedAt: String(row.uploaded_at),  // DuckDBのTIMESTAMPはUnixミリ秒の数値で返る
       videoId: row.video_id ?? null,
       startTime: row.start_time != null ? Number(row.start_time) : null,
+      matchId: row.match_id ?? null,
+      selfSide: row.self_side === 'player2' ? 'player2' : 'player1',
+      roundCounters: [],
     };
   });
+
+  // ADR-049: ラウンドバッジにカウンター回数を併記するため、ページ内の試合の回数をまとめて取得する
+  const matchIds = mapped
+    .map((row) => row.matchId)
+    .filter((matchId): matchId is string => matchId != null);
+  if (matchIds.length > 0) {
+    const counters = await queryRoundCounters(matchIds);
+    if (counters.length > 0) {
+      const countersByMatch = new Map<string, RoundCounterRow[]>();
+      for (const counter of counters) {
+        const list = countersByMatch.get(counter.matchId) ?? [];
+        list.push(counter);
+        countersByMatch.set(counter.matchId, list);
+      }
+      for (const row of mapped) {
+        if (row.matchId) {
+          row.roundCounters = countersByMatch.get(row.matchId) ?? [];
+        }
+      }
+    }
+  }
+
+  return mapped;
 }
 
 /**
@@ -883,6 +911,63 @@ export function clearGaugesCache(): void {
 }
 
 /**
+ * round_stats にカウンター列（ADR-049）が存在するかを判定する
+ *
+ * 旧 Parquet（ADR-049 適用前に生成されたもの）には列が無いため、
+ * SELECT で列参照エラーにならないよう存在確認してから問い合わせる。
+ */
+let roundStatsCounterColumnsCache: boolean | null = null;
+
+async function roundStatsHasCounterColumns(): Promise<boolean> {
+  if (roundStatsCounterColumnsCache !== null) return roundStatsCounterColumnsCache;
+  if (!instance) return false;
+  try {
+    const info = await instance.conn.query("PRAGMA table_info('round_stats')");
+    const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
+    roundStatsCounterColumnsCache = names.includes('counterCount') && names.includes('punishCounterCount');
+  } catch {
+    roundStatsCounterColumnsCache = false;
+  }
+  return roundStatsCounterColumnsCache;
+}
+
+/**
+ * 複数試合のラウンド別カウンター回数をまとめて取得する（ADR-049）
+ *
+ * round_stats テーブルやカウンター列が無い場合は空配列を返す（呼び出し側でフォールバック不要）。
+ */
+export async function queryRoundCounters(matchIds: string[]): Promise<RoundCounterRow[]> {
+  if (!instance || matchIds.length === 0) return [];
+  if (!(await roundStatsHasCounterColumns())) return [];
+
+  const placeholders = matchIds.map((_, index) => `$${index + 1}`).join(', ');
+  const query = `
+    SELECT matchId, round, side, counterCount, punishCounterCount
+    FROM round_stats
+    WHERE matchId IN (${placeholders})
+    ORDER BY matchId ASC, round ASC, side ASC
+  `;
+
+  try {
+    const stmt = await instance.conn.prepare(query);
+    const result = await stmt.query(...matchIds);
+    await stmt.close();
+
+    const rows = result.toArray() as unknown as RoundCounterQueryRow[];
+    return rows.map((row) => ({
+      matchId: row.matchId,
+      round: Number(row.round),
+      side: row.side === 'player2' ? 'player2' : 'player1',
+      counterCount: row.counterCount == null ? null : Number(row.counterCount),
+      punishCounterCount: row.punishCounterCount == null ? null : Number(row.punishCounterCount),
+    }));
+  } catch (error) {
+    console.warn('[DuckDB] Failed to query round counters:', error);
+    return [];
+  }
+}
+
+/**
  * 試合単位のラウンド統計を取得する（ADR-048）
  *
  * round_stats テーブルが存在しない（round_stats.parquet 未配置）場合は
@@ -893,11 +978,13 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     throw new Error('DuckDB not initialized');
   }
 
+  const withCounters = await roundStatsHasCounterColumns();
   const query = `
     SELECT
       videoId, matchId, round, side, character,
       roundStartTime, roundEndTime, durationSec,
       driveMin, driveAvg, driveEnd, saMax, saUsedCount, detectionCoverage
+      ${withCounters ? ', counterCount, punishCounterCount' : ''}
     FROM round_stats
     WHERE matchId = $1
     ORDER BY round ASC, side ASC
@@ -924,6 +1011,8 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     saMax: row.saMax == null ? null : Number(row.saMax),
     saUsedCount: row.saUsedCount == null ? null : Number(row.saUsedCount),
     detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
+    counterCount: row.counterCount == null ? null : Number(row.counterCount),
+    punishCounterCount: row.punishCounterCount == null ? null : Number(row.punishCounterCount),
   }));
 }
 

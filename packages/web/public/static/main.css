@@ -881,6 +881,23 @@ body {
   text-transform: none;
 }
 
+/* カウンター回数の併記（ADR-049） */
+.round-counter {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
 /* YouTubeリンク */
 .replay-youtube-link {
   display: inline-flex;

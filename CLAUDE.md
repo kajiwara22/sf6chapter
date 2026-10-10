@@ -107,6 +107,7 @@ sf6-chapter/
 - [x] DependabotのPyPIレジストリをTakumi Guard経由に変更（ADR-045）
 - [x] LP推移グラフのWeb表示機能（ADR-046）
 - [x] 対戦履歴へのラウンド単位結果表示（ADR-047）
+- [ ] ラウンド単位のカウンター・パニッシュカウンター回数取得（ADR-049） - 実装完了・手元動画へのバックフィル未適用
 
 ## 次のタスク
 
@@ -332,6 +333,7 @@ docker compose up -d
 - [045: DependabotのPyPIレジストリをTakumi Guard経由に変更](docs/adr/045-dependabot-takumi-guard-pypi-registry.md)
 - [046: LP推移グラフのWeb表示機能](docs/adr/046-lp-history-chart.md)
 - [047: 対戦履歴へのラウンド単位結果表示（sfbuff 準拠）](docs/adr/047-match-history-round-results-display.md)
+- [049: ラウンド単位のカウンター・パニッシュカウンター回数取得](docs/adr/049-round-counter-count-capture.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

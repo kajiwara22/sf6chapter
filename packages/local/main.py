@@ -20,6 +20,7 @@ sys.path.insert(0, str(app_root))
 from src.battlelog_matcher import BattlelogMatcher, CharacterNormalizer
 from src.character import UNKNOWN_CHARACTER, CharacterRecognizer
 from src.detection import (
+    CounterAnalyzer,
     GaugeAnalyzer,
     MatchDetection,
     ResultScreenDetector,
@@ -104,6 +105,8 @@ class SF6ChapterProcessor:
 
         self.gauge_analyzer: GaugeAnalyzer | None = None
         self.gauge_result: dict[str, Any] | None = None
+        self.counter_analyzer: CounterAnalyzer | None = None
+        self.counter_result: dict[str, Any] | None = None
 
         # RESULT画面検出器の初期化
         self.result_detector = _initialize_result_screen_detector(self.app_root, self.detection_params)
@@ -130,6 +133,14 @@ class SF6ChapterProcessor:
         self.matcher.set_gauge_analyzer(gauge_analyzer)
         self.gauge_analyzer = gauge_analyzer
         self.gauge_result = None
+
+        # ADR-049: カウンター計測器（同じデコードループに相乗りする）
+        counter_analyzer = None
+        if self.detection_params.counter_analysis and self.detection_params.counter_analysis.enabled:
+            counter_analyzer = CounterAnalyzer(self.detection_params.counter_analysis, self.app_root)
+        self.matcher.set_counter_analyzer(counter_analyzer)
+        self.counter_analyzer = counter_analyzer
+        self.counter_result = None
 
         detections = self.matcher.detect_matches(
             video_path=video_path,
@@ -205,6 +216,15 @@ class SF6ChapterProcessor:
         # ADR-048: 検出済みの試合範囲でゲージ計測結果をラウンド単位に構築する
         if gauge_analyzer is not None and matches:
             self.gauge_result = gauge_analyzer.build([(match["id"], float(match["startTime"])) for match in matches])
+
+        # ADR-049: カウンター計測結果をラウンド単位に構築する。
+        # ラウンド境界は ADR-048 が検出した ROUND バナー時刻をそのまま使う
+        if counter_analyzer is not None and matches:
+            round_banner_times = gauge_analyzer.banner_times if gauge_analyzer is not None else []
+            self.counter_result = counter_analyzer.build(
+                [(match["id"], float(match["startTime"])) for match in matches],
+                round_banner_times=round_banner_times,
+            )
 
         return matches, chapters
 
@@ -358,8 +378,9 @@ class SF6ChapterProcessor:
         self.gauge_analyzer.write_samples_csv(gauge_dir / "gauges_samples.csv")
         self.gauge_analyzer.save_snapshots(gauge_dir / "roi")
 
-        # 集計用の行（round_stats.parquet）
-        stats_rows = build_round_stats_rows(self.gauge_result, matches)
+        # 集計用の行（round_stats.parquet）。カウンター計測結果（ADR-049）も同じ行にマージする
+        counter_result = getattr(self, "counter_result", None)
+        stats_rows = build_round_stats_rows(self.gauge_result, matches, counter_result=counter_result)
         stats_preview_path = gauge_dir / "round_stats_preview.json"
         with open(stats_preview_path, "w", encoding="utf-8") as f:
             json.dump(stats_rows, f, ensure_ascii=False, indent=2)
@@ -375,6 +396,40 @@ class SF6ChapterProcessor:
             logger.info("[Gauge] R2 upload disabled (ENABLE_R2=false): %s", stats_preview_path)
 
         logger.info("[Gauge] Saved %d round stat rows", len(stats_rows))
+
+    def _save_counter_data(self, video_id: str, video_intermediate_dir: Path) -> None:
+        """カウンター計測結果を中間ファイルに保存する（ADR-049 決定11）
+
+        - intermediate/{video_id}/counters/counters.json（ラウンド別回数と ON 区間）
+        - intermediate/{video_id}/counters/counters_samples.csv（スコア時系列）
+        - intermediate/{video_id}/counters/banners/*.png（バナー切り出し画像）
+
+        回数のみを round_stats.parquet に保存する（決定8）ため、R2 への個別 JSON は行わない。
+        """
+        if not self.counter_analyzer or not self.counter_result:
+            logger.info("[Counter] No counter data to save")
+            return
+
+        counter_dir = video_intermediate_dir / "counters"
+        self.counter_analyzer.write_events_json(counter_dir / "counters.json", self.counter_result)
+        self.counter_analyzer.write_samples_csv(counter_dir / "counters_samples.csv")
+        self.counter_analyzer.save_snapshots(counter_dir / "banners")
+
+        total = {side: {"counter": 0, "punish": 0} for side in ("player1", "player2")}
+        for match_data in (self.counter_result.get("matches") or {}).values():
+            for round_data in match_data.get("rounds", []):
+                for side in ("player1", "player2"):
+                    payload = round_data.get(side) or {}
+                    total[side]["counter"] += int(payload.get("counterCount") or 0)
+                    total[side]["punish"] += int(payload.get("punishCounterCount") or 0)
+        logger.info(
+            "[Counter] videoId=%s totals: player1 counter=%d punish=%d / player2 counter=%d punish=%d",
+            video_id,
+            total["player1"]["counter"],
+            total["player1"]["punish"],
+            total["player2"]["counter"],
+            total["player2"]["punish"],
+        )
 
     def process_video(self, message_data: dict[str, Any]) -> None:
         """
@@ -437,6 +492,9 @@ class SF6ChapterProcessor:
 
             # ADR-048: ゲージ計測結果の保存（中間ファイル・R2・round_stats.parquet）
             self._save_gauge_data(video_id, matches, chapters_with_result, video_intermediate_dir)
+
+            # ADR-049: カウンター計測結果の中間ファイル保存（回数は round_stats に含まれる）
+            self._save_counter_data(video_id, video_intermediate_dir)
 
             # 最終結果を保存
             self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_result)

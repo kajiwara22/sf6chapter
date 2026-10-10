@@ -197,6 +197,26 @@ export interface MatchHistoryRow {
   videoId: string | null;
   /** YouTube開始時間（秒）（NULLの場合あり） */
   startTime: number | null;
+  /** matches.id（round_stats との突合キー）。Battlelogのみの行はnull */
+  matchId: string | null;
+  /** 自分が player1 か player2 か（round_stats の突合に使う） */
+  selfSide: 'player1' | 'player2';
+  /** ラウンド単位のカウンター回数（ADR-049、未計測時は空配列） */
+  roundCounters: RoundCounterRow[];
+}
+
+/** round_stats のラウンド別カウンター回数（ADR-049） */
+export interface RoundCounterRow {
+  /** 試合ID（matches.id と一致） */
+  matchId: string;
+  /** ラウンド番号（1始まり） */
+  round: number;
+  /** サイド（生データのまま） */
+  side: 'player1' | 'player2';
+  /** COUNTER 回数（未計測時は null） */
+  counterCount: number | null;
+  /** PUNISH COUNTER 回数（未計測時は null） */
+  punishCounterCount: number | null;
 }
 
 /** 対戦履歴のフィルター */
@@ -331,6 +351,10 @@ export interface RoundStatsRow {
   saUsedCount: number | null;
   /** 計測できたサンプル率 */
   detectionCoverage: number | null;
+  /** COUNTER 回数（ADR-049、未計測時は null） */
+  counterCount: number | null;
+  /** PUNISH COUNTER 回数（ADR-049、未計測時は null） */
+  punishCounterCount: number | null;
 }
 
 /** 自分視点判定用の Battlelog サイド情報 */

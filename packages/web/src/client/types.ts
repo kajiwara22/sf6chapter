@@ -132,6 +132,10 @@ export interface MatchHistoryQueryRow {
   my_rounds: string | null;
   /** 相手視点の round_results（JSON配列文字列）。YouTube側のみの場合はnull */
   opp_rounds: string | null;
+  /** matches.id（round_stats との突合キー）。Battlelogのみの行はnull */
+  match_id: string | null;
+  /** 自分が player1 か player2 か（round_stats の突合に使う） */
+  self_side: string | null;
 }
 
 /** LP推移のDuckDBクエリ結果行 */
@@ -161,6 +165,19 @@ export interface RoundStatsQueryRow {
   saMax: number | bigint | null;
   saUsedCount: number | bigint | null;
   detectionCoverage: number | bigint | null;
+  /** カウンター回数（ADR-049、未計測・旧Parquetではnull） */
+  counterCount?: number | bigint | null;
+  /** パニッシュカウンター回数（ADR-049、未計測・旧Parquetではnull） */
+  punishCounterCount?: number | bigint | null;
+}
+
+/** round_stats のカウンター列のDuckDBクエリ結果行（ADR-049） */
+export interface RoundCounterQueryRow {
+  matchId: string;
+  round: number | bigint;
+  side: string;
+  counterCount: number | bigint | null;
+  punishCounterCount: number | bigint | null;
 }
 
 /** Battlelog サイド情報のDuckDBクエリ結果行（ADR-048） */

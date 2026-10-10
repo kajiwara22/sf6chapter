@@ -13,6 +13,7 @@ from ..utils.logger import get_logger
 from .preprocessing import preprocess_for_matching
 
 if TYPE_CHECKING:
+    from .counter import CounterAnalyzer
     from .gauge import GaugeAnalyzer
     from .result_detector import ResultScreenDetector
 
@@ -94,10 +95,16 @@ class TemplateMatcher:
         self.result_detector = result_detector
         # ゲージ計測器（ADR-048）。設定するとデコードループ内で feed() が呼ばれる
         self.gauge_analyzer: GaugeAnalyzer | None = None
+        # カウンター計測器（ADR-049）。同じくデコードループ内で feed() が呼ばれる
+        self.counter_analyzer: CounterAnalyzer | None = None
 
     def set_gauge_analyzer(self, analyzer: "GaugeAnalyzer | None") -> None:
         """ゲージ計測器を設定する（ADR-048、再デコードを避けるため既存ループに相乗りする）"""
         self.gauge_analyzer = analyzer
+
+    def set_counter_analyzer(self, analyzer: "CounterAnalyzer | None") -> None:
+        """カウンター計測器を設定する（ADR-049、同じデコードループに相乗りする）"""
+        self.counter_analyzer = analyzer
 
     def _check_subsequent_frames(self, cap: cv2.VideoCapture, start_frame: int, num_frames: int) -> int:
         """
@@ -287,6 +294,10 @@ class TemplateMatcher:
                 # ゲージ計測（ADR-048）。間隔判定は GaugeAnalyzer 側で行う
                 if self.gauge_analyzer is not None:
                     self.gauge_analyzer.feed(frame, frame_count / fps)
+
+                # カウンター計測（ADR-049）。間隔判定は CounterAnalyzer 側で行う
+                if self.counter_analyzer is not None:
+                    self.counter_analyzer.feed(frame, frame_count / fps)
 
                 # 進捗表示（10秒ごと）
                 if (frame_count - start_frame) % int(fps * 10) == 0:

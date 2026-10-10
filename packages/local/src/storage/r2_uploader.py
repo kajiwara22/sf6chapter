@@ -139,6 +139,9 @@ class R2Uploader:
                 pa.field("saMax", pa.int32(), nullable=True),
                 pa.field("saUsedCount", pa.int32()),
                 pa.field("detectionCoverage", pa.float64(), nullable=True),
+                # ADR-049: カウンター・パニッシュカウンター回数（未計測時は null）
+                pa.field("counterCount", pa.int32(), nullable=True),
+                pa.field("punishCounterCount", pa.int32(), nullable=True),
             ]
         )
 

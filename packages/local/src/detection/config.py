@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.logger import get_logger
+from .counter import CounterAnalysisParams
 from .gauge import GaugeAnalysisParams
 
 logger = get_logger()
@@ -47,6 +48,7 @@ class DetectionParams:
     result_detection: ResultDetectionParams  # RESULT画面検出パラメータ
     profile: str  # 使用したプロファイル名
     gauge_analysis: GaugeAnalysisParams | None = None  # ゲージ計測パラメータ（ADR-048）
+    counter_analysis: CounterAnalysisParams | None = None  # カウンター計測パラメータ（ADR-049）
 
     def to_dict(self) -> dict[str, Any]:
         """辞書形式に変換"""
@@ -66,6 +68,7 @@ class DetectionParams:
             "recognize_frame_offset_alt": self.recognize_frame_offset_alt,
             "recognize_frame_offset_threshold": self.recognize_frame_offset_threshold,
             "gauge_analysis": self.gauge_analysis.to_dict() if self.gauge_analysis else None,
+            "counter_analysis": self.counter_analysis.to_dict() if self.counter_analysis else None,
         }
 
     def log_params(self) -> None:
@@ -100,6 +103,11 @@ class DetectionParams:
             self.gauge_analysis.log_params()
         else:
             logger.info("  [Gauge Analysis]")
+            logger.info("    enabled:                  False (未設定)")
+        if self.counter_analysis is not None:
+            self.counter_analysis.log_params()
+        else:
+            logger.info("  [Counter Analysis]")
             logger.info("    enabled:                  False (未設定)")
         logger.info("=" * 60)
 
@@ -185,6 +193,10 @@ def load_detection_params(profile: str = "production", config_path: str | None =
     gauge_section = config.get("gauge_analysis")
     gauge_analysis = GaugeAnalysisParams.from_dict(gauge_section) if gauge_section else None
 
+    # カウンター計測パラメータ（ADR-049）。未設定の場合は None（計測なし）
+    counter_section = config.get("counter_analysis")
+    counter_analysis = CounterAnalysisParams.from_dict(counter_section) if counter_section else None
+
     # DetectionParamsに変換
     params = DetectionParams(
         template_path=str(params_dict["template_path"]),
@@ -203,6 +215,7 @@ def load_detection_params(profile: str = "production", config_path: str | None =
         result_detection=result_detection,
         profile=profile,
         gauge_analysis=gauge_analysis,
+        counter_analysis=counter_analysis,
     )
 
     # パラメータの妥当性チェック

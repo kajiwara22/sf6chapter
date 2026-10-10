@@ -893,17 +893,40 @@ def _series_stats(events: list[list[float]], end_time: float) -> tuple[float | N
     return round(minimum, 2), round(average, 2), round(float(events[-1][1]), 2)
 
 
-def build_round_stats_rows(gauge_result: dict[str, Any], matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """ゲージ計測結果とマッチ情報から round_stats.parquet の行を組み立てる
+def _counter_count_lookup(
+    counter_result: dict[str, Any] | None,
+) -> dict[tuple[str, int, str], tuple[int | None, int | None]]:
+    """カウンター計測結果を (matchId, round, side) の索引に直す（ADR-049）"""
+    lookup: dict[tuple[str, int, str], tuple[int | None, int | None]] = {}
+    for match_id, match_data in ((counter_result or {}).get("matches") or {}).items():
+        for round_data in match_data.get("rounds", []):
+            round_index = int(round_data.get("round", 0))
+            for side in SIDES:
+                payload = round_data.get(side) or {}
+                lookup[(match_id, round_index, side)] = (
+                    payload.get("counterCount"),
+                    payload.get("punishCounterCount"),
+                )
+    return lookup
+
+
+def build_round_stats_rows(
+    gauge_result: dict[str, Any],
+    matches: list[dict[str, Any]],
+    counter_result: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """ゲージ計測結果（とカウンター計測結果）から round_stats.parquet の行を組み立てる
 
     Args:
         gauge_result: GaugeAnalyzer.build() の戻り値
         matches: main.py の match 辞書リスト（id / videoId / player1 / player2 を含む）
+        counter_result: CounterAnalyzer.build() の戻り値（ADR-049）。None の場合は未計測として None を入れる
 
     Returns:
         1行 = 1ラウンド x 1サイド の辞書リスト
     """
     match_map = {match.get("id"): match for match in matches}
+    counter_lookup = _counter_count_lookup(counter_result)
     rows: list[dict[str, Any]] = []
 
     for match_id, match_gauges in (gauge_result.get("matches") or {}).items():
@@ -924,6 +947,7 @@ def build_round_stats_rows(gauge_result: dict[str, Any], matches: list[dict[str,
                 )
 
                 player = match.get(side) or {}
+                counter_counts = counter_lookup.get((match_id, int(round_data.get("round", 0)), side))
                 rows.append(
                     {
                         "videoId": match.get("videoId"),
@@ -940,6 +964,8 @@ def build_round_stats_rows(gauge_result: dict[str, Any], matches: list[dict[str,
                         "saMax": max(sa_values) if sa_values else None,
                         "saUsedCount": sa_used,
                         "detectionCoverage": payload.get("coverage"),
+                        "counterCount": None if counter_counts is None else counter_counts[0],
+                        "punishCounterCount": None if counter_counts is None else counter_counts[1],
                     }
                 )
 

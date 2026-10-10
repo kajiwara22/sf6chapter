@@ -1,6 +1,18 @@
 """対戦シーン検出モジュール"""
 
 from .config import DetectionParams, get_available_profiles, load_detection_params
+from .counter import (
+    COUNTER,
+    PUNISH_COUNTER,
+    CounterAnalysisParams,
+    CounterAnalyzer,
+    CounterOccurrence,
+    CounterSample,
+    CounterThresholds,
+    SideCounterScores,
+    classify_scores,
+    extract_occurrences,
+)
 from .gauge import (
     DRIVE_MAX,
     GaugeAnalysisParams,
@@ -29,4 +41,14 @@ __all__ = [
     "DRIVE_MAX",
     "RoundWindow",
     "split_rounds",
+    "CounterAnalyzer",
+    "CounterAnalysisParams",
+    "CounterThresholds",
+    "CounterSample",
+    "CounterOccurrence",
+    "SideCounterScores",
+    "extract_occurrences",
+    "classify_scores",
+    "COUNTER",
+    "PUNISH_COUNTER",
 ]
