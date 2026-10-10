@@ -9,6 +9,10 @@
 ラウンド境界は ADR-048 と同じ ROUND バナー検出を使うため、GaugeAnalyzer も
 同じデコードループで走らせて `round_stats` プレビューまで出力する。
 
+ゲージ計測（ADR-048/050 のドライブ・SA・体力）も同じデコード結果から得られるため、
+`intermediate/{video_id}/gauges/` にも中間ファイルを出力する（1 回のデコードで両方を揃える）。
+R2 への反映は `scripts/upload_gauge_data.py` が行う。
+
 Usage:
     # 検出済みの中間ファイル（intermediate/{video_id}/detection_summary.json）を使う
     uv run python scripts/analyze_counters.py --video-id DSgD_bQhxp0
@@ -158,6 +162,7 @@ def main() -> None:
     parser.add_argument("--video-path", help="動画ファイルのパス（省略時は download/ から解決）")
     parser.add_argument("--match-starts", help="試合開始時刻（秒）のカンマ区切り。省略時は中間ファイルから取得")
     parser.add_argument("--output-dir", help="出力先ディレクトリ（既定: intermediate/{video_id}/counters）")
+    parser.add_argument("--gauge-output-dir", help="ゲージ中間ファイルの出力先（既定: intermediate/{video_id}/gauges）")
     parser.add_argument("--download-dir", default="./download", help="動画探索ディレクトリ")
     parser.add_argument("--intermediate-dir", default="./intermediate", help="中間ファイルディレクトリ")
     parser.add_argument("--profile", default="production", help="検出パラメータのプロファイル")
@@ -209,6 +214,22 @@ def main() -> None:
     if gauge_analyzer is not None:
         gauge_result = gauge_analyzer.build(matches, video_end=video_end)
         gauge_result["videoId"] = args.video_id
+
+        # ゲージ中間ファイル（ADR-048/050 決定7。upload_gauge_data.py の入力になる）
+        gauge_output_dir = (
+            Path(args.gauge_output_dir)
+            if args.gauge_output_dir
+            else intermediate_dir / (args.video_id or "unknown") / "gauges"
+        )
+        gauge_output_dir.mkdir(parents=True, exist_ok=True)
+        with open(gauge_output_dir / "gauges.json", "w", encoding="utf-8") as f:
+            json.dump(gauge_result, f, ensure_ascii=False, indent=2)
+        logger.info("✅ Saved gauge analysis: %s", gauge_output_dir / "gauges.json")
+        if not args.no_csv:
+            gauge_analyzer.write_samples_csv(gauge_output_dir / "gauges_samples.csv")
+        if not args.no_snapshots:
+            gauge_analyzer.save_snapshots(gauge_output_dir / "roi")
+
         stats_rows = build_round_stats_rows(
             gauge_result,
             [{"id": match_id, "videoId": args.video_id, "player1": {}, "player2": {}} for match_id, _ in matches],
