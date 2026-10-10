@@ -65,6 +65,17 @@ class GaugeThresholds:
     sa_progress_event_epsilon: float = 0.15
     ca_merge_gap_sec: float = 1.0
     round_banner_threshold: float = 0.4
+    # ADR-050: 体力ゲージ（現在体力のみ）
+    health_filled_v: int = 110
+    health_filled_s: int = 110
+    health_column_fill_ratio: float = 0.5
+    health_detect_min_fraction: float = 0.01
+    health_smoothing_window: int = 7
+    health_max_gap_sec: float = 1.0
+    health_event_epsilon: float = 1.0
+    health_warmup_sec: float = 1.5
+    health_start_min_percent: float = 90.0
+    health_max_increase_per_sec: float = 5.0
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -88,11 +99,14 @@ class GaugeAnalysisParams:
     drive_roi: dict[str, tuple[int, int, int, int]]
     sa_digit_roi: dict[str, tuple[int, int, int, int]]
     sa_bar_roi: dict[str, tuple[int, int, int, int]]
+    health_roi: dict[str, tuple[int, int, int, int]]
+    health_hue_ranges: dict[str, list[tuple[int, int]]]
     round_banner_search_region: tuple[int, int, int, int]
     thresholds: GaugeThresholds
     sa_digit_templates: dict[str, str]
     round_banner_template: str
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
+    health_fill_scale: dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GaugeAnalysisParams:
@@ -100,6 +114,7 @@ class GaugeAnalysisParams:
         thresholds = GaugeThresholds(**data.get("thresholds", {}))
         calibration = data.get("calibration", {}) or {}
         drive_fill_scale = {side: float(calibration.get("drive_fill_scale", {}).get(side, 1.0)) for side in SIDES}
+        health_fill_scale = {side: float(calibration.get("health_fill_scale", {}).get(side, 1.0)) for side in SIDES}
         templates = data.get("templates", {}) or {}
         return cls(
             enabled=bool(data.get("enabled", True)),
@@ -111,11 +126,16 @@ class GaugeAnalysisParams:
             drive_roi={side: tuple(data["drive_roi"][side]) for side in SIDES},
             sa_digit_roi={side: tuple(data["sa_digit_roi"][side]) for side in SIDES},
             sa_bar_roi={side: tuple(data["sa_bar_roi"][side]) for side in SIDES},
+            health_roi={side: tuple(data["health_roi"][side]) for side in SIDES},
+            health_hue_ranges={
+                side: [tuple(int(v) for v in pair) for pair in data["health_hue_ranges"][side]] for side in SIDES
+            },
             round_banner_search_region=tuple(data["round_banner_search_region"]),
             thresholds=thresholds,
             sa_digit_templates=dict(templates.get("sa_digits") or {}),
             round_banner_template=str(templates.get("round_banner", "")),
             drive_fill_scale=drive_fill_scale,
+            health_fill_scale=health_fill_scale,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -129,13 +149,18 @@ class GaugeAnalysisParams:
             "drive_roi": {k: list(v) for k, v in self.drive_roi.items()},
             "sa_digit_roi": {k: list(v) for k, v in self.sa_digit_roi.items()},
             "sa_bar_roi": {k: list(v) for k, v in self.sa_bar_roi.items()},
+            "health_roi": {k: list(v) for k, v in self.health_roi.items()},
+            "health_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_hue_ranges.items()},
             "round_banner_search_region": list(self.round_banner_search_region),
             "thresholds": self.thresholds.to_dict(),
             "templates": {
                 "sa_digits": dict(self.sa_digit_templates),
                 "round_banner": self.round_banner_template,
             },
-            "calibration": {"drive_fill_scale": dict(self.drive_fill_scale)},
+            "calibration": {
+                "drive_fill_scale": dict(self.drive_fill_scale),
+                "health_fill_scale": dict(self.health_fill_scale),
+            },
         }
 
     def _validate(self) -> None:
@@ -147,6 +172,7 @@ class GaugeAnalysisParams:
             "drive_roi": self.drive_roi,
             "sa_digit_roi": self.sa_digit_roi,
             "sa_bar_roi": self.sa_bar_roi,
+            "health_roi": self.health_roi,
         }.items():
             for side, values in roi.items():
                 if len(values) != 4:
@@ -167,6 +193,9 @@ class GaugeAnalysisParams:
             logger.info("    drive_roi[%s]:       %s", side, self.drive_roi[side])
             logger.info("    sa_digit_roi[%s]:    %s", side, self.sa_digit_roi[side])
             logger.info("    sa_bar_roi[%s]:      %s", side, self.sa_bar_roi[side])
+            logger.info("    health_roi[%s]:      %s", side, self.health_roi[side])
+        for side in SIDES:
+            logger.info("    health_hue_ranges[%s]: %s", side, self.health_hue_ranges[side])
         logger.info("    round_banner_region:      %s", self.round_banner_search_region)
         self.thresholds.log()
 
@@ -189,6 +218,9 @@ class SideGaugeState:
     sa_score: float = 0.0
     sa_critical_art: bool = False
     sa_progress: float | None = None
+    # ADR-050: 現在体力（％）。None=未計測
+    health_raw: float | None = None
+    health: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -201,6 +233,8 @@ class SideGaugeState:
             "saScore": round(self.sa_score, 3),
             "saCriticalArt": self.sa_critical_art,
             "saProgress": self.sa_progress,
+            "health": self.health,
+            "healthRaw": self.health_raw,
         }
 
 
@@ -365,11 +399,13 @@ class GaugeAnalyzer:
         for side in SIDES:
             raw_drive = self._measure_drive(frame, side)
             sa_stock, sa_label, sa_score, sa_progress, sa_ca = self._measure_sa(frame, side)
+            health_raw = self._measure_health(frame, side)
             hud_visible = sa_score >= self.params.thresholds.sa_digit_min_score
             states[side] = SideGaugeState(
                 hud_visible=hud_visible,
                 drive_raw=raw_drive,
                 burnout_candidate=hud_visible and raw_drive is None,
+                health_raw=health_raw,
                 sa_stock=sa_stock,
                 sa_label=sa_label,
                 sa_score=sa_score,
@@ -448,6 +484,7 @@ class GaugeAnalyzer:
             "drive": {side: scale_roi(self.params.drive_roi[side]) for side in SIDES},
             "sa_digit": {side: scale_roi(self.params.sa_digit_roi[side]) for side in SIDES},
             "sa_bar": {side: scale_roi(self.params.sa_bar_roi[side]) for side in SIDES},
+            "health": {side: scale_roi(self.params.health_roi[side]) for side in SIDES},
         }
         self._round_banner_search = scale_roi(self.params.round_banner_search_region)
         self._frame_size = (width, height)
@@ -564,6 +601,39 @@ class GaugeAnalyzer:
 
         return stock, best_label, best_score, progress, critical_art
 
+    def _measure_health(self, frame: np.ndarray, side: str) -> float | None:
+        """体力ゲージ（現在体力のみ）を％で計測する（ADR-050）
+
+        各列を「現在体力の色（1P: マゼンタ〜赤 / 2P: 青）」で判定し、
+        その列数 ÷ バー幅 を体力％とする。回復可能（黄〜白）と空きトラックは数えない。
+
+        Returns:
+            0〜100（小数1桁）。計測できない場合は None
+        """
+        thresholds = self.params.thresholds
+        roi = self._crop(frame, self._roi["health"][side])
+        if roi.size == 0:
+            return None
+
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        hue = hsv[:, :, 0].astype(np.int16)
+        sat = hsv[:, :, 1].astype(np.int16)
+        val = hsv[:, :, 2].astype(np.int16)
+
+        current = val > thresholds.health_filled_v
+        current &= sat > thresholds.health_filled_s
+        hue_mask = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in self.params.health_hue_ranges.get(side, []):
+            hue_mask |= (hue >= h_min) & (hue <= h_max)
+        current &= hue_mask
+
+        width = float(hsv.shape[1])
+        filled_fraction = float((current.mean(axis=0) >= thresholds.health_column_fill_ratio).sum()) / width
+        if filled_fraction < thresholds.health_detect_min_fraction:
+            return None
+        value = filled_fraction * 100.0 * self.params.health_fill_scale.get(side, 1.0)
+        return round(min(100.0, value), 1)
+
     # ------------------------------------------------------------------
     # 内部処理: 派生（平滑化・バーンアウト判定）
     # ------------------------------------------------------------------
@@ -613,6 +683,11 @@ class GaugeAnalyzer:
             progress_values = [state.sa_progress for state in states]
             progress_filled = _fill_short_gaps(progress_values, timestamps, thresholds.sa_max_gap_sec)
 
+            # 体力（ADR-050）: メディアン平滑化 → 短い欠損補完
+            health_values = [states[i].health_raw if hud[i] else None for i in range(len(states))]
+            health_smoothed = _median_filter(health_values, thresholds.health_smoothing_window)
+            health_filled = _fill_short_gaps(health_smoothed, timestamps, thresholds.health_max_gap_sec)
+
             for index, state in enumerate(states):
                 state.hud_visible = hud[index]
                 if state.drive_burnout:
@@ -624,6 +699,7 @@ class GaugeAnalyzer:
                 if sa_filled[index] is not None:
                     state.sa_stock = int(round(sa_filled[index]))
                 state.sa_progress = progress_filled[index]
+                state.health = health_filled[index] if hud_extended[index] else None
 
         self._derived = True
         logger.info(
@@ -713,11 +789,16 @@ class GaugeAnalyzer:
         drive_events: list[list[float]] = []
         sa_events: list[list[float]] = []
         progress_events: list[list[float]] = []
+        health_events: list[list[float]] = []
         visible_from: float | None = None
         visible_to: float | None = None
         previous_drive: float | None = None
         previous_stock: int | None = None
         previous_progress: float | None = None
+        previous_health: float | None = None
+        previous_health_rel = 0.0
+        health_started = False
+        health_valid_samples = 0
 
         thresholds = self.params.thresholds
         for sample in samples:
@@ -744,15 +825,37 @@ class GaugeAnalyzer:
             ):
                 progress_events.append([rel, state.sa_progress])
                 previous_progress = state.sa_progress
+            # 体力（ADR-050）は変化点の閾値を 1.0% とする。
+            # ラウンド開始直後のバー伸長演出を除外し、急な増加は回復ではありえないため計測ノイズとして前値を保持する
+            if state.health is not None:
+                health_valid_samples += 1
+                if not health_started:
+                    if rel >= thresholds.health_warmup_sec or state.health >= thresholds.health_start_min_percent:
+                        health_started = True
+                    else:
+                        continue
+                value = state.health
+                if previous_health is not None:
+                    elapsed = max(1e-6, rel - previous_health_rel)
+                    max_allowed = previous_health + thresholds.health_max_increase_per_sec * elapsed
+                    if value > max_allowed:
+                        value = previous_health
+                if previous_health is None or abs(value - previous_health) > thresholds.health_event_epsilon:
+                    health_events.append([rel, value])
+                    previous_health = value
+                    previous_health_rel = rel
 
         # ラウンド内のバーンアウト期間・CA期間を相対時刻で切り出す
         burnout_periods = self._clip_periods(self.burnout_periods[side], window, base)
         ca_periods = self._collect_ca_periods(samples, side, base, thresholds.ca_merge_gap_sec)
+        health_coverage = round(health_valid_samples / len(samples), 3) if samples else 0.0
 
         return {
             "visibleFrom": visible_from,
             "visibleTo": visible_to,
             "coverage": coverage,
+            "healthCoverage": health_coverage,
+            "health": health_events,
             "drive": drive_events,
             "driveBurnout": burnout_periods,
             "sa": sa_events,
@@ -820,6 +923,8 @@ class GaugeAnalyzer:
                     "sa_score",
                     "sa_critical_art",
                     "sa_progress",
+                    "health",
+                    "health_raw",
                 ]
             )
             for sample in self.samples:
@@ -839,6 +944,8 @@ class GaugeAnalyzer:
                             f"{state.sa_score:.3f}",
                             int(state.sa_critical_art),
                             "" if state.sa_progress is None else f"{state.sa_progress:.3f}",
+                            "" if state.health is None else f"{state.health:.1f}",
+                            "" if state.health_raw is None else f"{state.health_raw:.1f}",
                         ]
                     )
         logger.info("✅ Saved gauge samples CSV: %s", path)
@@ -867,6 +974,7 @@ class GaugeAnalyzer:
             entry[side] = {
                 "drive": self._crop(frame, self._roi["drive"][side]).copy(),
                 "sa": self._crop(frame, self._roi["sa_digit"][side]).copy(),
+                "health": self._crop(frame, self._roi["health"][side]).copy(),
             }
         self.snapshots.append(entry)
 
@@ -941,6 +1049,7 @@ def build_round_stats_rows(
                 round_start = float(round_data.get("roundStartTime", 0.0))
 
                 drive_min, drive_avg, drive_end = _series_stats(drive_events, visible_to)
+                health_min, health_avg, health_end = _series_stats(payload.get("health") or [], visible_to)
                 sa_values = [int(event[1]) for event in sa_events]
                 sa_used = sum(
                     1 for previous, current in zip(sa_values, sa_values[1:], strict=False) if current < previous
@@ -964,6 +1073,9 @@ def build_round_stats_rows(
                         "saMax": max(sa_values) if sa_values else None,
                         "saUsedCount": sa_used,
                         "detectionCoverage": payload.get("coverage"),
+                        "healthMin": health_min,
+                        "healthAvg": health_avg,
+                        "healthEnd": health_end,
                         "counterCount": None if counter_counts is None else counter_counts[0],
                         "punishCounterCount": None if counter_counts is None else counter_counts[1],
                     }

@@ -107,7 +107,9 @@ sf6-chapter/
 - [x] DependabotのPyPIレジストリをTakumi Guard経由に変更（ADR-045）
 - [x] LP推移グラフのWeb表示機能（ADR-046）
 - [x] 対戦履歴へのラウンド単位結果表示（ADR-047）
+- [ ] ラウンド単位のドライブゲージ・SAゲージ時系列取得（ADR-048） - 計測〜Web表示まで実装・手元3本で検証済み（R2実データでの描画確認が未実施）
 - [ ] ラウンド単位のカウンター・パニッシュカウンター回数取得（ADR-049） - 実装完了・手元動画へのバックフィル未適用
+- [ ] ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示（ADR-050） - 計測〜Web表示まで実装済み（R2実データでの描画確認が未実施）
 
 ## 次のタスク
 
@@ -121,9 +123,10 @@ sf6-chapter/
    - 複数の動画でテストして信頼性確認
 
 ### 中優先度
-3. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
-4. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
-5. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
+3. **ADR-048 の実運用**: `ENABLE_R2=true` で `gauges/{match_id}.json` と `round_stats.parquet` を反映し、Web 詳細パネルの実データ描画を確認（手元3本の再処理は完了）
+4. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
+5. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
+6. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
 
 ## 重要な設計判断
 
@@ -333,7 +336,9 @@ docker compose up -d
 - [045: DependabotのPyPIレジストリをTakumi Guard経由に変更](docs/adr/045-dependabot-takumi-guard-pypi-registry.md)
 - [046: LP推移グラフのWeb表示機能](docs/adr/046-lp-history-chart.md)
 - [047: 対戦履歴へのラウンド単位結果表示（sfbuff 準拠）](docs/adr/047-match-history-round-results-display.md)
+- [048: ラウンド単位のドライブゲージ・SAゲージ時系列取得](docs/adr/048-round-drive-sa-gauge-timeline-capture.md)
 - [049: ラウンド単位のカウンター・パニッシュカウンター回数取得](docs/adr/049-round-counter-count-capture.md)
+- [050: ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示](docs/adr/050-health-gauge-timeline-and-integrated-view.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

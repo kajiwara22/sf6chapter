@@ -473,3 +473,144 @@ class TestHudFlickerTolerance:
             )
         analyzer._derive_states()
         assert all(s.states["player1"].drive is not None for s in analyzer.samples)
+
+
+# ADR-050: 体力ゲージ
+MAGENTA_BGR = (200, 30, 200)  # P1 の現在体力色（H≈150 のマゼンタ）
+BLUE_BGR = (200, 100, 30)  # P2 の現在体力色（H≈105 の青）
+YELLOW_BGR = (0, 220, 220)  # 回復可能ダメージ（黄）
+
+
+class TestHealthMeasurement:
+    def _analyzer(self, frame: np.ndarray) -> GaugeAnalyzer:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        analyzer._prepare_geometry(frame)
+        return analyzer
+
+    def test_full_health_is_100_percent(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = MAGENTA_BGR
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(100.0, abs=0.5)
+
+    def test_half_health_is_50_percent(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        # 内側（右）半分だけ現在体力（キャリブレーション係数を考慮して検証する）
+        middle = (x1 + x2) // 2
+        frame[y1:y2, middle:x2] = MAGENTA_BGR
+        scale = make_params().health_fill_scale["player1"]
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(50.0 * scale, abs=1.0)
+
+    def test_player2_uses_blue(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player2"]
+        frame[y1:y2, x1:x2] = BLUE_BGR
+        assert analyzer._measure_health(frame, "player2") == pytest.approx(100.0, abs=0.5)
+        # P1 の色域はマゼンタ〜赤なので、青は P1 では計測されない
+        assert analyzer._measure_health(frame, "player1") is None
+
+    def test_recoverable_yellow_is_not_counted(self):
+        # ADR-050 決定1: 回復可能（黄）は現在体力に含めない
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = YELLOW_BGR
+        assert analyzer._measure_health(frame, "player1") is None
+
+    def test_empty_health_returns_none(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        assert analyzer._measure_health(frame, "player1") is None
+
+
+class TestHealthDerivation:
+    def _analyzer_with_health(self, values: list[tuple[float, float | None, bool]]) -> GaugeAnalyzer:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        for timestamp, health_raw, hud_visible in values:
+            analyzer.samples.append(
+                GaugeSample(
+                    timestamp=timestamp,
+                    states={
+                        "player1": SideGaugeState(hud_visible=hud_visible, health_raw=health_raw),
+                        "player2": SideGaugeState(),
+                    },
+                )
+            )
+        analyzer._derive_states()
+        return analyzer
+
+    def test_spike_is_smoothed(self):
+        values = [(i * 0.1, 100.0, True) for i in range(5)]
+        values += [(0.5, 10.0, True)]  # 単発の外れ値
+        values += [(0.6 + i * 0.1, 100.0, True) for i in range(5)]
+        analyzer = self._analyzer_with_health(values)
+        assert all(s.states["player1"].health == pytest.approx(100.0, abs=0.1) for s in analyzer.samples)
+
+    def test_hud_hidden_has_no_health(self):
+        values = [(i * 0.1, 100.0, True) for i in range(5)]
+        values += [(0.5 + i * 0.1, None, False) for i in range(20)]
+        values += [(2.5 + i * 0.1, 80.0, True) for i in range(5)]
+        analyzer = self._analyzer_with_health(values)
+        hidden = [s for s in analyzer.samples if 1.2 <= s.timestamp <= 2.0]
+        assert hidden and all(s.states["player1"].health is None for s in hidden)
+
+
+class TestHealthRoundStats:
+    def test_health_columns_are_built(self):
+        gauge_result = {
+            "matches": {
+                "vid_100": {
+                    "matchId": "vid_100",
+                    "rounds": [
+                        {
+                            "round": 1,
+                            "roundStartTime": 100.0,
+                            "roundEndTime": 150.0,
+                            "endReason": "match_end",
+                            "player1": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 49.0,
+                                "coverage": 0.9,
+                                "healthCoverage": 0.95,
+                                "health": [[1.0, 100.0], [10.0, 40.0], [20.0, 0.0]],
+                                "drive": [[1.0, 6.0]],
+                                "sa": [[1.0, 0]],
+                                "driveBurnout": [],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                            "player2": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 49.0,
+                                "coverage": 0.9,
+                                "healthCoverage": 0.0,
+                                "health": [],
+                                "drive": [[1.0, 6.0]],
+                                "sa": [[1.0, 0]],
+                                "driveBurnout": [],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+
+        rows = build_round_stats_rows(gauge_result, matches)
+        p1 = rows[0]
+        assert p1["healthMin"] == 0.0
+        assert p1["healthEnd"] == 0.0
+        assert p1["healthAvg"] is not None and 0.0 < p1["healthAvg"] < 100.0
+
+        p2 = rows[1]
+        assert p2["healthMin"] is None
+        assert p2["healthAvg"] is None
+        assert p2["healthEnd"] is None

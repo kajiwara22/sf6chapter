@@ -53,7 +53,9 @@
 | [045](./045-dependabot-takumi-guard-pypi-registry.md) | DependabotのPyPIレジストリをTakumi Guard経由に変更 | 採用 | 2026-06-11 |
 | [046](./046-lp-history-chart.md) | LP推移グラフのWeb表示機能 | 採用 | 2026-10-03 |
 | [047](./047-match-history-round-results-display.md) | 対戦履歴へのラウンド単位結果表示（sfbuff 準拠） | 採用 | 2026-10-06 |
+| [048](./048-round-drive-sa-gauge-timeline-capture.md) | ラウンド単位のドライブゲージ・SAゲージ時系列取得 | 採用 | 2026-10-10 |
 | [049](./049-round-counter-count-capture.md) | ラウンド単位のカウンター・パニッシュカウンター回数取得 | 採用 | 2026-10-10 |
+| [050](./050-health-gauge-timeline-and-integrated-view.md) | ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示 | 採用 | 2026-10-10 |
 
 ## ADRのフォーマット
 

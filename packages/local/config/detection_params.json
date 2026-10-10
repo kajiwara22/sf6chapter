@@ -101,6 +101,14 @@
       "player1": [145, 996, 400, 1014],
       "player2": [1520, 996, 1775, 1014]
     },
+    "health_roi": {
+      "player1": [176, 62, 866, 98],
+      "player2": [1054, 62, 1744, 98]
+    },
+    "health_hue_ranges": {
+      "player1": [[145, 179], [0, 15]],
+      "player2": [[90, 135]]
+    },
     "round_banner_search_region": [530, 400, 1130, 690],
     "thresholds": {
       "drive_filled_v": 150,
@@ -121,6 +129,16 @@
       "ca_merge_gap_sec": 1.0,
       "sa_bar_filled_v": 140,
       "sa_bar_filled_s": 100,
+      "health_filled_v": 110,
+      "health_filled_s": 110,
+      "health_column_fill_ratio": 0.5,
+      "health_detect_min_fraction": 0.01,
+      "health_smoothing_window": 7,
+      "health_max_gap_sec": 1.0,
+      "health_event_epsilon": 1.0,
+      "health_warmup_sec": 1.5,
+      "health_start_min_percent": 99.0,
+      "health_max_increase_per_sec": 5.0,
       "round_banner_threshold": 0.35
     },
     "templates": {
@@ -138,6 +156,10 @@
       "drive_fill_scale": {
         "player1": 1.0,
         "player2": 1.0
+      },
+      "health_fill_scale": {
+        "player1": 1.07,
+        "player2": 1.02
       }
     },
     "thresholds_guide": {
@@ -150,7 +172,16 @@
       "sa_progress_event_epsilon": "SAバー進捗の変化点とみなす最小差",
       "ca_merge_gap_sec": "この秒数以内のCA表示区間は同一期間として結合する",
       "sa_digit_min_score": "SAの数字（0〜3, CA）テンプレートマッチの採用下限。下回る場合はHUD非表示・未計測として扱う",
-      "round_banner_threshold": "ROUNDバナー検出の閾値（0.5倍縮小画像で照合）"
+      "round_banner_threshold": "ROUNDバナー検出の閾値（0.5倍縮小画像で照合）",
+      "health_roi": "体力ゲージの ROI（ADR-050）。白い縁取りの内側に合わせる",
+      "health_hue_ranges": "現在体力と判定する色相範囲（1P: マゼンタ〜赤 / 2P: 青）。回復可能（黄〜白）と空きトラックは含めない",
+      "health_filled_v": "現在体力と判定する明度の下限",
+      "health_filled_s": "現在体力と判定する彩度の下限",
+      "health_event_epsilon": "体力％の変化点とみなす最小差（％）",
+      "health_warmup_sec": "ラウンド開始直後のバー伸長演出を無視する秒数",
+      "health_start_min_percent": "これを超えたら計測開始とみなす体力％（演出除外用）",
+      "health_max_increase_per_sec": "1秒あたりの許容増加量（％）。これを超える急増は計測ノイズとして前値を保持する",
+      "health_smoothing_window": "体力％のメディアン平滑化の点数"
     }
   },
   "counter_analysis": {

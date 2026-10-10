@@ -18,7 +18,7 @@ app_root = Path(__file__).parent
 sys.path.insert(0, str(app_root))
 
 from src.battlelog_matcher import BattlelogMatcher, CharacterNormalizer
-from src.character import UNKNOWN_CHARACTER, CharacterRecognizer
+from src.character import UNKNOWN_CHARACTER, CharacterRecognizer, default_health_path, load_character_health
 from src.detection import (
     CounterAnalyzer,
     GaugeAnalyzer,
@@ -381,6 +381,12 @@ class SF6ChapterProcessor:
         # 集計用の行（round_stats.parquet）。カウンター計測結果（ADR-049）も同じ行にマージする
         counter_result = getattr(self, "counter_result", None)
         stats_rows = build_round_stats_rows(self.gauge_result, matches, counter_result=counter_result)
+
+        # ADR-050: 体力の実数値計算に使う最大体力表の確認（未知キャラは警告）
+        health_table = load_character_health(str(default_health_path(app_root)))
+        health_table.warn_unknown(
+            {(match.get(side) or {}).get("character") for match in matches for side in ("player1", "player2")}
+        )
         stats_preview_path = gauge_dir / "round_stats_preview.json"
         with open(stats_preview_path, "w", encoding="utf-8") as f:
             json.dump(stats_rows, f, ensure_ascii=False, indent=2)
@@ -388,6 +394,15 @@ class SF6ChapterProcessor:
         if self.enable_r2 and self.r2_uploader:
             for match_id, match_gauges in (self.gauge_result.get("matches") or {}).items():
                 self.r2_uploader.upload_json({"videoId": video_id, **match_gauges}, f"gauges/{match_id}.json")
+
+            # ADR-050: Web 側で実 HP を計算するため、最大体力表を R2 にも配置する（単一ソース）
+            health_path = default_health_path(app_root)
+            if health_path.exists():
+                try:
+                    with open(health_path, encoding="utf-8") as f:
+                        self.r2_uploader.upload_json(json.load(f), "config/character_health.json")
+                except Exception:
+                    logger.exception("[Health] 最大体力表のアップロードに失敗しました: %s", health_path)
 
             # ラウンド統計が無い試合はラウンドが検出できていないため、その videoId の既存行だけ削除する
             if stats_rows:

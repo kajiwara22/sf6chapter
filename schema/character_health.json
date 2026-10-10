@@ -1,0 +1,12 @@
+{
+  "$schema": "./character_health.schema.json",
+  "description": "SF6 キャラクター別の最大体力（ADR-050）。キーは config/character_aliases.json の canonical 名に合わせる。出典: https://game-logbook.com/street-fighter6-hp/amp/ （公式キャラクターフレームデータの体力欄を集計したもの）。新キャラクター追加時は手動で更新する",
+  "default": 10000,
+  "characters": {
+    "GOUKI": 9000,
+    "MARISA": 10500,
+    "E.HONDA": 10500,
+    "ALEX": 10500,
+    "ZANGIEF": 11000
+  }
+}

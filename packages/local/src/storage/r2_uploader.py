@@ -142,6 +142,10 @@ class R2Uploader:
                 # ADR-049: カウンター・パニッシュカウンター回数（未計測時は null）
                 pa.field("counterCount", pa.int32(), nullable=True),
                 pa.field("punishCounterCount", pa.int32(), nullable=True),
+                # ADR-050: 体力（％）のラウンド統計（未計測時は null）
+                pa.field("healthMin", pa.float64(), nullable=True),
+                pa.field("healthAvg", pa.float64(), nullable=True),
+                pa.field("healthEnd", pa.float64(), nullable=True),
             ]
         )
 
