@@ -170,9 +170,7 @@ export interface RoundStatsQueryRow {
   /** ラウンド終了時の SA ストック（ADR-051） */
   saLeftAtEnd?: number | bigint | null;
   detectionCoverage: number | bigint | null;
-  /** 最小体力％（ADR-050、未計測・旧Parquetではnull） */
-  healthMin?: number | bigint | null;
-  /** 最終体力％（ADR-050、未計測・旧Parquetではnull） */
+  /** 決着時の残体力％（ADR-050/051、未計測・旧Parquetではnull） */
   healthEnd?: number | bigint | null;
   /** 最大の単発被弾％（ADR-051） */
   maxHitTaken?: number | bigint | null;

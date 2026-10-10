@@ -1117,7 +1117,7 @@ def build_round_stats_rows(
                 round_start = float(round_data.get("roundStartTime", 0.0))
 
                 drive_min, _, drive_end = _series_stats(drive_events, visible_to)
-                health_min, _, health_end = _series_stats(health_events, visible_to)
+                _, _, health_end = _series_stats(health_events, visible_to)
                 sa_values = [int(event[1]) for event in sa_events]
                 sa_used = sum(
                     1 for previous, current in zip(sa_values, sa_values[1:], strict=False) if current < previous
@@ -1133,6 +1133,11 @@ def build_round_stats_rows(
                 player = match.get(side) or {}
                 counter_counts = counter_lookup.get((match_id, round_index, side))
                 round_result = _round_result(value_lookup.get((match_id, round_index, side)))
+                # K.O. 札着の敗者はゲーム上 0%。K.O. 演出中は HUD が消えて体力バーが 0 へ
+                # 吸い込まれる演出を計測できないため、Battlelog の勝利方法から補正する（ADR-051）
+                # （Time Up（T）の敗者は 0 にならないので補正しない。未マッチ時は計測値のまま）
+                if round_result == "loss" and round_method not in (None, "T"):
+                    health_end = 0.0
                 rows.append(
                     {
                         "videoId": match.get("videoId"),
@@ -1151,7 +1156,6 @@ def build_round_stats_rows(
                         "saUsedCount": sa_used,
                         "saLeftAtEnd": None if sa_left is None else int(sa_left),
                         "detectionCoverage": payload.get("coverage"),
-                        "healthMin": health_min,
                         "healthEnd": health_end,
                         "maxHitTaken": max_hit,
                         "burnoutCount": burnout_count,

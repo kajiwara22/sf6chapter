@@ -321,7 +321,6 @@ describe('buildRoundStatsTableHtml', () => {
     saUsedCount: 1,
     saLeftAtEnd: 1,
     detectionCoverage: 0.958,
-    healthMin: 25.8,
     healthEnd: 30.2,
     maxHitTaken: 60.0,
     burnoutCount: 1,
@@ -413,7 +412,6 @@ const healthStatsRow = (side: 'player1' | 'player2', character: string | null): 
   saUsedCount: null,
   saLeftAtEnd: null,
   detectionCoverage: null,
-  healthMin: null,
   healthEnd: null,
   maxHitTaken: null,
   burnoutCount: null,
@@ -538,17 +536,17 @@ describe('resolveSideCharacters', () => {
 describe('buildRoundStatsTableHtml の体力列（ADR-050/051）', () => {
   it('最大体力表があれば実 HP を併記する', () => {
     const html = buildRoundStatsTableHtml(
-      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: 25.8, healthEnd: 25.8, maxHitTaken: 30 }],
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthEnd: 25.8, maxHitTaken: 30 }],
       plainLabels,
       healthTable,
     );
-    expect(html).toContain('体力最小');
+    expect(html).toContain('残体力');
     expect(html).toContain('2322 / 9000');
   });
 
   it('旧 Parquet（health 列が null / 未設定）は "-"', () => {
     const html = buildRoundStatsTableHtml(
-      [{ ...healthStatsRow('player1', 'GOUKI'), healthMin: null, healthEnd: null, maxHitTaken: null }],
+      [{ ...healthStatsRow('player1', 'GOUKI'), healthEnd: null, maxHitTaken: null }],
       plainLabels,
       healthTable,
     );

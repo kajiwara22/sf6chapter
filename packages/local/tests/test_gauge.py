@@ -606,13 +606,11 @@ class TestHealthRoundStats:
 
         rows = build_round_stats_rows(gauge_result, matches)
         p1 = rows[0]
-        assert p1["healthMin"] == 0.0
         assert p1["healthEnd"] == 0.0
         # ADR-051: 100% -> 40% の 60% が最大被弾
         assert p1["maxHitTaken"] == 60.0
 
         p2 = rows[1]
-        assert p2["healthMin"] is None
         assert p2["healthEnd"] is None
         assert p2["maxHitTaken"] is None
 
@@ -694,6 +692,29 @@ class TestImprovementRoundStats:
         rows_unknown = build_round_stats_rows(self._gauge_result(), matches)
         assert rows_unknown[0]["roundResult"] is None
         assert rows_unknown[0]["roundMethod"] is None
+
+    def test_ko_loser_health_is_clamped_to_zero(self):
+        """K.O. 札着の敗者は残体力 0%（Time Up は補正しない）（ADR-051）"""
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+        gauge = self._gauge_result()
+
+        # 1P が K.O. で敗北（method V）→ p1 の残体力は 0、p2 は計測値のまま
+        rows = build_round_stats_rows(
+            gauge, matches, round_results_by_match={"vid_100": {"player1": [0], "player2": [1]}}
+        )
+        p1 = next(r for r in rows if r["side"] == "player1")
+        p2 = next(r for r in rows if r["side"] == "player2")
+        assert p1["healthEnd"] == 0.0
+        assert p2["healthEnd"] == 5.0
+
+        # Time Up（method T）で敗北 → 補正しない（計測値のまま）
+        rows_timeup = build_round_stats_rows(
+            gauge, matches, round_results_by_match={"vid_100": {"player1": [0], "player2": [3]}}
+        )
+        p1_timeup = next(r for r in rows_timeup if r["side"] == "player1")
+        assert p1_timeup["healthEnd"] == 30.0
 
     def test_burnout_is_null_without_drive_series(self):
         gauge_result = self._gauge_result()

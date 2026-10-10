@@ -76,14 +76,21 @@
 | 項目 | 扱い | 理由 |
 |------|------|------|
 | `driveAvg` | **削除** | 時間重み付き平均は直感に合わず、`driveMin` / `driveEnd` とバーンアウトで足りる |
-| `healthAvg` | **削除** | 同上。勝敗判断には `healthMin`（窮地）と `healthEnd`（残体力）で足りる |
+| `healthAvg` | **削除** | 時間重み付き平均は直感に合わず、勝敗判断に使えない |
+| `healthMin` | **削除** | 「残体力」1 列に統合。最少値は K.O. 演出で計測できず、残体力と大小が逆転して混乱する（下記） |
 | `detectionCoverage` | 列は保持、**表からは外す** | 計測品質の内部指標。低いラウンドがある場合のみページに注記を出す |
+
+- **残体力は 1 列とし、ゲームルールを反映する**: K.O. 決着（`roundMethod != "T"`）の敗者は残体力 0% とする。
+  K.O. 後の体力バー吸い込み演出中は HUD（SA 数字）が消えて計測できないため、`gauges.health` の最終値は
+  0 にならず「最後に計測できた値」で止まる（実測例: 敗者が 23.6%、KO はその後の演出中）。
+  Battlelog の勝利方法から決着種別が分かるので、**KO 敗者は 0、Time Up 敗者と未マッチは計測値のまま**とする。
 
 ### 5. 詳細ページの構成
 
 1. **試合サマリ**: 自分視点の勝敗（WIN/LOSE）、ラウンドスコア（1P - 2P）、使用キャラ、LP/MR（Battlelog にある場合）、公開日・試合開始時刻・YouTube リンク
 2. **ラウンドごとの 3 ゲージチャート**（ADR-048/050 の既存実装。バーンアウト帯・CA マーカー・低計測率の注記）
-3. **ラウンド集計テーブル**: ラウンド / サイド / キャラ / 勝敗 / 方法 / 体力最小 / 残体力 / 最大被弾 / ドライブ（最小→終了）/ バーンアウト（回数・秒）/ SA（最大・使用・残し）/ カウンタ / パニッシュ / 時間
+3. **ラウンド集計テーブル**: ラウンド / サイド / キャラ / 勝敗 / 方法 / 残体力 / 最大被弾 / ドライブ（最小→終了）/ バーンアウト（回数・秒）/ SA最大 / SA使用 / SA残し / カウンタ / パニッシュ / 時間
+   - SA は凡例が無いと読めないため 1 セルにまとめず、**3 列に分割**する
 
 ### 6. 今回は採用しなかった指標（将来の拡張候補）
 
@@ -140,7 +147,7 @@
 | `driveMin` / `driveEnd` | float \| null | ドライブ本数の最小・最終（`driveAvg` は削除） |
 | `saMax` / `saUsedCount` / `saLeftAtEnd` | int \| null | 最大ストック・使用回数・終了時残し（ADR-051） |
 | `detectionCoverage` | float \| null | 計測率（表からは外し注記に使用） |
-| `healthMin` / `healthEnd` | float \| null | 最小体力・残体力（`healthAvg` は削除） |
+| `healthEnd` | float \| null | 決着時の残体力％（K.O. 決着の敗者は 0 に補正。ADR-050/051） |
 | `maxHitTaken` | float \| null | 最大の単発被弾％（ADR-051） |
 | `burnoutCount` / `burnoutSec` | int/float \| null | バーンアウト回数・累計秒（ADR-051） |
 | `counterCount` / `punishCounterCount` | int \| null | カウンター回数（ADR-049） |
@@ -176,7 +183,7 @@
 
 | ファイル | 内容 |
 |---------|------|
-| `packages/local/src/detection/gauge.py` | `build_round_stats_rows` に `roundResult` / `roundMethod` / `maxHitTaken` / `burnoutCount` / `burnoutSec` / `saLeftAtEnd` を追加し、`driveAvg` / `healthAvg` を削除 |
+| `packages/local/src/detection/gauge.py` | `build_round_stats_rows` に `roundResult` / `roundMethod` / `maxHitTaken` / `burnoutCount` / `burnoutSec` / `saLeftAtEnd` を追加し、`driveAvg` / `healthAvg` / `healthMin` を削除。K.O. 敗者の残体力を 0 に補正 |
 | `packages/local/src/storage/r2_uploader.py` | `round_stats.parquet` のスキーマ更新 |
 | `packages/local/src/battlelog_matcher.py` | マッチ結果に `player1_round_results` / `player2_round_results` を追加 |
 | `packages/local/main.py` | ゲージ詳細 JSON に試合勝敗を付与、`round_results` を集計行へマージ |
@@ -202,7 +209,8 @@
 
 ## 実装チェックリスト
 
-- [x] `build_round_stats_rows`: 勝敗・勝利方法・改善指標の追加と `driveAvg` / `healthAvg` の削除
+- [x] `build_round_stats_rows`: 勝敗・勝利方法・改善指標の追加と `driveAvg` / `healthAvg` / `healthMin` の削除、K.O. 敗者の残体力 0 補正
+- [x] 残体力の意味を確定（K.O. 演出で計測できない落下を勝利方法から補正。手元 3 本の K.O. 敗者 91 行すべてが 0%）
 - [x] `round_stats.parquet` スキーマ更新と再生成（手元 3 本）
 - [x] ラウンド勝敗・勝利方法の取得（`battlelog_matcher` / `upload_gauge_data.py`）
 - [x] ゲージ詳細 JSON への試合勝敗の付与（`player1Result` / `player2Result`）
@@ -215,7 +223,7 @@
 
 - [ADR-048: ラウンド単位のドライブゲージ・SAゲージ時系列取得](048-round-drive-sa-gauge-timeline-capture.md) - ラウンド境界・HUD 判定・保存の基盤（本 ADR が集計列を再設計）
 - [ADR-049: ラウンド単位のカウンター・パニッシュカウンター回数取得](049-round-counter-count-capture.md) - カウンター列
-- [ADR-050: ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示](050-health-gauge-timeline-and-integrated-view.md) - 体力列（`healthAvg` は本 ADR で削除）
+- [ADR-050: ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示](050-health-gauge-timeline-and-integrated-view.md) - 体力列（`healthAvg` / `healthMin` は本 ADR で削除）
 - [ADR-026: 対戦動画からの勝敗検出](026-result-screen-match-outcome-detection.md) - 試合単位の勝敗
 - [ADR-037: Battlelog round_results の値の意味](037-battlelog-round-results-value-semantics.md) - ラウンド勝敗・勝利方法コード
 - [ADR-047: 対戦履歴へのラウンド単位結果表示](047-match-history-round-results-display.md) - ラウンド勝敗表示の前例

@@ -144,8 +144,7 @@ class R2Uploader:
                 # ADR-051: ラウンド終了時の SA ストック（使い残しの検知）
                 pa.field("saLeftAtEnd", pa.int32(), nullable=True),
                 pa.field("detectionCoverage", pa.float64(), nullable=True),
-                # ADR-050: 体力（％）のラウンド統計（未計測時は null）
-                pa.field("healthMin", pa.float64(), nullable=True),
+                # ADR-050/051: 残体力（％、K.O. 札着の敗者は 0 に補正する）
                 pa.field("healthEnd", pa.float64(), nullable=True),
                 # ADR-051: 最大の単発被弾（％）
                 pa.field("maxHitTaken", pa.float64(), nullable=True),

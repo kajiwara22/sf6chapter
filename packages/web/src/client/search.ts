@@ -1036,7 +1036,7 @@ async function roundStatsHasCounterColumns(): Promise<boolean> {
 }
 
 /**
- * round_stats に体力集計列（ADR-050）が存在するかを判定する
+ * round_stats に体力集計列（ADR-050/051）が存在するかを判定する
  *
  * 旧 Parquet（ADR-050 適用前に生成されたもの）には列が無いため、
  * SELECT で列参照エラーにならないよう存在確認してから問い合わせる。
@@ -1049,7 +1049,7 @@ async function roundStatsHasHealthColumns(): Promise<boolean> {
   try {
     const info = await instance.conn.query("PRAGMA table_info('round_stats')");
     const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
-    roundStatsHealthColumnsCache = names.includes('healthMin') && names.includes('healthEnd');
+    roundStatsHealthColumnsCache = names.includes('healthEnd');
   } catch {
     roundStatsHealthColumnsCache = false;
   }
@@ -1139,7 +1139,7 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
       roundStartTime, roundEndTime, durationSec,
       driveMin, driveEnd, saMax, saUsedCount, detectionCoverage
       ${withCounters ? ', counterCount, punishCounterCount' : ''}
-      ${withHealth ? ', healthMin, healthEnd' : ''}
+      ${withHealth ? ', healthEnd' : ''}
       ${withImprovement ? ', roundResult, roundMethod, saLeftAtEnd, maxHitTaken, burnoutCount, burnoutSec' : ''}
     FROM round_stats
     WHERE matchId = $1
@@ -1172,7 +1172,6 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     saUsedCount: row.saUsedCount == null ? null : Number(row.saUsedCount),
     saLeftAtEnd: row.saLeftAtEnd == null ? null : Number(row.saLeftAtEnd),
     detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
-    healthMin: row.healthMin == null ? null : Number(row.healthMin),
     healthEnd: row.healthEnd == null ? null : Number(row.healthEnd),
     maxHitTaken: row.maxHitTaken == null ? null : Number(row.maxHitTaken),
     burnoutCount: row.burnoutCount == null ? null : Number(row.burnoutCount),

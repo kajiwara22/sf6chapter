@@ -42,7 +42,6 @@ const roundRow = (
   saUsedCount: 1,
   saLeftAtEnd: 2,
   detectionCoverage: 0.9,
-  healthMin: 5,
   healthEnd: 20,
   maxHitTaken: 55,
   burnoutCount: 1,
@@ -104,7 +103,9 @@ describe('buildMatchDetailPageHtml', () => {
     expect(html).toContain('gg-result-win');
     expect(html).toContain('CA');
     expect(html).toContain('1回 / 10.0s');
-    expect(html).toContain('3 / 1 / 2');
+    expect(html).toContain('SA最大');
+    expect(html).toContain('SA使用');
+    expect(html).toContain('SA残し');
   });
 
   it('round_results が無い場合はスコアを不明表示にする', () => {

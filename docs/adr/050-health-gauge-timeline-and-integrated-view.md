@@ -5,7 +5,8 @@
 採用 - 2026-10-10（実装完了 2026-10-10、R2 反映 2026-10-10）
 
 > 注: `round_stats.parquet` の列構成は [ADR-051](051-match-detail-page-and-round-stats-redesign.md) で再設計された
-> （`healthAvg` を削除し、勝敗・最大被弾・バーンアウト・SA 残しを追加）。
+> （`healthAvg` / `healthMin` を削除して残体力 1 列に統合し、K.O. 札着の敗者を 0 に補正。
+> 勝敗・最大被弾・バーンアウト・SA 残しを追加）。
 
 ## 文脈
 

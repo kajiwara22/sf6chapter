@@ -664,12 +664,13 @@ export function buildRoundStatsTableHtml(
           <td>${character}</td>
           <td>${formatResult(row.roundResult)}</td>
           <td>${row.roundMethod ? escapeHtml(row.roundMethod) : '-'}</td>
-          <td>${formatHealthValue(row.healthMin, maxHealth)}</td>
           <td>${formatHealthValue(row.healthEnd, maxHealth)}</td>
           <td>${formatHealthValue(row.maxHitTaken, maxHealth)}</td>
           <td>${formatValue(row.driveMin)} → ${formatValue(row.driveEnd)}</td>
           <td>${formatBurnout(row.burnoutCount, row.burnoutSec)}</td>
-          <td>${formatInt(row.saMax)} / ${formatInt(row.saUsedCount)} / ${formatInt(row.saLeftAtEnd)}</td>
+          <td>${formatInt(row.saMax)}</td>
+          <td>${formatInt(row.saUsedCount)}</td>
+          <td>${formatInt(row.saLeftAtEnd)}</td>
           <td class="gg-stats-counter">${formatInt(row.counterCount)}</td>
           <td class="gg-stats-counter">${formatInt(row.punishCounterCount)}</td>
           <td>${formatValue(row.durationSec)}</td>
@@ -690,12 +691,13 @@ export function buildRoundStatsTableHtml(
               <th>キャラ</th>
               <th>勝敗</th>
               <th title="勝利方法: V=通常 C=Chip T=TimeUp OD SA CA P=Perfect">方法</th>
-              <th>体力最小</th>
-              <th>残体力</th>
+              <th title="決着時の残体力（K.O. の敗者は 0）">残体力</th>
               <th title="最大の単発被弾">最大被弾</th>
               <th title="最小 → ラウンド終了">ドライブ</th>
               <th title="回数 / 累計秒">バーンアウト</th>
-              <th title="最大 / 使用 / 残し">SA</th>
+              <th title="到達した最大ストック数">SA最大</th>
+              <th title="ストックが減った回数（スーパー使用回数）">SA使用</th>
+              <th title="ラウンド終了時の残ストック">SA残し</th>
               <th title="COUNTER">カウンタ</th>
               <th title="PUNISH COUNTER">パニッシュ</th>
               <th>時間</th>

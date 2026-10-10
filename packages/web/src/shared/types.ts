@@ -363,9 +363,7 @@ export interface RoundStatsRow {
   saLeftAtEnd: number | null;
   /** 計測できたサンプル率 */
   detectionCoverage: number | null;
-  /** ラウンド内の最小体力％（ADR-050、未計測時は null） */
-  healthMin: number | null;
-  /** ラウンド内の最終体力％（ADR-050、未計測時は null） */
+  /** 決着時の残体力％（ADR-050/051。K.O. 札着の敗者は 0、未計測時は null） */
   healthEnd: number | null;
   /** 最大の単発被弾％（ADR-051、未計測時は null） */
   maxHitTaken: number | null;
