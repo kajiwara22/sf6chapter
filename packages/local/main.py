@@ -116,12 +116,12 @@ class SF6ChapterProcessor:
 
     def _detect_and_recognize(
         self, video_id: str, video_path: str, message_data: dict[str, Any], video_intermediate_dir: Path
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    ) -> tuple[list[MatchDetection], list[dict[str, Any]], list[dict[str, Any]]]:
         """
         動画から対戦を検出し、キャラクター認識を実行
 
         Returns:
-            (matches, chapters) のタプル
+            (detections, matches, chapters) のタプル
         """
         # 2. テンプレートマッチングで対戦シーンを検出
         logger.info("[2/6] Detecting match scenes...")
@@ -151,7 +151,7 @@ class SF6ChapterProcessor:
 
         if not detections:
             logger.info("No matches found, skipping video")
-            return [], []
+            return detections, [], []
 
         # 3. Gemini APIでキャラクター認識（ADR-042: バッチ送信で1リクエストにまとめる）
         logger.info("[3/6] Recognizing characters (batch mode)...")
@@ -235,7 +235,7 @@ class SF6ChapterProcessor:
                 round_banner_times=round_banner_times,
             )
 
-        return matches, chapters
+        return detections, matches, chapters
 
     def _apply_match_results(self, matches: list[dict[str, Any]], chapters_with_result: list[dict[str, Any]]) -> None:
         """
@@ -506,7 +506,9 @@ class SF6ChapterProcessor:
             logger.info("Downloaded: %s", video_path)
 
             # 2-3. 検出・認識
-            matches, chapters = self._detect_and_recognize(video_id, video_path, message_data, video_intermediate_dir)
+            detections, matches, chapters = self._detect_and_recognize(
+                video_id, video_path, message_data, video_intermediate_dir
+            )
             if not matches:
                 logger.info("No matches found, skipping video")
                 return
@@ -546,7 +548,8 @@ class SF6ChapterProcessor:
 
             # 最終結果を保存
             self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_result)
-            self._save_detection_summary(video_id, video_intermediate_dir, [], chapters_with_result)
+            # 検出直後に保存した detection_summary.json を RESULT 検出情報付きで更新する
+            self._save_detection_summary(video_id, video_intermediate_dir, detections, chapters_with_result)
 
             self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
 
