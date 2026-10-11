@@ -7,7 +7,8 @@ import { Hono } from 'hono';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Bindings } from '../types';
-import type { HealthResponse, PresignedUrlResponse } from '@shared/types';
+import type { DataManifest, HealthResponse, ManifestFileEntry, PresignedUrlResponse } from '@shared/types';
+import { buildManifest, MANIFEST_KEY, MANIFEST_PARQUET_KEYS } from '@shared/manifest';
 import { env } from 'hono/adapter'
 
 const api = new Hono<{Bindings:Bindings}>();
@@ -39,6 +40,43 @@ api.get('/health', (c) => {
     timestamp: new Date().toISOString(),
   };
   return c.json(response);
+});
+
+/**
+ * GET /api/data/manifest
+ * データマニフェスト（ADR-055）を返却する
+ *
+ * pipeline が書いた manifest.json をそのまま返す。無い場合は R2 の head() から生成する。
+ * クライアントはこの 1 往復だけでキャッシュの有効性を判定する。
+ */
+api.get('/data/manifest', async (context) => {
+  const bucket = context.env.SF6_DATA;
+
+  try {
+    const object = await bucket.get(MANIFEST_KEY);
+    if (object) {
+      const manifest = (await object.json()) as DataManifest;
+      if (manifest?.version && manifest?.files) {
+        return context.json(manifest);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to read manifest.json, falling back to head():', error);
+  }
+
+  try {
+    const files: Record<string, ManifestFileEntry> = {};
+    for (const key of MANIFEST_PARQUET_KEYS) {
+      const head = await bucket.head(key);
+      if (!head) continue;
+      files[key] = { etag: head.httpEtag.replace(/"/g, ''), size: head.size };
+    }
+    const manifest = await buildManifest(files);
+    return context.json(manifest);
+  } catch (error) {
+    console.error('Failed to build data manifest:', error);
+    return context.json({ error: 'Failed to build data manifest' }, 500);
+  }
 });
 
 /**

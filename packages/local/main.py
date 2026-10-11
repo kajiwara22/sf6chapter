@@ -537,6 +537,13 @@ class SF6ChapterProcessor:
             # ADR-049: カウンター計測結果の中間ファイル保存（回数は round_stats に含まれる）
             self._save_counter_data(video_id, video_intermediate_dir)
 
+            # ADR-055: データマニフェストを更新（全 Parquet のアップロード完了後）
+            if self.enable_r2 and self.r2_uploader:
+                try:
+                    self.r2_uploader.publish_manifest()
+                except Exception:
+                    logger.exception("データマニフェストの更新に失敗しました（処理は継続します）")
+
             # 最終結果を保存
             self._save_final_results(video_id, video_intermediate_dir, video_data, matches, chapters_with_result)
             self._save_detection_summary(video_id, video_intermediate_dir, [], chapters_with_result)
@@ -953,6 +960,8 @@ def _update_battlelog_parquet(
                 schema=get_battlelog_replays_schema(),
             )
             logger.info("Battlelog Parquet: R2 にアップロードしました (%d rows)", count)
+            # ADR-055: battlelog_replays.parquet の変更を manifest に反映する
+            r2_uploader.publish_manifest()
         else:
             logger.info("Battlelog Parquet: ローカルに保存しました: %s", parquet_path)
 
@@ -1702,6 +1711,9 @@ def test_r2_upload(
         logger.info("[6/6] Updating Parquet files...")
         r2_uploader.update_parquet_table([video_data], "videos.parquet", video_id=video_id)
         r2_uploader.update_parquet_table(matches, "matches.parquet", video_id=video_id)
+
+        # ADR-055: データマニフェストを更新
+        r2_uploader.publish_manifest()
 
         logger.info("✅ R2 upload and Parquet update completed")
         logger.info("   - Uploaded %d matches", len(matches))

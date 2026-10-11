@@ -8,8 +8,8 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@client': resolve(__dirname, 'src/client'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
+      '@client': resolve(import.meta.dirname, 'src/client'),
     },
   },
   publicDir: 'public',
@@ -17,7 +17,7 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
+        main: resolve(import.meta.dirname, 'index.html'),
       },
     },
     // アセットをassetsディレクトリに配置

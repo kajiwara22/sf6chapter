@@ -26,9 +26,9 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@client': resolve(__dirname, 'src/client'),
-      '@server': resolve(__dirname, 'src/server'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
+      '@client': resolve(import.meta.dirname, 'src/client'),
+      '@server': resolve(import.meta.dirname, 'src/server'),
     },
   },
   // publicディレクトリの設定

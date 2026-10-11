@@ -131,6 +131,26 @@ export interface PresignedUrlResponse {
   expiresIn: number;
 }
 
+/** データマニフェストのファイルエントリ（ADR-055） */
+export interface ManifestFileEntry {
+  /** R2 オブジェクトの ETag（引用符なし） */
+  etag: string;
+  /** バイトサイズ */
+  size: number;
+}
+
+/** データマニフェスト（ADR-055） */
+export interface DataManifest {
+  /** manifest.json のフォーマット世代 */
+  schema: number;
+  /** ETag 集合から決まるバージョン */
+  version: string;
+  /** 生成日時 (ISO8601) */
+  generatedAt: string;
+  /** オブジェクトキー -> エントリ */
+  files: Record<string, ManifestFileEntry>;
+}
+
 /** マッチアップチャートの1行 */
 export interface MatchupChartRow {
   /** 対戦相手キャラクター名 */

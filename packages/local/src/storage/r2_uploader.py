@@ -5,6 +5,7 @@ JSON/ParquetファイルをR2にアップロード
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
@@ -15,6 +16,78 @@ from botocore.exceptions import ClientError
 from ..utils.logger import get_logger
 
 logger = get_logger()
+
+# ADR-055: Web の OPFS キャッシュが参照するデータマニフェスト
+MANIFEST_KEY = "manifest.json"
+MANIFEST_SCHEMA = 1
+MANIFEST_PARQUET_KEYS = (
+    "matches.parquet",
+    "battlelog_replays.parquet",
+    "round_stats.parquet",
+)
+
+
+def publish_manifest(
+    s3_client: Any,
+    bucket_name: str,
+    keys: tuple[str, ...] = MANIFEST_PARQUET_KEYS,
+) -> dict[str, Any]:
+    """データマニフェスト（ADR-055）を R2 に書き出す
+
+    追跡対象の Parquet の ETag / サイズを head_object で取得し、ETag 集合から
+    決定的な version を計算して `manifest.json` をアップロードする。
+
+    Web はこの manifest を唯一の真実として OPFS キャッシュ（Parquet バイト・
+    DuckDB データベース）の有効性を判定する。pipeline の全アップロードが
+    完了した後に呼び出すこと。
+
+    R2Uploader を持たない経路（修復スクリプト等）からも呼べるようにモジュール
+    レベル関数としている。
+
+    Args:
+        s3_client: boto3 の S3 クライアント
+        bucket_name: バケット名
+        keys: 追跡対象の Parquet オブジェクトキー
+
+    Returns:
+        書き出した manifest の dict
+    """
+    import hashlib
+
+    files: dict[str, dict[str, Any]] = {}
+    for key in keys:
+        try:
+            response = s3_client.head_object(Bucket=bucket_name, Key=key)
+        except ClientError as e:
+            if e.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                logger.warning("Manifest: %s が見つかりません。スキップします", key)
+                continue
+            raise
+        files[key] = {
+            "etag": str(response["ETag"]).strip('"'),
+            "size": int(response["ContentLength"]),
+        }
+
+    # Web 側（shared/manifest.ts）と同じアルゴリズムで version を計算する
+    payload = "\n".join(f"{key}:{files[key]['etag']}" for key in sorted(files))
+    version = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "version": version,
+        "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "files": files,
+    }
+
+    body = json.dumps(manifest, ensure_ascii=False, indent=2)
+    s3_client.put_object(
+        Bucket=bucket_name,
+        Key=MANIFEST_KEY,
+        Body=body.encode("utf-8"),
+        ContentType="application/json",
+    )
+    logger.info("Uploaded manifest: version=%s files=%s", version, sorted(files))
+    return manifest
 
 
 class R2Uploader:
@@ -310,3 +383,10 @@ class R2Uploader:
 
         # アップロード
         return self.upload_parquet(merged_data, key, schema)
+
+    def publish_manifest(self, keys: tuple[str, ...] = MANIFEST_PARQUET_KEYS) -> dict[str, Any]:
+        """データマニフェスト（ADR-055）を R2 に書き出す
+
+        pipeline の全アップロードが完了した後に呼び出すこと。
+        """
+        return publish_manifest(self.s3_client, self.bucket_name, keys)

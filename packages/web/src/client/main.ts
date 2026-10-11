@@ -3,7 +3,7 @@
  */
 
 import { DOM_IDS } from './types';
-import { initDuckDB, loadParquetData, loadBattlelogParquetData, loadRoundStatsParquetData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, queryMatchById, MY_PLAYER_ID } from './search';
+import { initCachedData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, queryMatchById, MY_PLAYER_ID } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
 import { renderResults, clearResults } from './components/ResultsGrid';
 import { parseMatchDetailPath, renderMatchDetailPage, renderMatchDetailPageError, renderMatchDetailPageLoading } from './components/MatchDetailPage';
@@ -134,24 +134,13 @@ async function initMatchDetailPage(matchId: string): Promise<void> {
   renderMatchDetailPageLoading(null, matchId);
 
   try {
-    await initDuckDB();
-    await loadParquetData();
+    // ADR-055: manifest + OPFS キャッシュ経由で必要なテーブルをまとめて読み込む
+    await initCachedData();
 
     match = await queryMatchById(matchId);
     if (!match) {
       renderMatchDetailPageError(null, matchId, `試合が見つかりません: ${matchId}`);
       return;
-    }
-
-    try {
-      await loadBattlelogParquetData();
-    } catch (battlelogErr) {
-      console.warn('[App] battlelog_replays.parquet の読み込みに失敗しました:', battlelogErr);
-    }
-    try {
-      await loadRoundStatsParquetData();
-    } catch (statsErr) {
-      console.warn('[App] round_stats.parquet の読み込みに失敗しました:', statsErr);
     }
 
     const [gauges, roundStats, battlelog, characterHealth] = await Promise.all([
@@ -356,11 +345,9 @@ async function init(): Promise<void> {
   showError(null);
 
   try {
-    // DuckDB初期化
-    await initDuckDB();
-
-    // Parquetデータ読み込み
-    await loadParquetData();
+    // DuckDB初期化 + データ読み込み（ADR-055）
+    // 検索タブは round_stats を必要としないため読み込まない
+    await initCachedData({ tables: ['matches', 'battlelog_replays'] });
 
     // キャラクター一覧を取得してセレクトを更新
     const characters = await getCharacters();
@@ -389,14 +376,8 @@ async function init(): Promise<void> {
 
   // マッチアップチャートと対戦履歴の初期化（検索と独立して実行）
   try {
-    await loadBattlelogParquetData();
-
-    // round_stats.parquet が無くても他タブを壊さないよう独立して試行する
-    try {
-      await loadRoundStatsParquetData();
-    } catch (statsErr) {
-      console.warn('[App] round_stats.parquet の読み込みに失敗しました（ゲージ集計は表示されません）:', statsErr);
-    }
+    // 検索タブ初期化で失敗していても対戦履歴を表示できるよう、ここでも読み込みを試みる
+    await initCachedData({ tables: ['battlelog_replays'] });
 
     // 自分が使ったキャラクター一覧でセレクトを更新
     const myCharacters = await getBattlelogMyCharacters();

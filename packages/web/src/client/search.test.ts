@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { convertJstDateToUtc, convertJstDateTimeToTimestamp } from './search';
+import { convertJstDateToUtc, convertJstDateTimeToTimestamp, buildCreateTableSql } from './search';
+
+describe('buildCreateTableSql', () => {
+  it('テーブル名は拡張子なし、ファイル名は拡張子つきになる', () => {
+    expect(buildCreateTableSql('matches', 'matches.parquet')).toBe(
+      "CREATE TABLE IF NOT EXISTS matches AS SELECT * FROM read_parquet('matches.parquet')",
+    );
+  });
+
+  it('テーブル名に . を含めない（DuckDB がスキーマと誤認するのを防ぐ）', () => {
+    const sql = buildCreateTableSql('battlelog_replays', 'battlelog_replays.parquet');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS battlelog_replays AS');
+    expect(sql).not.toContain('IF NOT EXISTS battlelog_replays.parquet');
+  });
+});
 
 describe('convertJstDateToUtc', () => {
   describe('isEndOfDay=false（開始日: JST 00:00:00 → UTC 前日 15:00:00）', () => {

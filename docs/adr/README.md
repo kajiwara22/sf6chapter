@@ -60,6 +60,7 @@
 | [052](./052-final-round-banner-detection.md) | FINAL ROUND バナーの検出によるラウンド数不一致の解消 | 採用 | 2026-10-10 |
 | [053](./053-sa-stock-revert-suppression.md) | SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正 | 採用 | 2026-10-11 |
 | [054](./054-health-recoverable-damage-observation.md) | 回復可能ダメージ（白ゲージ）の観測と回復ゲート | 採用 | 2026-10-11 |
+| [055](./055-opfs-client-cache-for-parquet-and-duckdb.md) | OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース） | 採用 | 2026-10-11 |
 
 ## ADRのフォーマット
 

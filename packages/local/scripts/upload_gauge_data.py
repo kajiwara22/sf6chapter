@@ -341,6 +341,10 @@ def main() -> None:
         else:
             logger.warning("[Gauge] round_stats の行が 0 件のため round_stats.parquet は更新しません: %s", video_id)
 
+    if not args.dry_run:
+        # ADR-055: 全アップロード完了後にデータマニフェストを更新する
+        uploader.publish_manifest()
+
     logger.info("[Done] videos=%d round_stats rows=%d dry_run=%s", len(video_ids), total_rows, args.dry_run)
 
 

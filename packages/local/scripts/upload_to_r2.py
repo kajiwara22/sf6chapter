@@ -125,6 +125,8 @@ def main():
         success = upload_battlelog_parquet(uploader, output_dir)
         if not success:
             sys.exit(1)
+        # ADR-055: データマニフェストを更新
+        uploader.publish_manifest()
         print("\n🎉 Battlelog upload completed!")
         return
 
@@ -161,6 +163,9 @@ def main():
 
     # Battlelog Parquetがあればそれもアップロード
     upload_battlelog_parquet(uploader, output_dir)
+
+    # ADR-055: データマニフェストを更新
+    uploader.publish_manifest()
 
     print("\n🎉 Upload completed successfully!")
     print(f"  - Videos: {len(videos)}")

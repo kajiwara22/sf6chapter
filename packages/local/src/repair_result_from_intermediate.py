@@ -24,6 +24,7 @@ except ImportError:
     ClientError = None
 
 from .utils.logger import get_logger
+from .storage.r2_uploader import publish_manifest as publish_data_manifest
 
 logger = get_logger()
 
@@ -301,6 +302,11 @@ class ResultRepair:
                 ContentType="application/octet-stream",
             )
             logger.info("Uploaded repaired parquet to R2: %s", key)
+            # ADR-055: matches.parquet の変更を manifest に反映する
+            try:
+                publish_data_manifest(self.s3_client, self.bucket_name)
+            except Exception:
+                logger.exception("マニフェストの更新に失敗しました（修復は完了しています）")
             return repaired_count
         except ClientError as e:
             logger.error("Error uploading parquet to R2: %s", e)

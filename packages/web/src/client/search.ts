@@ -4,24 +4,50 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, PresignedUrlResponse, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable } from '@shared/types';
+import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable } from '@shared/types';
+import type { ManifestParquetKey } from '@shared/manifest';
 import { determineResultFromRounds } from '@shared/rounds';
+import {
+  DB_SCHEMA_VERSION,
+  downloadParquetBlob,
+  fetchDataManifest,
+  getPresignedUrl,
+  ParquetCache,
+  type DbMarker,
+} from './cache';
 
 // ラウンド判定は shared/rounds.ts に集約（ADR-047）。既存の利用箇所向けに re-export する。
 export { countRoundWins, determineResultFromRounds, parseRoundIds, getRound, ROUNDS } from '@shared/rounds';
 export type { Round, RoundOutcome } from '@shared/rounds';
 
 let instance: DuckDBInstance | null = null;
+/** OPFS のファイルバック DB を使っているか（ADR-055） */
+let persistentMode = false;
+/** ページ内で共有する manifest の取得 Promise */
+let manifestPromise: Promise<DataManifest> | null = null;
+
+/** DuckDB のテーブル名（拡張子なし。クエリ側はこの名前を使う） */
+export type DataTableName = 'matches' | 'battlelog_replays' | 'round_stats';
+
+/** テーブル名 -> R2 / manifest のオブジェクトキー */
+const TABLE_FILES: Record<DataTableName, ManifestParquetKey> = {
+  matches: 'matches.parquet',
+  battlelog_replays: 'battlelog_replays.parquet',
+  round_stats: 'round_stats.parquet',
+};
+
+/** キャッシュ対象の全テーブル */
+const ALL_TABLES = Object.keys(TABLE_FILES) as DataTableName[];
 
 /**
  * DuckDB-WASMを初期化
  */
-export async function initDuckDB(): Promise<DuckDBInstance> {
+export async function initDuckDB(options: { dbPath?: string } = {}): Promise<DuckDBInstance> {
   if (instance) {
     return instance;
   }
 
-  console.log('[DuckDB] Initializing...');
+  console.log(`[DuckDB] Initializing... (${options.dbPath ?? ':memory:'})`);
 
   // CDN経由でWASMバンドルを取得
   const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
@@ -33,138 +59,312 @@ export async function initDuckDB(): Promise<DuckDBInstance> {
 
   const worker = new Worker(workerUrl);
   const logger = new duckdb.ConsoleLogger();
-
   const db = new duckdb.AsyncDuckDB(logger, worker);
-  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-  URL.revokeObjectURL(workerUrl);
 
-  const conn = await db.connect();
+  try {
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
 
-  instance = { db, conn };
+    // ADR-055: OPFS のファイルバックデータベースを開く（指定時のみ）
+    if (options.dbPath) {
+      await db.open({ path: options.dbPath, accessMode: duckdb.DuckDBAccessMode.READ_WRITE });
+    }
+
+    const conn = await db.connect();
+    instance = { db, conn };
+  } catch (error) {
+    // ワーカーが応答しない可能性があるため terminate は待たない
+    try {
+      void db.terminate().catch(() => undefined);
+    } catch {
+      /* ignore */
+    }
+    throw error;
+  } finally {
+    URL.revokeObjectURL(workerUrl);
+  }
+
   console.log('[DuckDB] Initialized successfully');
-
   return instance;
 }
 
 /**
- * Presigned URLを取得
- */
-async function getPresignedUrl(apiPath: string): Promise<string> {
-  console.log(`[DuckDB] Fetching presigned URL from ${apiPath}...`);
-  
-  const response = await fetch(apiPath);
-  if (!response.ok) {
-    throw new Error(`Failed to get presigned URL: ${response.status}`);
-  }
-
-  const data: PresignedUrlResponse = await response.json();
-  console.log(`[DuckDB] Got presigned URL (expires in ${data.expiresIn}s)`);
-  
-  return data.url;
-}
-
-/**
- * Presigned URLからParquetデータをダウンロード
- */
-async function downloadParquet(presignedUrl: string): Promise<ArrayBuffer> {
-  console.log('[DuckDB] Downloading Parquet from presigned URL...');
-  
-  const response = await fetch(presignedUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download Parquet: ${response.status}`);
-  }
-
-  const data = await response.arrayBuffer();
-  console.log(`[DuckDB] Downloaded ${data.byteLength} bytes`);
-  
-  return data;
-}
-
-/**
- * Parquetファイルをロード
- */
-export async function loadParquetData(): Promise<void> {
-  if (!instance) {
-    throw new Error('DuckDB not initialized');
-  }
-
-  console.log('[DuckDB] Loading Parquet data...');
-
-  // 1. APIからPresigned URLを取得
-  const presignedUrl = await getPresignedUrl('/api/data/index/matches.parquet');
-
-  // 2. Presigned URLからParquetデータをダウンロード
-  const parquetData = await downloadParquet(presignedUrl);
-
-  // 3. DuckDBに登録
-  await instance.db.registerFileBuffer('matches.parquet', new Uint8Array(parquetData));
-
-  // 4. matchesテーブルを作成
-  await instance.conn.query(`
-    CREATE TABLE IF NOT EXISTS matches AS
-    SELECT * FROM read_parquet('matches.parquet')
-  `);
-
-  console.log('[DuckDB] Parquet data loaded (matches table)');
-}
-
-/**
- * Battlelog Parquetファイルをロード
- */
-export async function loadBattlelogParquetData(): Promise<void> {
-  if (!instance) {
-    throw new Error('DuckDB not initialized');
-  }
-
-  console.log('[DuckDB] Loading Battlelog Parquet data...');
-
-  // 1. APIからPresigned URLを取得
-  const presignedUrl = await getPresignedUrl('/api/data/index/battlelog_replays.parquet');
-
-  // 2. Presigned URLからParquetデータをダウンロード
-  const parquetData = await downloadParquet(presignedUrl);
-
-  // 3. DuckDBに登録
-  await instance.db.registerFileBuffer('battlelog_replays.parquet', new Uint8Array(parquetData));
-
-  // 4. battlelog_replaysテーブルを作成
-  await instance.conn.query(`
-    CREATE TABLE IF NOT EXISTS battlelog_replays AS
-    SELECT * FROM read_parquet('battlelog_replays.parquet')
-  `);
-
-  console.log('[DuckDB] Battlelog Parquet data loaded (battlelog_replays table)');
-}
-
-/**
- * ラウンド統計（round_stats.parquet）をロード（ADR-048）
+ * 検索に必要なデータを読み込む（ADR-055）
  *
- * ファイルが存在しない場合は例外を投げる。呼び出し側で catch して
- * 「集計データなし」扱いにすること。
+ * manifest を 1 往復で取得し、OPFS の DuckDB データベースが有効ならそのまま開く。
+ * 無効なら不足テーブルだけを Parquet から構築し、OPFS に永続化する。
+ * OPFS / manifest が使えない場合は従来どおり in-memory にロードする。
  */
-export async function loadRoundStatsParquetData(): Promise<void> {
-  if (!instance) {
+export async function initCachedData(options: { tables?: DataTableName[] } = {}): Promise<void> {
+  const tables = options.tables ?? [...ALL_TABLES];
+
+  // 同一ページ内で既に初期化済みなら、不足テーブルだけを補う
+  if (instance) {
+    await ensureTablesLoaded(tables);
+    return;
+  }
+
+  const cache = await ParquetCache.create();
+
+  let manifest: DataManifest | null = null;
+  if (cache.available) {
+    try {
+      manifest = await getManifestOnce();
+    } catch (error) {
+      console.warn('[DuckDB] manifest の取得に失敗しました:', error);
+    }
+  }
+
+  if (cache.available && manifest) {
+    try {
+      await openPersistentDatabase(cache, manifest, tables);
+      persistentMode = true;
+      return;
+    } catch (error) {
+      console.warn('[DuckDB] 永続キャッシュを利用できません。in-memory にフォールバックします:', error);
+      await closeDuckDB().catch(() => undefined);
+    }
+  }
+
+  await loadInMemory(cache, manifest, tables);
+}
+
+/** manifest はページ内で 1 回だけ取得する */
+async function getManifestOnce(): Promise<DataManifest> {
+  if (!manifestPromise) {
+    manifestPromise = fetchDataManifest().catch((error) => {
+      manifestPromise = null;
+      throw error;
+    });
+  }
+  return manifestPromise;
+}
+
+/** 既に初期化済みの DB に不足テーブルだけを追加する */
+async function ensureTablesLoaded(tables: DataTableName[]): Promise<void> {
+  const existing = new Set(await listTables());
+  const missing = tables.filter((table) => !existing.has(table));
+  if (missing.length === 0) return;
+
+  const cache = await ParquetCache.create();
+  let manifest: DataManifest | null = null;
+  try {
+    manifest = await getManifestOnce();
+  } catch (error) {
+    console.warn('[DuckDB] manifest の取得に失敗しました:', error);
+  }
+
+  if (persistentMode && manifest) {
+    await createTables(missing, manifest, cache);
+    await flushDatabase();
+    await cache.writeMarker(manifest, {
+      schema: DB_SCHEMA_VERSION,
+      version: manifest.version,
+      tables: await tableCounts(),
+    });
+    return;
+  }
+
+  await loadInMemory(cache, manifest, missing);
+}
+
+/**
+ * ADR-055: OPFS の DuckDB データベースを開き、不足テーブルを構築する
+ */
+async function openPersistentDatabase(
+  cache: ParquetCache,
+  manifest: DataManifest,
+  tables: DataTableName[],
+): Promise<void> {
+  const dbPath = cache.dbPath(manifest);
+
+  try {
+    await initDuckDB({ dbPath });
+  } catch (error) {
+    // 破損・別タブのロックの可能性。一度削除して再試行する
+    console.warn('[DuckDB] OPFS データベースを開けませんでした。削除して再試行します:', error);
+    await cache.deleteDatabase(manifest);
+    await initDuckDB({ dbPath });
+  }
+
+  const marker = await cache.readMarker(manifest);
+  if (!marker) {
+    // ビルド中断などの残骸を捨てる（完了マーカーが無い DB は信頼しない）
+    await dropCachedTables();
+  } else if (!(await verifyMarker(marker))) {
+    console.warn('[DuckDB] 永続データベースの検証に失敗しました。再構築します');
+    await dropCachedTables();
+  }
+
+  const existing = new Set(await listTables());
+  const missing = tables.filter((table) => !existing.has(table));
+  if (missing.length === 0) {
+    console.log('[DuckDB] 永続データベースを再利用します');
+    return;
+  }
+
+  await createTables(missing, manifest, cache);
+
+  // 先に OPFS へ書き出してから完了マーカーを置く（中断時に不完全な DB を公開しない）
+  await flushDatabase();
+  await cache.writeMarker(manifest, {
+    schema: DB_SCHEMA_VERSION,
+    version: manifest.version,
+    tables: await tableCounts(),
+  });
+  void cache.evict(manifest).catch((error) => console.warn('[Cache] GC に失敗しました:', error));
+}
+
+/**
+ * ADR-055: manifest に従って不足テーブルを Parquet から構築する
+ *
+ * OPFS のブロブを `BROWSER_FILEREADER` として登録するため、DuckDB は
+ * 必要な範囲だけを遅延読み込みする（ArrayBuffer への全コピーを避ける）。
+ */
+async function createTables(
+  tables: DataTableName[],
+  manifest: DataManifest,
+  cache: ParquetCache,
+): Promise<void> {
+  const db = instance;
+  if (!db) {
     throw new Error('DuckDB not initialized');
   }
 
-  console.log('[DuckDB] Loading round_stats Parquet data...');
+  // テーブル名（matches）とオブジェクトキー（matches.parquet）は別物
+  const targets = tables.flatMap((table) => {
+    const key = TABLE_FILES[table];
+    const entry = manifest.files[key];
+    if (!entry) {
+      console.warn(`[DuckDB] manifest に ${key} がありません。スキップします`);
+      return [];
+    }
+    return [{ table, key, entry }];
+  });
 
-  // 1. APIからPresigned URLを取得
-  const presignedUrl = await getPresignedUrl('/api/data/index/round_stats.parquet');
+  // ダウンロードは並列に済ませる（OPFS ヒット分は即時）
+  console.log(`[DuckDB] Loading ${targets.map((t) => t.table).join(', ')}...`);
+  const blobs = await Promise.all(targets.map(({ key, entry }) => cache.getParquet(key, entry)));
 
-  // 2. Presigned URLからParquetデータをダウンロード
-  const parquetData = await downloadParquet(presignedUrl);
+  for (let i = 0; i < targets.length; i++) {
+    const { table, key } = targets[i];
+    await db.db.registerFileHandle(key, blobs[i], duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, false);
+    await db.conn.query(buildCreateTableSql(table, key));
+  }
+}
 
-  // 3. DuckDBに登録
-  await instance.db.registerFileBuffer('round_stats.parquet', new Uint8Array(parquetData));
+/**
+ * Parquet からテーブルを作る SQL を組み立てる（ADR-055）
+ *
+ * テーブル名は拡張子なし（`matches`）、ファイル名は拡張子つき（`matches.parquet`）。
+ * テーブル名に `.` を含めると DuckDB が「スキーマ `matches`」と解釈して失敗する。
+ */
+export function buildCreateTableSql(table: DataTableName, key: string): string {
+  return `CREATE TABLE IF NOT EXISTS ${table} AS SELECT * FROM read_parquet('${key}')`;
+}
 
-  // 4. round_statsテーブルを作成
-  await instance.conn.query(`
-    CREATE TABLE IF NOT EXISTS round_stats AS
-    SELECT * FROM read_parquet('round_stats.parquet')
-  `);
+/**
+ * ADR-055: OPFS / manifest を使わず in-memory にロードする（フォールバック）
+ */
+async function loadInMemory(
+  cache: ParquetCache,
+  manifest: DataManifest | null,
+  tables: DataTableName[],
+): Promise<void> {
+  const db = await initDuckDB();
+  const existing = new Set(await listTables());
+  const targets = tables.filter((table) => !existing.has(table));
+  if (targets.length === 0) return;
 
-  console.log('[DuckDB] round_stats Parquet data loaded (round_stats table)');
+  // ダウンロードは並列に済ませる
+  console.log(`[DuckDB] Loading ${targets.join(', ')}...`);
+  const blobs = await Promise.all(
+    targets.map(async (table) => {
+      const key = TABLE_FILES[table];
+      const entry = manifest?.files[key];
+      if (cache.available && manifest && entry) {
+        return await cache.getParquet(key, entry);
+      }
+      return await downloadParquetBlob(key);
+    }),
+  );
+  const buffers = await Promise.all(blobs.map((blob) => blob.arrayBuffer()));
+
+  for (let i = 0; i < targets.length; i++) {
+    const table = targets[i];
+    const key = TABLE_FILES[table];
+    await db.db.registerFileBuffer(key, new Uint8Array(buffers[i]));
+    await db.conn.query(buildCreateTableSql(table, key));
+  }
+}
+
+/** main スキーマのテーブル名一覧 */
+async function listTables(): Promise<string[]> {
+  if (!instance) return [];
+  try {
+    const result = await instance.conn.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'`
+    );
+    return (result.toArray() as unknown as { table_name: string }[]).map((row) => row.table_name);
+  } catch (error) {
+    console.warn('[DuckDB] テーブル一覧を取得できませんでした:', error);
+    return [];
+  }
+}
+
+/** キャッシュ対象テーブルの行数 */
+async function tableCounts(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  if (!instance) return counts;
+
+  const existing = new Set(await listTables());
+  for (const table of ALL_TABLES) {
+    if (!existing.has(table)) continue;
+    const result = await instance.conn.query(`SELECT count(*) AS c FROM ${table}`);
+    const rows = result.toArray() as unknown as { c: number | bigint }[];
+    counts[table] = Number(rows[0]?.c ?? 0);
+  }
+  return counts;
+}
+
+/** 完了マーカーの行数と実データが一致するか検証する */
+async function verifyMarker(marker: DbMarker): Promise<boolean> {
+  if (!instance) return false;
+
+  const existing = new Set(await listTables());
+  for (const [table, expected] of Object.entries(marker.tables)) {
+    if (!existing.has(table)) return false;
+    const result = await instance.conn.query(`SELECT count(*) AS c FROM ${table}`);
+    const rows = result.toArray() as unknown as { c: number | bigint }[];
+    if (Number(rows[0]?.c ?? -1) !== expected) return false;
+  }
+  return true;
+}
+
+/** キャッシュ対象テーブルをすべて削除する */
+async function dropCachedTables(): Promise<void> {
+  if (!instance) return;
+
+  const existing = new Set(await listTables());
+  for (const table of ALL_TABLES) {
+    if (!existing.has(table)) continue;
+    await instance.conn.query(`DROP TABLE IF EXISTS ${table}`);
+  }
+}
+
+/** ファイルバック DB を OPFS に書き出す */
+async function flushDatabase(): Promise<void> {
+  if (!instance) return;
+
+  try {
+    await instance.conn.query('CHECKPOINT');
+  } catch (error) {
+    console.warn('[DuckDB] CHECKPOINT に失敗しました:', error);
+  }
+  try {
+    await instance.db.flushFiles();
+  } catch (error) {
+    console.warn('[DuckDB] flushFiles に失敗しました:', error);
+  }
 }
 
 /**
@@ -1237,5 +1437,6 @@ export async function closeDuckDB(): Promise<void> {
     await instance.conn.close();
     await instance.db.terminate();
     instance = null;
+    persistentMode = false;
   }
 }
