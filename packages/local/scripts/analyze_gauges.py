@@ -77,6 +77,29 @@ def load_match_starts(video_id: str | None, intermediate_dir: Path, override: st
     return sorted(float(detection["timestamp"]) for detection in summary.get("detections", []))
 
 
+def load_match_characters(video_id: str | None, intermediate_dir: Path) -> dict[str, dict[str, str]]:
+    """中間ファイルの matches.json から match_id -> キャラクター名を読む（ADR-054 のエレナ例外用）"""
+    if not video_id:
+        return {}
+    path = intermediate_dir / video_id / "matches.json"
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    result: dict[str, dict[str, str]] = {}
+    for match in data:
+        characters = {
+            side: (match.get(side) or {}).get("character") or "" for side in ("player1", "player2")
+        }
+        match_id = match.get("id")
+        if match_id:
+            result[str(match_id)] = characters
+        start_time = match.get("startTime")
+        if start_time is not None:
+            result[f"{video_id}_{int(start_time)}"] = characters
+    return result
+
+
 def analyze_video(
     video_path: Path,
     match_starts: list[float],
@@ -192,7 +215,8 @@ def main() -> None:
     )
 
     matches = [(f"{args.video_id}_{int(start)}", start) for start in match_starts]
-    gauge_result = analyzer.build(matches, video_end=video_end)
+    characters = load_match_characters(args.video_id, intermediate_dir)
+    gauge_result = analyzer.build(matches, video_end=video_end, characters=characters)
     gauge_result["videoId"] = args.video_id
 
     output_dir = (

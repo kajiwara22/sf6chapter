@@ -378,6 +378,11 @@ const roundWithHealth: GaugeRound = {
       [3.14, 89.4],
       [7.05, 76.2],
     ],
+    healthRecoverable: [
+      [3.2, 12.0],
+      [5.0, 6.0],
+      [7.0, 0.0],
+    ],
   },
   player2: {
     ...round.player2,
@@ -490,6 +495,7 @@ describe('buildHealthSvg', () => {
     });
     expect(svg).toContain('gg-line-health gg-line-player1');
     expect(svg).toContain('gg-line-health gg-line-player2');
+    expect(svg).toContain('gg-line-health-recoverable gg-line-player1');
     expect(svg).toContain('9000 / 9000');
     expect(svg).toContain(`>${HEALTH_MAX}</text>`);
   });

@@ -57,6 +57,9 @@
 | [049](./049-round-counter-count-capture.md) | ラウンド単位のカウンター・パニッシュカウンター回数取得 | 採用 | 2026-10-10 |
 | [050](./050-health-gauge-timeline-and-integrated-view.md) | ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示 | 採用 | 2026-10-10 |
 | [051](./051-match-detail-page-and-round-stats-redesign.md) | ゲージ詳細ページの独立化とラウンド集計項目の改善視点での再設計 | 採用 | 2026-10-10 |
+| [052](./052-final-round-banner-detection.md) | FINAL ROUND バナーの検出によるラウンド数不一致の解消 | 採用 | 2026-10-10 |
+| [053](./053-sa-stock-revert-suppression.md) | SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正 | 採用 | 2026-10-11 |
+| [054](./054-health-recoverable-damage-observation.md) | 回復可能ダメージ（白ゲージ）の観測と回復ゲート | 採用 | 2026-10-11 |
 
 ## ADRのフォーマット
 

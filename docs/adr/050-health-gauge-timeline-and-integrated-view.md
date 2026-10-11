@@ -7,6 +7,9 @@
 > 注: `round_stats.parquet` の列構成は [ADR-051](051-match-detail-page-and-round-stats-redesign.md) で再設計された
 > （`healthAvg` / `healthMin` を削除して残体力 1 列に統合し、K.O. 札着の敗者を 0 に補正。
 > 勝敗・最大被弾・バーンアウト・SA 残しを追加）。
+>
+> 注: 「回復可能ダメージ（黄）は記録しない」という決定1 は [ADR-054](054-health-recoverable-damage-observation.md) で
+> 拡張された（回復可能ダメージを別系列 `healthRecoverable` として記録し、現在体力の増加ゲートに使う）。
 
 ## 文脈
 

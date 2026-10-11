@@ -79,6 +79,8 @@ export interface GaugeSvgParams {
   duration: number;
   /** 描画する系列 */
   series: GaugeSeries[];
+  /** 破線で重ねる補助系列（体力の回復可能ダメージ、ADR-054） */
+  recoverableSeries?: GaugeSeries[];
   /** 背景帯として描く期間（バーンアウト） */
   bands?: SpanWithSide[];
   /** マーカーとして描く期間（CA） */
@@ -205,7 +207,7 @@ function getSide(round: GaugeRound, side: GaugeSide): GaugeSideData | null {
  * 汎用のゲージチャート SVG を生成する（純関数）
  */
 export function buildGaugeSvg(params: GaugeSvgParams): string {
-  const { variant, maxValue, yTicks, duration, series, bands = [], markers = [], titles = {}, ariaLabel } = params;
+  const { variant, maxValue, yTicks, duration, series, recoverableSeries = [], bands = [], markers = [], titles = {}, ariaLabel } = params;
 
   const height = variant === 'drive' ? DRIVE_HEIGHT : variant === 'sa' ? SA_HEIGHT : HEALTH_HEIGHT;
   const innerW = CHART_WIDTH - PADDING.left - PADDING.right;
@@ -263,6 +265,15 @@ export function buildGaugeSvg(params: GaugeSvgParams): string {
     })
     .join('');
 
+  // 補助系列（体力の回復可能ダメージ）は破線で重ねる（ADR-054）
+  const recoverableHtml = recoverableSeries
+    .map((item) => {
+      const path = buildStepPath(item.events, scaleX, scaleY, safeDuration);
+      if (!path) return '';
+      return `<path class="gg-line gg-line-health-recoverable gg-line-${item.side}" d="${path}"></path>`;
+    })
+    .join('');
+
   // CA マーカー（SAパネル上部）
   const markersHtml = markers
     .map((marker) => {
@@ -281,6 +292,7 @@ export function buildGaugeSvg(params: GaugeSvgParams): string {
       <line class="gg-axis-line" x1="${PADDING.left}" y1="${PADDING.top}" x2="${PADDING.left}" y2="${bottom}" />
       <line class="gg-axis-line" x1="${PADDING.left}" y1="${bottom}" x2="${right}" y2="${bottom}" />
       <g class="gg-series">${seriesHtml}</g>
+      <g class="gg-series-recoverable">${recoverableHtml}</g>
       <g class="gg-markers">${markersHtml}</g>
     </svg>
   `;
@@ -443,6 +455,8 @@ export function buildHealthSvg(
   const characters = context?.characters ?? {};
   const events1 = p1?.health ?? [];
   const events2 = p2?.health ?? [];
+  const recoverable1 = p1?.healthRecoverable ?? [];
+  const recoverable2 = p2?.healthRecoverable ?? [];
 
   const titles: Partial<Record<GaugeSide, string>> = {};
   const addTitle = (
@@ -468,6 +482,10 @@ export function buildHealthSvg(
     series: [
       { side: 'player1', events: events1 },
       { side: 'player2', events: events2 },
+    ],
+    recoverableSeries: [
+      { side: 'player1', events: recoverable1 },
+      { side: 'player2', events: recoverable2 },
     ],
     titles,
     ariaLabel: `Round ${round.round} 体力推移（${sideText(labels.player1, 'player1')} / ${sideText(labels.player2, 'player2')}）`,

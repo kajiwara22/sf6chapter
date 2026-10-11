@@ -289,6 +289,8 @@ export interface GaugeSideData {
   healthCoverage?: number;
   /** 現在体力％の変化点列 [経過秒, 体力%(0〜100)]（ADR-050、旧データは undefined） */
   health?: [number, number][];
+  /** 回復可能ダメージ％の変化点列 [経過秒, 回復可能%(0〜100)]（ADR-054、旧データは undefined） */
+  healthRecoverable?: [number, number][];
 }
 
 /** gauges JSON の1ラウンド分（ADR-048） */

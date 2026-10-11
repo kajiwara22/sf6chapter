@@ -111,6 +111,9 @@ sf6-chapter/
 - [x] ラウンド単位のカウンター・パニッシュカウンター回数取得（ADR-049） - 実装完了・手元3本のバックフィルと R2 反映済み
 - [x] ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示（ADR-050） - R2 反映済み（手元3本、Web 実データ描画確認のみ未実施）
 - [x] ゲージ詳細ページの独立化とラウンド集計項目の改善視点での再設計（ADR-051） - 実装・R2 反映済み（Web 実データ描画確認のみ未実施）
+- [x] FINAL ROUND バナーの検出によるラウンド数不一致の解消（ADR-052） - 実装完了・手元 3 本を再処理して R2 反映済み（`DSgD_bQhxp0` 9 試合 / `JzKWGcwFt2w` / `Ndwu08Q--_M` もラウンド数修正）
+- [x] SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正（ADR-053） - 実装完了・`DSgD_bQhxp0` を再処理して R2 反映済み（`saUsedCount` 154 → 44、`DSgD_bQhxp0_20` 1R は 2 → 0）
+- [x] 回復可能ダメージ（白ゲージ）の観測と回復ゲート（ADR-054） - 実装完了・手元 3 本を再処理して R2 反映済み（Web 実データ描画確認のみ未実施）
 
 ## 次のタスク
 
@@ -124,7 +127,8 @@ sf6-chapter/
    - 複数の動画でテストして信頼性確認
 
 ### 中優先度
-3. **ADR-048〜051 の実運用**: R2 への反映は完了（手元3本）。残りは独立ページ `/matches/{matchId}`（試合サマリ・3ゲージ・ラウンド集計）の実データ描画確認
+3. **ADR-048〜052 の実運用**: R2 への反映は完了（手元3本）。残りは独立ページ `/matches/{matchId}`（試合サマリ・3ゲージ・ラウンド集計）の実データ描画確認
+   - ADR-052 のラウンド検出修正で手元 3 本（`DSgD_bQhxp0` / `JzKWGcwFt2w` / `Ndwu08Q--_M`）を再処理済み。`Ndwu08Q--_M_962` は検出 1 ラウンド / Battlelog 2 ラウンドの不一致が残る
 4. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
 5. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
 6. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
@@ -341,6 +345,9 @@ docker compose up -d
 - [049: ラウンド単位のカウンター・パニッシュカウンター回数取得](docs/adr/049-round-counter-count-capture.md)
 - [050: ラウンド単位の体力ゲージ時系列取得と3ゲージ統合表示](docs/adr/050-health-gauge-timeline-and-integrated-view.md)
 - [051: ゲージ詳細ページの独立化とラウンド集計項目の改善視点での再設計](docs/adr/051-match-detail-page-and-round-stats-redesign.md)
+- [052: FINAL ROUND バナーの検出によるラウンド数不一致の解消](docs/adr/052-final-round-banner-detection.md)
+- [053: SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正](docs/adr/053-sa-stock-revert-suppression.md)
+- [054: 回復可能ダメージ（白ゲージ）の観測と回復ゲート](docs/adr/054-health-recoverable-damage-observation.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

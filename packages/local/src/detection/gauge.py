@@ -15,6 +15,9 @@ feed() を呼び出すため、動画の再デコードは発生しない。
 - HUD 表示中にドライブゲージの黄緑（通常ゲージ）が検出できない状態は
   バーンアウト（銀＝回復済み／赤＝未回復の回復バー）とみなす
 - 単発の誤検出を抑えるため、メディアンによる平滑化と最小継続時間フィルタをかける
+
+ラウンド開始バナーは「ROUND 1 / ROUND 2」と「FINAL ROUND」でレイアウトが異なるため、
+文字列ごとのテンプレートを照合する（ADR-052）。
 """
 
 from __future__ import annotations
@@ -62,9 +65,9 @@ class GaugeThresholds:
     sa_bar_filled_v: int = 140
     sa_bar_filled_s: int = 100
     sa_max_gap_sec: float = 1.0
+    sa_revert_window_sec: float = 1.0
     sa_progress_event_epsilon: float = 0.15
     ca_merge_gap_sec: float = 1.0
-    round_banner_threshold: float = 0.4
     # ADR-050: 体力ゲージ（現在体力のみ）
     health_filled_v: int = 110
     health_filled_s: int = 110
@@ -76,6 +79,10 @@ class GaugeThresholds:
     health_warmup_sec: float = 1.5
     health_start_min_percent: float = 90.0
     health_max_increase_per_sec: float = 5.0
+    # ADR-054: 回復可能ダメージ（白ゲージ）の観測
+    health_recoverable_v_min: int = 130
+    health_recoverable_s_min: int = 60
+    health_despike_revert_sec: float = 1.2
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -84,6 +91,51 @@ class GaugeThresholds:
         logger.info("  [Gauge Thresholds]")
         for key, value in self.__dict__.items():
             logger.info("    %-32s %s", f"{key}:", value)
+
+
+@dataclass
+class RoundBannerTemplate:
+    """ラウンド開始バナーのテンプレート定義（ADR-052）
+
+    SF6 のラウンド開始バナーは「ROUND 1 / ROUND 2」と「FINAL ROUND」で文字列・
+    レイアウトが異なる。文字列ごとにテンプレート・探索領域・閾値を持たせ、
+    いずれかに一致したフレームをラウンド開始とみなす。
+    """
+
+    name: str
+    template: str
+    search_region: tuple[int, int, int, int]
+    threshold: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RoundBannerTemplate:
+        return cls(
+            name=str(data.get("name", "")),
+            template=str(data.get("template", "")),
+            search_region=tuple(data["search_region"]),
+            threshold=float(data["threshold"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "template": self.template,
+            "search_region": list(self.search_region),
+            "threshold": self.threshold,
+        }
+
+    def _validate(self) -> None:
+        if not self.template:
+            raise ValueError(f"round_banners[{self.name}] template must not be empty")
+        if len(self.search_region) != 4:
+            raise ValueError(f"round_banners[{self.name}] search_region must have 4 elements, got {self.search_region}")
+        x1, y1, x2, y2 = self.search_region
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError(
+                f"round_banners[{self.name}] search_region must be (x1, y1, x2, y2), got {self.search_region}"
+            )
+        if not 0 < self.threshold <= 1.0:
+            raise ValueError(f"round_banners[{self.name}] threshold must be in (0, 1.0], got {self.threshold}")
 
 
 @dataclass
@@ -101,10 +153,10 @@ class GaugeAnalysisParams:
     sa_bar_roi: dict[str, tuple[int, int, int, int]]
     health_roi: dict[str, tuple[int, int, int, int]]
     health_hue_ranges: dict[str, list[tuple[int, int]]]
-    round_banner_search_region: tuple[int, int, int, int]
+    health_recoverable_hue_ranges: dict[str, list[tuple[int, int]]]
     thresholds: GaugeThresholds
     sa_digit_templates: dict[str, str]
-    round_banner_template: str
+    round_banners: list[RoundBannerTemplate]
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
     health_fill_scale: dict[str, float] = field(default_factory=dict)
 
@@ -130,10 +182,16 @@ class GaugeAnalysisParams:
             health_hue_ranges={
                 side: [tuple(int(v) for v in pair) for pair in data["health_hue_ranges"][side]] for side in SIDES
             },
-            round_banner_search_region=tuple(data["round_banner_search_region"]),
+            health_recoverable_hue_ranges={
+                side: [
+                    tuple(int(v) for v in pair)
+                    for pair in (data.get("health_recoverable_hue_ranges") or {}).get(side, [])
+                ]
+                for side in SIDES
+            },
             thresholds=thresholds,
             sa_digit_templates=dict(templates.get("sa_digits") or {}),
-            round_banner_template=str(templates.get("round_banner", "")),
+            round_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("round_banners", [])],
             drive_fill_scale=drive_fill_scale,
             health_fill_scale=health_fill_scale,
         )
@@ -151,12 +209,14 @@ class GaugeAnalysisParams:
             "sa_bar_roi": {k: list(v) for k, v in self.sa_bar_roi.items()},
             "health_roi": {k: list(v) for k, v in self.health_roi.items()},
             "health_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_hue_ranges.items()},
-            "round_banner_search_region": list(self.round_banner_search_region),
+            "health_recoverable_hue_ranges": {
+                k: [list(pair) for pair in v] for k, v in self.health_recoverable_hue_ranges.items()
+            },
             "thresholds": self.thresholds.to_dict(),
             "templates": {
                 "sa_digits": dict(self.sa_digit_templates),
-                "round_banner": self.round_banner_template,
             },
+            "round_banners": [banner.to_dict() for banner in self.round_banners],
             "calibration": {
                 "drive_fill_scale": dict(self.drive_fill_scale),
                 "health_fill_scale": dict(self.health_fill_scale),
@@ -179,8 +239,10 @@ class GaugeAnalysisParams:
                     raise ValueError(f"{name}[{side}] must have 4 elements, got {values}")
                 if values[2] <= values[0] or values[3] <= values[1]:
                     raise ValueError(f"{name}[{side}] must be (x1, y1, x2, y2) with x2>x1, y2>y1, got {values}")
-        if len(self.round_banner_search_region) != 4:
-            raise ValueError(f"round_banner_search_region must have 4 elements, got {self.round_banner_search_region}")
+        if not self.round_banners:
+            logger.warning("round_banners is empty; round start banner detection is disabled")
+        for banner in self.round_banners:
+            banner._validate()
 
     def log_params(self) -> None:
         logger.info("  [Gauge Analysis]")
@@ -196,7 +258,16 @@ class GaugeAnalysisParams:
             logger.info("    health_roi[%s]:      %s", side, self.health_roi[side])
         for side in SIDES:
             logger.info("    health_hue_ranges[%s]: %s", side, self.health_hue_ranges[side])
-        logger.info("    round_banner_region:      %s", self.round_banner_search_region)
+        for side in SIDES:
+            logger.info("    health_recoverable_hue_ranges[%s]: %s", side, self.health_recoverable_hue_ranges[side])
+        for banner in self.round_banners:
+            logger.info(
+                "    round_banner[%s]: region=%s threshold=%.2f template=%s",
+                banner.name,
+                banner.search_region,
+                banner.threshold,
+                banner.template,
+            )
         self.thresholds.log()
 
 
@@ -221,6 +292,9 @@ class SideGaugeState:
     # ADR-050: 現在体力（％）。None=未計測
     health_raw: float | None = None
     health: float | None = None
+    # ADR-054: 回復可能ダメージ（％）。None=未計測
+    health_recoverable_raw: float | None = None
+    health_recoverable: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -235,6 +309,8 @@ class SideGaugeState:
             "saProgress": self.sa_progress,
             "health": self.health,
             "healthRaw": self.health_raw,
+            "healthRecoverable": self.health_recoverable,
+            "healthRecoverableRaw": self.health_recoverable_raw,
         }
 
 
@@ -279,6 +355,54 @@ def _fill_short_gaps(values: list[float | None], timestamps: list[float], max_ga
             previous = result[start - 1]
             for i in range(start, end):
                 result[i] = previous
+    return result
+
+
+def _suppress_transient_reverts(
+    values: list[float | None], timestamps: list[float], max_revert_sec: float
+) -> list[float | None]:
+    """SA ストック／体力の「一時的な下振れ→即復帰」を計測ノイズとして除去する
+
+    SA ゲージが実際に減少するのはスーパーアーツ／クリティカルアートの発動時だけで、
+    消費したストックはバーが溜まるまで戻らない。体力も通常の被弾は永続的で、増加するのは
+    回復可能ダメージの自然回復かエレナの SA2 のみ。したがって直前値より下がったあと
+    ``max_revert_sec`` 以内に直前値以上へ戻る下振れは誤検出（ヒット演出・遮蔽など）と
+    みなし、直前値で塗り直す。
+
+    下振れが復帰しない場合（＝本当に被弾／スーパーアーツを使った場合）や、復帰が
+    ``max_revert_sec`` より遅い場合はそのまま残す。
+    """
+    result = list(values)
+    index = 1
+    while index < len(result):
+        previous = result[index - 1]
+        current = result[index]
+        if previous is None or current is None or current >= previous:
+            index += 1
+            continue
+
+        # 直前値以上へ戻るサンプルを max_revert_sec 以内で探す
+        end = index
+        while end < len(result):
+            if timestamps[end] - timestamps[index - 1] > max_revert_sec:
+                break
+            if result[end] is not None and result[end] >= previous:
+                break
+            end += 1
+
+        if (
+            end < len(result)
+            and result[end] is not None
+            and result[end] >= previous
+            and timestamps[end] - timestamps[index - 1] <= max_revert_sec
+        ):
+            for i in range(index, end):
+                result[i] = previous
+            index = end
+            continue
+
+        index += 1
+
     return result
 
 
@@ -354,18 +478,18 @@ class GaugeAnalyzer:
                 continue
             self._sa_edge_templates[label] = preprocess_for_matching(template)
 
-        self._round_banner_full: np.ndarray | None = None
-        round_template = cv2.imread(str(self._resolve(params.round_banner_template)), cv2.IMREAD_COLOR)
-        if round_template is not None:
-            self._round_banner_full = round_template
-        else:
-            logger.warning("⚠️ Round banner template not found: %s", params.round_banner_template)
+        self._round_banner_templates: list[tuple[RoundBannerTemplate, np.ndarray]] = []
+        for banner in params.round_banners:
+            image = cv2.imread(str(self._resolve(banner.template)), cv2.IMREAD_COLOR)
+            if image is None:
+                logger.warning("⚠️ Round banner template not found: %s", banner.template)
+                continue
+            self._round_banner_templates.append((banner, image))
 
         # 実フレームサイズに応じたスケール済み ROI（最初の feed で確定）
         self._frame_size: tuple[int, int] | None = None
         self._roi: dict[str, dict[str, tuple[int, int, int, int]]] = {}
-        self._round_banner_search: tuple[int, int, int, int] | None = None
-        self._round_banner_scaled: np.ndarray | None = None
+        self._round_banner_prepared: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # 計測本体
@@ -400,12 +524,14 @@ class GaugeAnalyzer:
             raw_drive = self._measure_drive(frame, side)
             sa_stock, sa_label, sa_score, sa_progress, sa_ca = self._measure_sa(frame, side)
             health_raw = self._measure_health(frame, side)
+            health_recoverable_raw = self._measure_health_recoverable(frame, side)
             hud_visible = sa_score >= self.params.thresholds.sa_digit_min_score
             states[side] = SideGaugeState(
                 hud_visible=hud_visible,
                 drive_raw=raw_drive,
                 burnout_candidate=hud_visible and raw_drive is None,
                 health_raw=health_raw,
+                health_recoverable_raw=health_recoverable_raw,
                 sa_stock=sa_stock,
                 sa_label=sa_label,
                 sa_score=sa_score,
@@ -425,12 +551,19 @@ class GaugeAnalyzer:
 
         self.samples.append(GaugeSample(timestamp=timestamp, states=states))
 
-    def build(self, matches: list[tuple[str, float]], video_end: float | None = None) -> dict[str, Any]:
+    def build(
+        self,
+        matches: list[tuple[str, float]],
+        video_end: float | None = None,
+        characters: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         """検出済みマッチ情報からラウンド単位のゲージデータを構築する
 
         Args:
             matches: (match_id, 開始時刻[秒]) のリスト（時系列順）
             video_end: 動画長（秒）。最後の試合の終端に使う
+            characters: match_id -> {"player1": キャラ名, "player2": キャラ名}。
+                エレナの SA2 による回復を例外扱いするために使う（ADR-054）。
 
         Returns:
             {"videoId": ..., "matches": {match_id: {"matchId":..., "rounds": [...]}}, ...}
@@ -446,7 +579,7 @@ class GaugeAnalyzer:
         out_matches: dict[str, Any] = {}
         for index, (match_id, start_time) in enumerate(matches):
             end_time = matches[index + 1][1] if index + 1 < len(matches) else video_end
-            rounds = self._build_match_rounds(match_id, start_time, end_time)
+            rounds = self._build_match_rounds(match_id, start_time, end_time, (characters or {}).get(match_id) or {})
             out_matches[match_id] = {"matchId": match_id, "rounds": rounds}
 
         return {
@@ -486,17 +619,20 @@ class GaugeAnalyzer:
             "sa_bar": {side: scale_roi(self.params.sa_bar_roi[side]) for side in SIDES},
             "health": {side: scale_roi(self.params.health_roi[side]) for side in SIDES},
         }
-        self._round_banner_search = scale_roi(self.params.round_banner_search_region)
         self._frame_size = (width, height)
 
-        if self._round_banner_full is not None:
-            banner_scale = self.params.banner_scale
-            resized = cv2.resize(
-                self._round_banner_full, None, fx=banner_scale, fy=banner_scale, interpolation=cv2.INTER_AREA
+        banner_scale = self.params.banner_scale
+        self._round_banner_prepared = []
+        for banner, image in self._round_banner_templates:
+            resized = cv2.resize(image, None, fx=banner_scale, fy=banner_scale, interpolation=cv2.INTER_AREA)
+            self._round_banner_prepared.append(
+                {
+                    "name": banner.name,
+                    "search": scale_roi(banner.search_region),
+                    "template": preprocess_for_matching(resized),
+                    "threshold": banner.threshold,
+                }
             )
-            self._round_banner_scaled = preprocess_for_matching(resized)
-        else:
-            self._round_banner_scaled = None
 
         logger.info("[Gauge] Geometry prepared for %dx%d (scale x%.3f, y%.3f)", width, height, scale_x, scale_y)
         return True
@@ -511,25 +647,37 @@ class GaugeAnalyzer:
         return frame[y1:y2, x1:x2]
 
     def _detect_round_banner(self, frame: np.ndarray, timestamp: float) -> bool:
-        """ROUND バナー（ラウンド開始）を検出する"""
-        if self._round_banner_scaled is None or self._round_banner_search is None:
+        """ラウンド開始バナーを検出する（ADR-048 / ADR-052）
+
+        「ROUND」（ROUND 1 / ROUND 2）と「FINAL ROUND」でテンプレートが異なるため、
+        定義済みの全テンプレートを照合し、いずれかが閾値を超えれば検出とする。
+        """
+        if not self._round_banner_prepared:
             return False
 
-        region = self._crop(frame, self._round_banner_search)
         scale = self.params.banner_scale
-        scaled = cv2.resize(region, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        edges = preprocess_for_matching(scaled)
+        for banner in self._round_banner_prepared:
+            region = self._crop(frame, banner["search"])
+            if region.size == 0:
+                continue
+            scaled = cv2.resize(region, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            edges = preprocess_for_matching(scaled)
 
-        template = self._round_banner_scaled
-        if template.shape[0] > edges.shape[0] or template.shape[1] > edges.shape[1]:
-            return False
+            template = banner["template"]
+            if template.shape[0] > edges.shape[0] or template.shape[1] > edges.shape[1]:
+                continue
 
-        score = float(cv2.matchTemplate(edges, template, cv2.TM_CCOEFF_NORMED).max())
-        if score < self.params.thresholds.round_banner_threshold:
-            return False
+            score = float(cv2.matchTemplate(edges, template, cv2.TM_CCOEFF_NORMED).max())
+            if score < banner["threshold"]:
+                continue
 
-        # 近接フレームの多重検出を抑制（バナーは約1.5秒表示される）
-        return not (self.round_banner_times and timestamp - self.round_banner_times[-1] < 3.0)
+            # 近接フレームの多重検出を抑制（バナーは約1.5秒表示される）
+            if self.round_banner_times and timestamp - self.round_banner_times[-1] < 3.0:
+                return False
+            logger.debug("[Gauge] Round banner '%s' matched at %.2fs (score %.3f)", banner["name"], timestamp, score)
+            return True
+
+        return False
 
     def _measure_drive(self, frame: np.ndarray, side: str) -> float | None:
         """ドライブゲージの黄緑（通常ゲージ）の充填量を本数で返す
@@ -634,6 +782,75 @@ class GaugeAnalyzer:
         value = filled_fraction * 100.0 * self.params.health_fill_scale.get(side, 1.0)
         return round(min(100.0, value), 1)
 
+    def _measure_health_recoverable(self, frame: np.ndarray, side: str) -> float | None:
+        """体力バーの回復可能ダメージ（白／黄ゲージ）を％で計測する（ADR-054）
+
+        SF6 で体力が増えるのは「回復可能ダメージの自然回復」か「エレナの SA2」のみ。
+        その回復可能分を別系列として観測し、現在体力の増加が本当に回復可能分の
+        減少で説明できるかを検証できるようにする（後段のゲートで使用）。
+
+        バーは画面中央側を基準に減るため、**現在体力に隣接する外側の帯**だけを
+        回復可能分として数える。空きトラックは半透明でステージが透けて見えるため、
+        ROI 内の回復可能色を単純に数えると背景を誤検出する。
+
+        Returns:
+            0〜100（小数1桁）。計測できない場合は None
+        """
+        ranges = self.params.health_recoverable_hue_ranges.get(side, [])
+        if not ranges:
+            return None
+
+        thresholds = self.params.thresholds
+        roi = self._crop(frame, self._roi["health"][side])
+        if roi.size == 0:
+            return None
+
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        hue = hsv[:, :, 0].astype(np.int16)
+        sat = hsv[:, :, 1].astype(np.int16)
+        val = hsv[:, :, 2].astype(np.int16)
+
+        recoverable = val > thresholds.health_recoverable_v_min
+        recoverable &= sat > thresholds.health_recoverable_s_min
+        hue_mask = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in ranges:
+            hue_mask |= (hue >= h_min) & (hue <= h_max)
+        recoverable &= hue_mask
+
+        current = val > thresholds.health_filled_v
+        current &= sat > thresholds.health_filled_s
+        current_hue = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in self.params.health_hue_ranges.get(side, []):
+            current_hue |= (hue >= h_min) & (hue <= h_max)
+        current &= current_hue
+
+        ratio = thresholds.health_column_fill_ratio
+        recoverable_col = recoverable.mean(axis=0) >= ratio
+        current_col = current.mean(axis=0) >= ratio
+
+        # 画面中央側（アンカー側）から、現在体力 → 回復可能 の順に連続する帯だけを数える
+        x1, _, x2, _ = self._roi["health"][side]
+        frame_width = frame.shape[1]
+        anchor_right = ((x1 + x2) / 2) < (frame_width / 2)
+        width = len(recoverable_col)
+        order = range(width - 1, -1, -1) if anchor_right else range(width)
+        columns = list(order)
+
+        index = 0
+        while index < width and current_col[columns[index]]:
+            index += 1
+        count = 0
+        while index < width and recoverable_col[columns[index]]:
+            count += 1
+            index += 1
+
+        if count == 0:
+            return None
+        filled_fraction = count / float(width)
+        if filled_fraction < thresholds.health_detect_min_fraction:
+            return None
+        return round(min(100.0, filled_fraction * 100.0), 1)
+
     # ------------------------------------------------------------------
     # 内部処理: 派生（平滑化・バーンアウト判定）
     # ------------------------------------------------------------------
@@ -680,13 +897,23 @@ class GaugeAnalyzer:
                 float(state.sa_stock) if state.sa_stock is not None else None for state in states
             ]
             sa_filled = _median_filter(_fill_short_gaps(sa_values, timestamps, thresholds.sa_max_gap_sec), 3)
+            # 数字グリフの瞬間的な読み違えによる「下振れ→即復帰」を除去する（SA 使用回数の過大カウント防止）
+            sa_filled = _suppress_transient_reverts(sa_filled, timestamps, thresholds.sa_revert_window_sec)
             progress_values = [state.sa_progress for state in states]
             progress_filled = _fill_short_gaps(progress_values, timestamps, thresholds.sa_max_gap_sec)
 
-            # 体力（ADR-050）: メディアン平滑化 → 短い欠損補完
+            # 体力（ADR-050）: メディアン平滑化 → 短い欠損補完 → 一時的な低値（遮蔽・演出）の除去
             health_values = [states[i].health_raw if hud[i] else None for i in range(len(states))]
             health_smoothed = _median_filter(health_values, thresholds.health_smoothing_window)
             health_filled = _fill_short_gaps(health_smoothed, timestamps, thresholds.health_max_gap_sec)
+            # ヒット演出・遮蔽で数サンプルだけ低く出て即復帰する下振れは、後段で
+            # 「回復可能分では説明できない増加」に化けるため、ここで除去する（ADR-054）
+            health_filled = _suppress_transient_reverts(health_filled, timestamps, thresholds.health_despike_revert_sec)
+
+            # 回復可能ダメージ（ADR-054）: メディアン平滑化 → 短い欠損補完
+            recoverable_values = [states[i].health_recoverable_raw if hud[i] else None for i in range(len(states))]
+            recoverable_smoothed = _median_filter(recoverable_values, thresholds.health_smoothing_window)
+            recoverable_filled = _fill_short_gaps(recoverable_smoothed, timestamps, thresholds.health_max_gap_sec)
 
             for index, state in enumerate(states):
                 state.hud_visible = hud[index]
@@ -700,6 +927,7 @@ class GaugeAnalyzer:
                     state.sa_stock = int(round(sa_filled[index]))
                 state.sa_progress = progress_filled[index]
                 state.health = health_filled[index] if hud_extended[index] else None
+                state.health_recoverable = recoverable_filled[index] if hud_extended[index] else None
 
         self._derived = True
         logger.info(
@@ -712,7 +940,13 @@ class GaugeAnalyzer:
     # ------------------------------------------------------------------
     # 内部処理: ラウンド構築
     # ------------------------------------------------------------------
-    def _build_match_rounds(self, match_id: str, start_time: float, end_time: float) -> list[dict[str, Any]]:
+    def _build_match_rounds(
+        self,
+        match_id: str,
+        start_time: float,
+        end_time: float,
+        characters: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
         """1試合ぶんのラウンド構造を構築する"""
         windows: list[RoundWindow] = split_rounds(
             match_start=start_time,
@@ -720,6 +954,7 @@ class GaugeAnalyzer:
             round_banner_times=self.round_banner_times,
         )
 
+        characters = characters or {}
         rounds: list[dict[str, Any]] = []
         for window in windows:
             rounds.append(
@@ -729,8 +964,8 @@ class GaugeAnalyzer:
                     "roundEndTime": round(window.end_time, 2),
                     "endReason": window.end_reason,
                     "bannerDetected": window.banner_detected,
-                    "player1": self._side_round_payload(window, "player1"),
-                    "player2": self._side_round_payload(window, "player2"),
+                    "player1": self._side_round_payload(window, "player1", characters.get("player1")),
+                    "player2": self._side_round_payload(window, "player2", characters.get("player2")),
                 }
             )
 
@@ -779,7 +1014,20 @@ class GaugeAnalyzer:
             result.append(sample)
         return result
 
-    def _side_round_payload(self, window: RoundWindow, side: str) -> dict[str, Any]:
+    @staticmethod
+    def _elena_heal_allowed(samples: list[GaugeSample], side: str, character: str | None) -> bool:
+        """エレナの SA2 による直接回復を許可するか（ADR-054）
+
+        エレナの SA2 だけは回復可能ダメージに依存せず体力を直接回復する。
+        ラウンド中に SA ストックを消費（＝スーパーアーツ発動）していれば、
+        その回復を計測ノイズとして消さないようゲートを無効化する。
+        """
+        if (character or "").strip().upper() != "ELENA":
+            return False
+        stock = [sample.states[side].sa_stock for sample in samples if sample.states[side].sa_stock is not None]
+        return any(current < previous for previous, current in zip(stock, stock[1:], strict=False))
+
+    def _side_round_payload(self, window: RoundWindow, side: str, character: str | None = None) -> dict[str, Any]:
         """ラウンド内の片側の変化点列を作る（時刻はラウンド開始からの相対秒）"""
         base = window.start_time
         samples = self._round_samples(window)
@@ -790,6 +1038,7 @@ class GaugeAnalyzer:
         sa_events: list[list[float]] = []
         progress_events: list[list[float]] = []
         health_events: list[list[float]] = []
+        recoverable_events: list[list[float]] = []
         visible_from: float | None = None
         visible_to: float | None = None
         previous_drive: float | None = None
@@ -797,10 +1046,13 @@ class GaugeAnalyzer:
         previous_progress: float | None = None
         previous_health: float | None = None
         previous_health_rel = 0.0
+        previous_recoverable: float | None = None
         health_started = False
         health_valid_samples = 0
 
         thresholds = self.params.thresholds
+        # エレナの SA2 は回復可能ゲートの例外（ADR-054）
+        heal_allowed = self._elena_heal_allowed(samples, side, character)
         for sample in samples:
             state = sample.states[side]
             rel = round(sample.timestamp - base, 2)
@@ -826,24 +1078,44 @@ class GaugeAnalyzer:
                 progress_events.append([rel, state.sa_progress])
                 previous_progress = state.sa_progress
             # 体力（ADR-050）は変化点の閾値を 1.0% とする。
-            # ラウンド開始直後のバー伸長演出を除外し、急な増加は回復ではありえないため計測ノイズとして前値を保持する
+            # ラウンド開始直後のバー伸長演出を除外し、増加は「回復可能分の減少」で
+            # 説明できる分だけ許可する（ADR-054）。説明できない増加は計測ノイズとして前値を保持する
+            recoverable = state.health_recoverable
             if state.health is not None:
                 health_valid_samples += 1
                 if not health_started:
                     if rel >= thresholds.health_warmup_sec or state.health >= thresholds.health_start_min_percent:
                         health_started = True
                     else:
+                        previous_recoverable = recoverable
                         continue
                 value = state.health
-                if previous_health is not None:
+                if previous_health is not None and not heal_allowed:
                     elapsed = max(1e-6, rel - previous_health_rel)
-                    max_allowed = previous_health + thresholds.health_max_increase_per_sec * elapsed
+                    # 上限1: 現行のレート上限（5%/s）
+                    rate_delta = thresholds.health_max_increase_per_sec * elapsed
+                    # 上限2: 直前サンプルから減った回復可能分（白ゲージ）の範囲だけ回復できる
+                    available_delta = max(0.0, (previous_recoverable or 0.0) - (recoverable or 0.0))
+                    max_allowed = previous_health + min(rate_delta, available_delta)
                     if value > max_allowed:
-                        value = previous_health
+                        value = max(previous_health, max_allowed)
                 if previous_health is None or abs(value - previous_health) > thresholds.health_event_epsilon:
                     health_events.append([rel, value])
                     previous_health = value
                     previous_health_rel = rel
+                if recoverable is not None and (
+                    previous_recoverable is None
+                    or abs(recoverable - previous_recoverable) > thresholds.health_event_epsilon
+                ):
+                    recoverable_events.append([rel, recoverable])
+                previous_recoverable = recoverable
+            elif recoverable is not None and health_started:
+                if (
+                    previous_recoverable is None
+                    or abs(recoverable - previous_recoverable) > thresholds.health_event_epsilon
+                ):
+                    recoverable_events.append([rel, recoverable])
+                previous_recoverable = recoverable
 
         # ラウンド内のバーンアウト期間・CA期間を相対時刻で切り出す
         burnout_periods = self._clip_periods(self.burnout_periods[side], window, base)
@@ -856,6 +1128,7 @@ class GaugeAnalyzer:
             "coverage": coverage,
             "healthCoverage": health_coverage,
             "health": health_events,
+            "healthRecoverable": recoverable_events,
             "drive": drive_events,
             "driveBurnout": burnout_periods,
             "sa": sa_events,
@@ -925,6 +1198,8 @@ class GaugeAnalyzer:
                     "sa_progress",
                     "health",
                     "health_raw",
+                    "health_recoverable",
+                    "health_recoverable_raw",
                 ]
             )
             for sample in self.samples:
@@ -946,6 +1221,8 @@ class GaugeAnalyzer:
                             "" if state.sa_progress is None else f"{state.sa_progress:.3f}",
                             "" if state.health is None else f"{state.health:.1f}",
                             "" if state.health_raw is None else f"{state.health_raw:.1f}",
+                            "" if state.health_recoverable is None else f"{state.health_recoverable:.1f}",
+                            ("" if state.health_recoverable_raw is None else f"{state.health_recoverable_raw:.1f}"),
                         ]
                     )
         logger.info("✅ Saved gauge samples CSV: %s", path)

@@ -215,7 +215,16 @@ class SF6ChapterProcessor:
 
         # ADR-048: 検出済みの試合範囲でゲージ計測結果をラウンド単位に構築する
         if gauge_analyzer is not None and matches:
-            self.gauge_result = gauge_analyzer.build([(match["id"], float(match["startTime"])) for match in matches])
+            self.gauge_result = gauge_analyzer.build(
+                [(match["id"], float(match["startTime"])) for match in matches],
+                characters={
+                    match["id"]: {
+                        side: (match.get(side) or {}).get("character") or ""
+                        for side in ("player1", "player2")
+                    }
+                    for match in matches
+                },
+            )
 
         # ADR-049: カウンター計測結果をラウンド単位に構築する。
         # ラウンド境界は ADR-048 が検出した ROUND バナー時刻をそのまま使う

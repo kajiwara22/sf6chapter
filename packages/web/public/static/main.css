@@ -1427,6 +1427,13 @@ body {
   stroke-width: 3;
 }
 
+/* 回復可能ダメージ（白ゲージ）は破線で重ねる（ADR-054） */
+.gg-line-health-recoverable {
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
+
 .gg-empty-health {
   padding: var(--space-sm);
   text-align: left;

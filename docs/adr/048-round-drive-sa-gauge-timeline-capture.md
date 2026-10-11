@@ -6,6 +6,10 @@
 
 > 注: `round_stats.parquet` の列構成は [ADR-051](051-match-detail-page-and-round-stats-redesign.md) で再設計された
 > （`driveAvg` を削除し、勝敗・最大被弾・バーンアウト・SA 残しを追加）。
+>
+> 注: 「ROUND 1 / ROUND 2 / FINAL ROUND で共通の文字列」を前提としていたラウンド開始バナー検出は、
+> 実際には FINAL ROUND が別レイアウトで未検出だった。[ADR-052](052-final-round-banner-detection.md) で
+> 複数テンプレート方式に修正した。
 
 ## 文脈
 

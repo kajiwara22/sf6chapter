@@ -16,8 +16,10 @@ from src.detection.gauge import (
     _median_filter,
     _merge_periods,
     _series_stats,
+    _suppress_transient_reverts,
     build_round_stats_rows,
 )
+from src.detection.round_splitter import RoundWindow
 
 APP_ROOT = Path(__file__).parent.parent
 
@@ -112,18 +114,21 @@ class TestSaMeasurement:
 
 
 class TestRoundBannerDetection:
-    def test_detects_template_in_search_region(self):
-        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
-        template = cv2.imread(str(APP_ROOT / "template/gauge/round_banner.png"))
+    def _paste_banner(self, analyzer, frame, name: str) -> None:
+        spec = next(b for b in make_params().round_banners if b.name == name)
+        template = cv2.imread(str(APP_ROOT / spec.template))
         assert template is not None
-
-        frame = make_frame()
-        analyzer._prepare_geometry(frame)
-        x1, y1, x2, y2 = make_params().round_banner_search_region
+        x1, y1, x2, y2 = spec.search_region
         # 探索領域の中央にテンプレートを貼り付ける
         top = y1 + (y2 - y1 - template.shape[0]) // 2
         left = x1 + (x2 - x1 - template.shape[1]) // 2
         frame[top : top + template.shape[0], left : left + template.shape[1]] = template
+
+    def test_detects_round_template_in_search_region(self):
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        frame = make_frame()
+        analyzer._prepare_geometry(frame)
+        self._paste_banner(analyzer, frame, "round")
 
         assert analyzer._detect_round_banner(frame, 21.0) is True
         # 直後のフレームは多重検出しない（検出済み時刻を登録してから確認）
@@ -131,6 +136,14 @@ class TestRoundBannerDetection:
         assert analyzer._detect_round_banner(frame, 21.25) is False
         analyzer.round_banner_times.clear()
         assert analyzer._detect_round_banner(frame, 30.0) is True
+
+    def test_detects_final_round_template(self):
+        """FINAL ROUND は「ROUND」とは別テンプレートで検出する（ADR-052）"""
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        frame = make_frame()
+        analyzer._prepare_geometry(frame)
+        self._paste_banner(analyzer, frame, "final_round")
+        assert analyzer._detect_round_banner(frame, 100.0) is True
 
     def test_returns_false_without_banner(self):
         analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
@@ -166,6 +179,32 @@ class TestFilters:
 
     def test_merge_periods(self):
         assert _merge_periods([[1.0, 2.0], [2.2, 3.0], [10.0, 11.0]], 0.5) == [[1.0, 3.0], [10.0, 11.0]]
+
+    def test_suppress_transient_reverts_removes_multi_sample_dip(self):
+        # 2サンプル（0.2秒）だけ 1→0→1 と戻る下振れは検出ノイズとして除去する
+        values = [1.0] * 5 + [0.0, 0.0] + [1.0] * 5
+        timestamps = [i * 0.1 for i in range(len(values))]
+        assert _suppress_transient_reverts(values, timestamps, max_revert_sec=1.0) == [1.0] * 12
+
+    def test_suppress_transient_reverts_keeps_real_decrease(self):
+        # 本当にスーパーアーツを使って減少したストックは戻らないので残す
+        values = [3.0] * 5 + [2.0] * 5
+        timestamps = [i * 0.1 for i in range(len(values))]
+        assert _suppress_transient_reverts(values, timestamps, max_revert_sec=1.0) == values
+
+    def test_suppress_transient_reverts_keeps_slow_recovery(self):
+        # 復帰まで 1.0 秒を超える場合は本当にゲージを使った後の再獲得とみなして残す
+        values = [1.0, 0.0, 0.0, 1.0]
+        timestamps = [0.0, 1.0, 2.0, 3.0]
+        assert _suppress_transient_reverts(values, timestamps, max_revert_sec=1.0) == values
+
+    def test_suppress_transient_reverts_handles_dip_after_real_drop(self):
+        # 3→1 の本当の減少の直後に起きる 1→0→1 の下振れも除去する
+        # （直前値 3 への復帰だけを待つと内側の 1↔0 を取り逃すため）
+        values = [3.0, 3.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+        timestamps = [i * 0.1 for i in range(len(values))]
+        result = _suppress_transient_reverts(values, timestamps, max_revert_sec=1.0)
+        assert result == [3.0, 3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 
     def test_series_stats(self):
         minimum, average, end = _series_stats([[0.0, 6.0], [1.0, 2.0]], end_time=2.0)
@@ -273,6 +312,18 @@ class TestDeriveStates:
             states.append((i * 0.1, 5.0, True, 3))
         analyzer = self._analyzer_with_samples(states)
         assert all(s.states["player1"].sa_stock == 3 for s in analyzer.samples)
+
+    def test_sa_dip_and_immediate_revert_is_removed(self):
+        # SA ゲージは一時的に減って即座に戻ることはないため、下振れは誤検出として除去する
+        states = []
+        for i in range(10):
+            states.append((i * 0.1, 5.0, True, 1))
+        states.append((1.0, 5.0, True, 0))
+        states.append((1.1, 5.0, True, 0))
+        for i in range(12, 20):
+            states.append((i * 0.1, 5.0, True, 1))
+        analyzer = self._analyzer_with_samples(states)
+        assert all(s.states["player1"].sa_stock == 1 for s in analyzer.samples)
 
 
 class TestBuildRoundStatsRows:
@@ -521,6 +572,33 @@ class TestHealthMeasurement:
         frame[y1:y2, x1:x2] = YELLOW_BGR
         assert analyzer._measure_health(frame, "player1") is None
 
+    def test_recoverable_yellow_is_measured_separately(self):
+        # ADR-054: 回復可能ダメージ（黄）を別系列として計測する
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = YELLOW_BGR
+        assert analyzer._measure_health_recoverable(frame, "player1") == pytest.approx(100.0, abs=0.5)
+
+    def test_half_recoverable_is_50_percent(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        # 外側（左）半分を回復可能（黄）、内側（右）半分を現在体力（マゼンタ）にする
+        middle = (x1 + x2) // 2
+        frame[y1:y2, x1:middle] = YELLOW_BGR
+        frame[y1:y2, middle:x2] = MAGENTA_BGR
+        assert analyzer._measure_health_recoverable(frame, "player1") == pytest.approx(50.0, abs=1.5)
+        scale = make_params().health_fill_scale["player1"]
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(50.0 * scale, abs=1.5)
+
+    def test_current_health_is_not_recoverable(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = MAGENTA_BGR
+        assert analyzer._measure_health_recoverable(frame, "player1") is None
+
     def test_empty_health_returns_none(self):
         frame = make_frame()
         analyzer = self._analyzer(frame)
@@ -729,3 +807,81 @@ class TestImprovementRoundStats:
         assert rows[0]["burnoutCount"] is None
         assert rows[0]["burnoutSec"] is None
         assert rows[1]["saLeftAtEnd"] is None
+
+
+class TestHealthRecoverableGating:
+    """回復可能ダメージ（白ゲージ）による回復ゲート（ADR-054）"""
+
+    def _payload(
+        self,
+        values: list[tuple[float, float | None, float | None]],
+        character: str | None = None,
+        sa_stock: list[int | None] | None = None,
+    ) -> dict:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        for index, (timestamp, health, recoverable) in enumerate(values):
+            analyzer.samples.append(
+                GaugeSample(
+                    timestamp=timestamp,
+                    states={
+                        "player1": SideGaugeState(
+                            hud_visible=True,
+                            health=health,
+                            health_recoverable=recoverable,
+                            sa_stock=None if sa_stock is None else sa_stock[index],
+                        ),
+                        "player2": SideGaugeState(),
+                    },
+                )
+            )
+        window = RoundWindow(index=1, start_time=0.0, end_time=10.0, boundary_time=10.0, end_reason="match_end")
+        return analyzer._side_round_payload(window, "player1", character)
+
+    def test_increase_without_recoverable_is_suppressed(self):
+        payload = self._payload(
+            [(2.0, 99.0, 0.0), (2.5, 99.0, 0.0), (3.0, 60.0, 0.0), (3.5, 90.0, 0.0), (4.0, 90.0, 0.0)]
+        )
+        assert payload["health"] == [[2.0, 99.0], [3.0, 60.0]]
+
+    def test_increase_backed_by_recoverable_is_allowed(self):
+        payload = self._payload(
+            [(2.0, 99.0, 0.0), (2.5, 99.0, 0.0), (3.0, 60.0, 30.0), (3.5, 62.5, 27.5), (4.0, 65.0, 25.0)]
+        )
+        assert payload["health"] == [[2.0, 99.0], [3.0, 60.0], [3.5, 62.5], [4.0, 65.0]]
+        assert payload["healthRecoverable"] == [[2.0, 0.0], [3.0, 30.0], [3.5, 27.5], [4.0, 25.0]]
+
+    def test_rate_cap_still_applies(self):
+        # 回復可能分は十分あるが、5%/s のレート上限を超える増加は抑えられる
+        payload = self._payload([(2.0, 99.0, 0.0), (2.5, 99.0, 0.0), (3.0, 50.0, 40.0), (3.5, 90.0, 30.0)])
+        assert payload["health"] == [[2.0, 99.0], [3.0, 50.0], [3.5, 52.5]]
+
+    def test_elena_sa2_allows_direct_heal(self):
+        values = [(2.0, 99.0, 0.0), (2.5, 99.0, 0.0), (3.0, 50.0, 0.0), (3.5, 90.0, 0.0)]
+        stocks = [3, 3, 3, 1]
+        payload = self._payload(values, character="ELENA", sa_stock=stocks)
+        assert payload["health"] == [[2.0, 99.0], [3.0, 50.0], [3.5, 90.0]]
+
+        # エレナ以外は同じ入力でも回復として扱わない
+        payload_other = self._payload(values, character="JP", sa_stock=stocks)
+        assert payload_other["health"] == [[2.0, 99.0], [3.0, 50.0]]
+
+
+class TestHealthDespike:
+    def test_multi_sample_dip_is_removed(self):
+        # 遮蔽・ヒット演出による 0.4 秒の低値は前値で塗り直す
+        values = [(i * 0.1, 100.0, True) for i in range(5)]
+        values += [(0.5 + i * 0.1, 20.0, True) for i in range(4)]
+        values += [(0.9 + i * 0.1, 100.0, True) for i in range(8)]
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        for timestamp, health_raw, hud_visible in values:
+            analyzer.samples.append(
+                GaugeSample(
+                    timestamp=timestamp,
+                    states={
+                        "player1": SideGaugeState(hud_visible=hud_visible, health_raw=health_raw),
+                        "player2": SideGaugeState(),
+                    },
+                )
+            )
+        analyzer._derive_states()
+        assert all(s.states["player1"].health == pytest.approx(100.0, abs=0.1) for s in analyzer.samples)
