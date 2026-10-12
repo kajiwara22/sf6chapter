@@ -1147,6 +1147,10 @@ class GaugeAnalyzer:
             state = sample.states[side]
             rel = round(sample.timestamp - base, 2)
 
+            # visibleTo を超えるサンプルは HUD 途切れ後の誤検出として除外する（ADR-057）
+            if visible_to is not None and rel > visible_to:
+                break
+
             # 変化点はチャンネルごとに独立して記録する
             if state.drive is not None and (
                 previous_drive is None or abs(state.drive - previous_drive) > thresholds.drive_event_epsilon
