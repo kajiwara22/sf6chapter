@@ -127,11 +127,38 @@
         "threshold": 0.5
       }
     ],
-    "ko_banner": {
-      "template": "./template/gauge/ko_banner.png",
-      "search_region": [640, 360, 1280, 720],
-      "threshold": 0.35
-    },
+    "ko_banners": [
+      {
+        "name": "ko_144",
+        "template": "./template/gauge/ko_banner.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
+      },
+      {
+        "name": "ko_977",
+        "template": "./template/gauge/ko_banner_977.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
+      },
+      {
+        "name": "ko_1153",
+        "template": "./template/gauge/ko_banner_1153.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
+      },
+      {
+        "name": "ko_2159",
+        "template": "./template/gauge/ko_banner_2159.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
+      },
+      {
+        "name": "ko_2458",
+        "template": "./template/gauge/ko_banner_2458.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
+      }
+    ],
     "thresholds": {
       "drive_filled_v": 135,
       "drive_filled_s": 150,

@@ -166,7 +166,7 @@ class GaugeAnalysisParams:
     thresholds: GaugeThresholds
     sa_digit_templates: dict[str, str]
     round_banners: list[RoundBannerTemplate]
-    ko_banner: RoundBannerTemplate | None = None
+    ko_banners: list[RoundBannerTemplate] = field(default_factory=list)
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
     health_fill_scale: dict[str, float] = field(default_factory=dict)
 
@@ -202,11 +202,7 @@ class GaugeAnalysisParams:
             thresholds=thresholds,
             sa_digit_templates=dict(templates.get("sa_digits") or {}),
             round_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("round_banners", [])],
-            ko_banner=(
-                RoundBannerTemplate.from_dict({"name": "ko", **data["ko_banner"]})
-                if data.get("ko_banner")
-                else None
-            ),
+            ko_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("ko_banners", [])],
             drive_fill_scale=drive_fill_scale,
             health_fill_scale=health_fill_scale,
         )
@@ -232,7 +228,7 @@ class GaugeAnalysisParams:
                 "sa_digits": dict(self.sa_digit_templates),
             },
             "round_banners": [banner.to_dict() for banner in self.round_banners],
-            "ko_banner": self.ko_banner.to_dict() if self.ko_banner else None,
+            "ko_banners": [banner.to_dict() for banner in self.ko_banners],
             "calibration": {
                 "drive_fill_scale": dict(self.drive_fill_scale),
                 "health_fill_scale": dict(self.health_fill_scale),
@@ -259,8 +255,8 @@ class GaugeAnalysisParams:
             logger.warning("round_banners is empty; round start banner detection is disabled")
         for banner in self.round_banners:
             banner._validate()
-        if self.ko_banner is not None:
-            self.ko_banner._validate()
+        for banner in self.ko_banners:
+            banner._validate()
 
     def log_params(self) -> None:
         logger.info("  [Gauge Analysis]")
@@ -286,12 +282,13 @@ class GaugeAnalysisParams:
                 banner.threshold,
                 banner.template,
             )
-        if self.ko_banner is not None:
+        for banner in self.ko_banners:
             logger.info(
-                "    ko_banner: region=%s threshold=%.2f template=%s",
-                self.ko_banner.search_region,
-                self.ko_banner.threshold,
-                self.ko_banner.template,
+                "    ko_banner[%s]: region=%s threshold=%.2f template=%s",
+                banner.name,
+                banner.search_region,
+                banner.threshold,
+                banner.template,
             )
         self.thresholds.log()
 
@@ -515,18 +512,19 @@ class GaugeAnalyzer:
             self._round_banner_templates.append((banner, image))
 
         # K.O. バナー（勝利演出の検出、ADR-059）
-        self._ko_banner: tuple[RoundBannerTemplate, np.ndarray] | None = None
-        if params.ko_banner is not None:
-            image = cv2.imread(str(self._resolve(params.ko_banner.template)), cv2.IMREAD_COLOR)
+        self._ko_banner_templates: list[tuple[RoundBannerTemplate, np.ndarray]] = []
+        for banner in params.ko_banners:
+            image = cv2.imread(str(self._resolve(banner.template)), cv2.IMREAD_COLOR)
             if image is None:
-                logger.warning("⚠️ KO banner template not found: %s", params.ko_banner.template)
-            else:
-                self._ko_banner = (params.ko_banner, image)
+                logger.warning("⚠️ KO banner template not found: %s", banner.template)
+                continue
+            self._ko_banner_templates.append((banner, image))
 
         # 実フレームサイズに応じたスケール済み ROI（最初の feed で確定）
         self._frame_size: tuple[int, int] | None = None
         self._roi: dict[str, dict[str, tuple[int, int, int, int]]] = {}
         self._round_banner_prepared: list[dict[str, Any]] = []
+        self._ko_banner_prepared: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # 計測本体
@@ -677,15 +675,17 @@ class GaugeAnalyzer:
                 }
             )
 
-        self._ko_banner_prepared: dict[str, Any] | None = None
-        if self._ko_banner is not None:
-            banner, image = self._ko_banner
+        self._ko_banner_prepared = []
+        for banner, image in self._ko_banner_templates:
             resized = cv2.resize(image, None, fx=banner_scale, fy=banner_scale, interpolation=cv2.INTER_AREA)
-            self._ko_banner_prepared = {
-                "search": scale_roi(banner.search_region),
-                "template": preprocess_for_matching(resized),
-                "threshold": banner.threshold,
-            }
+            self._ko_banner_prepared.append(
+                {
+                    "name": banner.name,
+                    "search": scale_roi(banner.search_region),
+                    "template": preprocess_for_matching(resized),
+                    "threshold": banner.threshold,
+                }
+            )
 
         logger.info("[Gauge] Geometry prepared for %dx%d (scale x%.3f, y%.3f)", width, height, scale_x, scale_y)
         return True
@@ -735,33 +735,41 @@ class GaugeAnalyzer:
     def _detect_ko(self, frame: np.ndarray, timestamp: float) -> bool:
         """K.O. バナー（勝利演出の開始）を検出する（ADR-059）
 
-        K.O. は画面中央に固定表示されるため、単一テンプレートを照合する。
+        K.O. は画面中央に固定表示される。背景が試合ごとに異なるため、
+        複数テンプレートを照合し、いずれかが閾値を超えれば検出とする。
         検出時刻は ko_times に記録され、勝利演出中の health 誤読の除去に使う。
         """
-        prepared = self._ko_banner_prepared
-        if prepared is None:
+        if not self._ko_banner_prepared:
             return False
 
         scale = self.params.banner_scale
-        region = self._crop(frame, prepared["search"])
-        if region.size == 0:
-            return False
-        scaled = cv2.resize(region, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        edges = preprocess_for_matching(scaled)
+        for prepared in self._ko_banner_prepared:
+            region = self._crop(frame, prepared["search"])
+            if region.size == 0:
+                continue
+            scaled = cv2.resize(region, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            edges = preprocess_for_matching(scaled)
 
-        template = prepared["template"]
-        if template.shape[0] > edges.shape[0] or template.shape[1] > edges.shape[1]:
-            return False
+            template = prepared["template"]
+            if template.shape[0] > edges.shape[0] or template.shape[1] > edges.shape[1]:
+                continue
 
-        score = float(cv2.matchTemplate(edges, template, cv2.TM_CCOEFF_NORMED).max())
-        if score < prepared["threshold"]:
-            return False
+            score = float(cv2.matchTemplate(edges, template, cv2.TM_CCOEFF_NORMED).max())
+            if score < prepared["threshold"]:
+                continue
 
-        # 近接フレームの多重検出を抑制（K.O. は約2秒表示される）
-        if self.ko_times and timestamp - self.ko_times[-1] < 3.0:
-            return False
-        logger.debug("[Gauge] K.O. banner matched at %.2fs (score %.3f)", timestamp, score)
-        return True
+            # 近接フレームの多重検出を抑制（K.O. は約2秒表示される）
+            if self.ko_times and timestamp - self.ko_times[-1] < 3.0:
+                return False
+            logger.debug(
+                "[Gauge] K.O. banner '%s' matched at %.2fs (score %.3f)",
+                prepared["name"],
+                timestamp,
+                score,
+            )
+            return True
+
+        return False
 
     def _measure_drive(self, frame: np.ndarray, side: str) -> float | None:
         """ドライブゲージの黄緑（通常ゲージ）の充填量を本数で返す
