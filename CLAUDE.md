@@ -117,6 +117,7 @@ sf6-chapter/
 - [x] OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース）（ADR-055） - 実装完了（Chrome 実機での効果測定・描画確認のみ未実施）
 - [x] バーンアウト判定の白/グレー回復バー検出による高精度化（ADR-056） - 実装完了・f36vyEepil4 で検証（burnoutSec 平均 14.9→7.9秒）。20秒超18件の目視確認と他動画の横断確認は未実施
 - [x] ラウンド終端のHUD途切れ検出によるdurationSecの正確化（ADR-057） - 実装完了・DSgD_bQhxp0/f36vyEepil4 で検証（99秒超0件）
+- [x] 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加（ADR-058） - 実装完了。真の白ゲージ（回復可能ダメージ）検出は将来課題
 
 ## 次のタスク
 
@@ -354,6 +355,7 @@ docker compose up -d
 - [055: OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース）](docs/adr/055-opfs-client-cache-for-parquet-and-duckdb.md)
 - [056: バーンアウト判定の白/グレー回復バー検出による高精度化](docs/adr/056-burnout-detection-recover-bar.md)
 - [057: ラウンド終端のHUD途切れ検出によるdurationSecの正確化](docs/adr/057-round-end-hud-gap-detection.md)
+- [058: 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加](docs/adr/058-combo-damage-yellow-gauge-peak.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

@@ -1420,7 +1420,12 @@ def _round_method(value1: int | None, value2: int | None) -> str | None:
 
 
 def _max_drop(events: list[list[float]]) -> float | None:
-    """体力の変化点列から最大の単発被弾（％）を求める（ADR-051）"""
+    """体力の変化点列から最大の変化点間減少（％）を求める（ADR-051）
+
+    変化点間には複数ヒット（コンボ）がまとまるため、この値は「1コンボあたりの
+    被ダメージ合計（近似）」を表す。厳密なコンボ被ダメージは maxComboDamage
+    （薄い黄色ゲージのピーク、ADR-058）を参照する。
+    """
     if not events:
         return None
     biggest = 0.0
@@ -1429,6 +1434,13 @@ def _max_drop(events: list[list[float]]) -> float | None:
         if drop > biggest:
             biggest = drop
     return round(biggest, 1)
+
+
+def _max_value(events: list[list[float]]) -> float | None:
+    """変化点列の最大値を返す（ADR-058 の薄い黄色ゲージのピーク＝コンボ被ダメージ）"""
+    if not events:
+        return None
+    return round(max(float(value) for _, value in events), 1)
 
 
 def _burnout_stats(periods: list[list[float]]) -> tuple[int, float]:
@@ -1480,6 +1492,7 @@ def build_round_stats_rows(
                 drive_events = payload.get("drive") or []
                 sa_events = payload.get("sa") or []
                 health_events = payload.get("health") or []
+                recoverable_events = payload.get("healthRecoverable") or []
                 visible_from = float(payload.get("visibleFrom") or 0.0)
                 visible_to = float(payload.get("visibleTo") or 0.0)
                 round_start = float(round_data.get("roundStartTime", 0.0))
@@ -1497,6 +1510,7 @@ def build_round_stats_rows(
                     burnout_count, burnout_sec = None, None
                 sa_left = _last_value(sa_events)
                 max_hit = _max_drop(health_events)
+                max_combo_damage = _max_value(recoverable_events)
 
                 player = match.get(side) or {}
                 counter_counts = counter_lookup.get((match_id, round_index, side))
@@ -1526,6 +1540,7 @@ def build_round_stats_rows(
                         "detectionCoverage": payload.get("coverage"),
                         "healthEnd": health_end,
                         "maxHitTaken": max_hit,
+                        "maxComboDamage": max_combo_damage,
                         "burnoutCount": burnout_count,
                         "burnoutSec": burnout_sec,
                         "counterCount": None if counter_counts is None else counter_counts[0],

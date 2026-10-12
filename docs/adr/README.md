@@ -63,6 +63,7 @@
 | [055](./055-opfs-client-cache-for-parquet-and-duckdb.md) | OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース） | 採用 | 2026-10-11 |
 | [056](./056-burnout-detection-recover-bar.md) | バーンアウト判定の白/グレー回復バー検出による高精度化 | 採用 | 2026-10-12 |
 | [057](./057-round-end-hud-gap-detection.md) | ラウンド終端のHUD途切れ検出によるdurationSecの正確化 | 採用 | 2026-10-12 |
+| [058](./058-combo-damage-yellow-gauge-peak.md) | 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加 | 採用 | 2026-10-12 |
 
 ## ADRのフォーマット
 
