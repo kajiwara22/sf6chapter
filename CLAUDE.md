@@ -118,6 +118,7 @@ sf6-chapter/
 - [x] バーンアウト判定の白/グレー回復バー検出による高精度化（ADR-056） - 実装完了・f36vyEepil4 で検証（burnoutSec 平均 14.9→7.9秒）。20秒超18件の目視確認と他動画の横断確認は未実施
 - [x] ラウンド終端のHUD途切れ検出によるdurationSecの正確化（ADR-057） - 実装完了・DSgD_bQhxp0/f36vyEepil4 で検証（99秒超0件）
 - [x] 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加（ADR-058） - 実装完了。真の白ゲージ（回復可能ダメージ）検出は将来課題
+- [x] K.O.バナー検出による勝利演出中のhealth誤読の除去（ADR-059） - 実装完了（_38 R3 が 5.1%→94.0% に修正）。テンプレートの背景汎化は継続課題
 
 ## 次のタスク
 
@@ -356,6 +357,7 @@ docker compose up -d
 - [056: バーンアウト判定の白/グレー回復バー検出による高精度化](docs/adr/056-burnout-detection-recover-bar.md)
 - [057: ラウンド終端のHUD途切れ検出によるdurationSecの正確化](docs/adr/057-round-end-hud-gap-detection.md)
 - [058: 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加](docs/adr/058-combo-damage-yellow-gauge-peak.md)
+- [059: K.O.バナー検出による勝利演出中のhealth誤読の除去](docs/adr/059-ko-banner-detection.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

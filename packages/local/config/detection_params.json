@@ -127,6 +127,11 @@
         "threshold": 0.5
       }
     ],
+    "ko_banner": {
+      "template": "./template/gauge/ko_banner.png",
+      "search_region": [640, 360, 1280, 720],
+      "threshold": 0.35
+    },
     "thresholds": {
       "drive_filled_v": 135,
       "drive_filled_s": 150,

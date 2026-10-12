@@ -166,6 +166,7 @@ class GaugeAnalysisParams:
     thresholds: GaugeThresholds
     sa_digit_templates: dict[str, str]
     round_banners: list[RoundBannerTemplate]
+    ko_banner: RoundBannerTemplate | None = None
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
     health_fill_scale: dict[str, float] = field(default_factory=dict)
 
@@ -201,6 +202,11 @@ class GaugeAnalysisParams:
             thresholds=thresholds,
             sa_digit_templates=dict(templates.get("sa_digits") or {}),
             round_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("round_banners", [])],
+            ko_banner=(
+                RoundBannerTemplate.from_dict({"name": "ko", **data["ko_banner"]})
+                if data.get("ko_banner")
+                else None
+            ),
             drive_fill_scale=drive_fill_scale,
             health_fill_scale=health_fill_scale,
         )
@@ -226,6 +232,7 @@ class GaugeAnalysisParams:
                 "sa_digits": dict(self.sa_digit_templates),
             },
             "round_banners": [banner.to_dict() for banner in self.round_banners],
+            "ko_banner": self.ko_banner.to_dict() if self.ko_banner else None,
             "calibration": {
                 "drive_fill_scale": dict(self.drive_fill_scale),
                 "health_fill_scale": dict(self.health_fill_scale),
@@ -252,6 +259,8 @@ class GaugeAnalysisParams:
             logger.warning("round_banners is empty; round start banner detection is disabled")
         for banner in self.round_banners:
             banner._validate()
+        if self.ko_banner is not None:
+            self.ko_banner._validate()
 
     def log_params(self) -> None:
         logger.info("  [Gauge Analysis]")
@@ -276,6 +285,13 @@ class GaugeAnalysisParams:
                 banner.search_region,
                 banner.threshold,
                 banner.template,
+            )
+        if self.ko_banner is not None:
+            logger.info(
+                "    ko_banner: region=%s threshold=%.2f template=%s",
+                self.ko_banner.search_region,
+                self.ko_banner.threshold,
+                self.ko_banner.template,
             )
         self.thresholds.log()
 
@@ -472,6 +488,7 @@ class GaugeAnalyzer:
 
         self.samples: list[GaugeSample] = []
         self.round_banner_times: list[float] = []
+        self.ko_times: list[float] = []
         self.snapshots: list[dict[str, Any]] = []
         self.burnout_periods: dict[str, list[list[float]]] = {side: [] for side in SIDES}  # noqa: C420 (共有リスト回避のため内包表記)
 
@@ -496,6 +513,15 @@ class GaugeAnalyzer:
                 logger.warning("⚠️ Round banner template not found: %s", banner.template)
                 continue
             self._round_banner_templates.append((banner, image))
+
+        # K.O. バナー（勝利演出の検出、ADR-059）
+        self._ko_banner: tuple[RoundBannerTemplate, np.ndarray] | None = None
+        if params.ko_banner is not None:
+            image = cv2.imread(str(self._resolve(params.ko_banner.template)), cv2.IMREAD_COLOR)
+            if image is None:
+                logger.warning("⚠️ KO banner template not found: %s", params.ko_banner.template)
+            else:
+                self._ko_banner = (params.ko_banner, image)
 
         # 実フレームサイズに応じたスケール済み ROI（最初の feed で確定）
         self._frame_size: tuple[int, int] | None = None
@@ -524,6 +550,9 @@ class GaugeAnalyzer:
                 self.round_banner_times.append(timestamp)
                 self._add_snapshot(frame, timestamp, "round_banner")
                 logger.info("[Gauge] ROUND banner detected at %.2fs", timestamp)
+            if self._detect_ko(frame, timestamp):
+                self.ko_times.append(timestamp)
+                logger.info("[Gauge] K.O. banner detected at %.2fs", timestamp)
 
         interval = self.params.sample_interval_sec
         if self._last_sample_time is not None and timestamp - self._last_sample_time < interval:
@@ -598,6 +627,7 @@ class GaugeAnalyzer:
         return {
             "matches": out_matches,
             "roundBannerTimes": list(self.round_banner_times),
+            "koTimes": list(self.ko_times),
             "burnoutPeriods": dict(self.burnout_periods),
         }
 
@@ -647,6 +677,16 @@ class GaugeAnalyzer:
                 }
             )
 
+        self._ko_banner_prepared: dict[str, Any] | None = None
+        if self._ko_banner is not None:
+            banner, image = self._ko_banner
+            resized = cv2.resize(image, None, fx=banner_scale, fy=banner_scale, interpolation=cv2.INTER_AREA)
+            self._ko_banner_prepared = {
+                "search": scale_roi(banner.search_region),
+                "template": preprocess_for_matching(resized),
+                "threshold": banner.threshold,
+            }
+
         logger.info("[Gauge] Geometry prepared for %dx%d (scale x%.3f, y%.3f)", width, height, scale_x, scale_y)
         return True
 
@@ -691,6 +731,37 @@ class GaugeAnalyzer:
             return True
 
         return False
+
+    def _detect_ko(self, frame: np.ndarray, timestamp: float) -> bool:
+        """K.O. バナー（勝利演出の開始）を検出する（ADR-059）
+
+        K.O. は画面中央に固定表示されるため、単一テンプレートを照合する。
+        検出時刻は ko_times に記録され、勝利演出中の health 誤読の除去に使う。
+        """
+        prepared = self._ko_banner_prepared
+        if prepared is None:
+            return False
+
+        scale = self.params.banner_scale
+        region = self._crop(frame, prepared["search"])
+        if region.size == 0:
+            return False
+        scaled = cv2.resize(region, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        edges = preprocess_for_matching(scaled)
+
+        template = prepared["template"]
+        if template.shape[0] > edges.shape[0] or template.shape[1] > edges.shape[1]:
+            return False
+
+        score = float(cv2.matchTemplate(edges, template, cv2.TM_CCOEFF_NORMED).max())
+        if score < prepared["threshold"]:
+            return False
+
+        # 近接フレームの多重検出を抑制（K.O. は約2秒表示される）
+        if self.ko_times and timestamp - self.ko_times[-1] < 3.0:
+            return False
+        logger.debug("[Gauge] K.O. banner matched at %.2fs (score %.3f)", timestamp, score)
+        return True
 
     def _measure_drive(self, frame: np.ndarray, side: str) -> float | None:
         """ドライブゲージの黄緑（通常ゲージ）の充填量を本数で返す
@@ -1072,20 +1143,38 @@ class GaugeAnalyzer:
             result.append(sample)
         return result
 
+    def _round_ko_time(self, window: RoundWindow) -> float | None:
+        """ラウンド内の K.O. バナー検出時刻（絶対秒）を返す（ADR-059）
+
+        K.O. バナーは勝利演出の開始を示し、それ以降は HUD が消える。
+        """
+        upper = window.boundary_time
+        for ko in self.ko_times:
+            if window.start_time - 1.0 <= ko and (upper is None or ko <= upper):
+                return ko
+        return None
+
     @staticmethod
     def _visible_range(
-        samples: list[GaugeSample], side: str, base: float, max_gap_sec: float
+        samples: list[GaugeSample],
+        side: str,
+        base: float,
+        max_gap_sec: float,
+        ko_time: float | None = None,
     ) -> tuple[float | None, float | None]:
         """ラウンド内の HUD 可視範囲（相対秒）を、長い途切れを考慮して求める（ADR-057）
 
         HUD はラウンド終了（K.O.）後に消えるが、試合間画面（勝利ポーズ・次試合待ち）で
         誤検出されることがある。HUD が max_gap_sec を超えて途切れた後の可視は
-        visible_to に含めない。
+        visible_to に含めない。また、K.O. バナー検出時刻（ko_time）以降の可視も
+        無視する（ADR-059）。
         """
         visible_from: float | None = None
         last_visible_abs: float | None = None
         gap_start_abs: float | None = None
         for sample in samples:
+            if ko_time is not None and sample.timestamp > ko_time:
+                break
             state = sample.states[side]
             visible = state.drive is not None or state.sa_stock is not None
             if visible:
@@ -1139,9 +1228,14 @@ class GaugeAnalyzer:
         # エレナの SA2 は回復可能ゲートの例外（ADR-054）
         heal_allowed = self._elena_heal_allowed(samples, side, character)
 
+        # ラウンド内の K.O. 時刻（勝利演出の開始、ADR-059）
+        ko_time = self._round_ko_time(window)
+
         # visible_from / visible_to は「HUD が長く途切れる前の最後の可視時刻」とする（ADR-057）。
         # ラウンド終了（K.O.）後の試合間画面での HUD 誤検出が visible_to を伸ばすのを防ぐ。
-        visible_from, visible_to = self._visible_range(samples, side, base, thresholds.round_end_gap_sec)
+        visible_from, visible_to = self._visible_range(
+            samples, side, base, thresholds.round_end_gap_sec, ko_time=ko_time
+        )
 
         for sample in samples:
             state = sample.states[side]
