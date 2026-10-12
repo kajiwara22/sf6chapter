@@ -68,6 +68,8 @@ class GaugeThresholds:
     drive_recover_column_fill_ratio: float = 0.4
     drive_recover_min_fraction: float = 0.02
     burnout_recover_min_ratio: float = 0.3
+    # ADR-057: ラウンド終了（K.O.）後の試合間画面での HUD 誤検出を visible_to から除外する途切れ秒数
+    round_end_gap_sec: float = 5.0
     sa_digit_min_score: float = 0.45
     sa_bar_filled_v: int = 140
     sa_bar_filled_s: int = 100
@@ -1071,6 +1073,35 @@ class GaugeAnalyzer:
         return result
 
     @staticmethod
+    def _visible_range(
+        samples: list[GaugeSample], side: str, base: float, max_gap_sec: float
+    ) -> tuple[float | None, float | None]:
+        """ラウンド内の HUD 可視範囲（相対秒）を、長い途切れを考慮して求める（ADR-057）
+
+        HUD はラウンド終了（K.O.）後に消えるが、試合間画面（勝利ポーズ・次試合待ち）で
+        誤検出されることがある。HUD が max_gap_sec を超えて途切れた後の可視は
+        visible_to に含めない。
+        """
+        visible_from: float | None = None
+        last_visible_abs: float | None = None
+        gap_start_abs: float | None = None
+        for sample in samples:
+            state = sample.states[side]
+            visible = state.drive is not None or state.sa_stock is not None
+            if visible:
+                if visible_from is None:
+                    visible_from = round(sample.timestamp - base, 2)
+                last_visible_abs = sample.timestamp
+                gap_start_abs = None
+            elif last_visible_abs is not None:
+                if gap_start_abs is None:
+                    gap_start_abs = sample.timestamp
+                elif sample.timestamp - gap_start_abs > max_gap_sec:
+                    break
+        visible_to = round(last_visible_abs - base, 2) if last_visible_abs is not None else None
+        return visible_from, visible_to
+
+    @staticmethod
     def _elena_heal_allowed(samples: list[GaugeSample], side: str, character: str | None) -> bool:
         """エレナの SA2 による直接回復を許可するか（ADR-054）
 
@@ -1095,8 +1126,6 @@ class GaugeAnalyzer:
         progress_events: list[list[float]] = []
         health_events: list[list[float]] = []
         recoverable_events: list[list[float]] = []
-        visible_from: float | None = None
-        visible_to: float | None = None
         previous_drive: float | None = None
         previous_stock: int | None = None
         previous_progress: float | None = None
@@ -1109,14 +1138,14 @@ class GaugeAnalyzer:
         thresholds = self.params.thresholds
         # エレナの SA2 は回復可能ゲートの例外（ADR-054）
         heal_allowed = self._elena_heal_allowed(samples, side, character)
+
+        # visible_from / visible_to は「HUD が長く途切れる前の最後の可視時刻」とする（ADR-057）。
+        # ラウンド終了（K.O.）後の試合間画面での HUD 誤検出が visible_to を伸ばすのを防ぐ。
+        visible_from, visible_to = self._visible_range(samples, side, base, thresholds.round_end_gap_sec)
+
         for sample in samples:
             state = sample.states[side]
             rel = round(sample.timestamp - base, 2)
-
-            if state.drive is not None or state.sa_stock is not None:
-                if visible_from is None:
-                    visible_from = rel
-                visible_to = rel
 
             # 変化点はチャンネルごとに独立して記録する
             if state.drive is not None and (

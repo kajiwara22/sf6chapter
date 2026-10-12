@@ -13,7 +13,7 @@ def main() -> None:
     video_id = sys.argv[1]
     video_path = sys.argv[2]
 
-    app_root = Path(__file__).parent
+    app_root = Path(__file__).parent.parent
     params = load_detection_params(
         profile="production", config_path=str(app_root / "config" / "detection_params.json")
     )
