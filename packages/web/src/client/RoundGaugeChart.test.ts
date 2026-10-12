@@ -495,7 +495,7 @@ describe('buildHealthSvg', () => {
     });
     expect(svg).toContain('gg-line-health gg-line-player1');
     expect(svg).toContain('gg-line-health gg-line-player2');
-    expect(svg).toContain('gg-line-health-recoverable gg-line-player1');
+    expect(svg).toContain('gg-marker-combo gg-marker-combo-player1');
     expect(svg).toContain('9000 / 9000');
     expect(svg).toContain(`>${HEALTH_MAX}</text>`);
   });

@@ -266,12 +266,13 @@ export function buildGaugeSvg(params: GaugeSvgParams): string {
     })
     .join('');
 
-  // 補助系列（体力の回復可能ダメージ）は破線で重ねる（ADR-054）
-  const recoverableHtml = recoverableSeries
+  // コンボ被ダメージのピーク時点を縦線マーカーとして表示（ADR-058）
+  const comboMarkersHtml = recoverableSeries
     .map((item) => {
-      const path = buildStepPath(item.events, scaleX, scaleY, safeDuration);
-      if (!path) return '';
-      return `<path class="gg-line gg-line-health-recoverable gg-line-${item.side}" d="${path}"></path>`;
+      if (!item.events || item.events.length === 0) return '';
+      const peak = item.events.reduce((acc, ev) => (ev[1] > acc[1] ? ev : acc), item.events[0]);
+      const x = scaleX(peak[0]);
+      return `<line class="gg-marker-combo gg-marker-combo-${item.side}" x1="${fmt(x)}" y1="${fmt(PADDING.top)}" x2="${fmt(x)}" y2="${fmt(bottom)}" />`;
     })
     .join('');
 
@@ -293,7 +294,7 @@ export function buildGaugeSvg(params: GaugeSvgParams): string {
       <line class="gg-axis-line" x1="${PADDING.left}" y1="${PADDING.top}" x2="${PADDING.left}" y2="${bottom}" />
       <line class="gg-axis-line" x1="${PADDING.left}" y1="${bottom}" x2="${right}" y2="${bottom}" />
       <g class="gg-series">${seriesHtml}</g>
-      <g class="gg-series-recoverable">${recoverableHtml}</g>
+      <g class="gg-markers-combo">${comboMarkersHtml}</g>
       <g class="gg-markers">${markersHtml}</g>
     </svg>
   `;
@@ -570,7 +571,7 @@ export function buildRoundGaugeHtml(
     <div class="gg-legend">
       <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player1"></span>${escapeHtml(sideText(labels.player1, 'player1'))}</span>
       <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player2"></span>${escapeHtml(sideText(labels.player2, 'player2'))}</span>
-      <span class="gg-legend-note">帯: バーンアウト / マーカー: CA / 体力: 太線</span>
+      <span class="gg-legend-note">帯: バーンアウト / マーカー: CA / 体力: 太線 / 縦線: コンボ</span>
     </div>
   `;
 
