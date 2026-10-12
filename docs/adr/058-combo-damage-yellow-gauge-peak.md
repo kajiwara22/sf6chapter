@@ -77,7 +77,11 @@ ADR-054 は「白ゲージ（回復可能ダメージ）」を意図して `heal
 
 | ファイル | 内容 |
 |---------|------|
-| `packages/local/src/detection/gauge.py` | `_max_value()` 追加、`build_round_stats_rows` に `maxComboDamage` 列を追加、`_max_drop()` の docstring を「コンボ合計の近似」に修正 |
+| `packages/local/src/detection/gauge.py` | `_max_value()` 追加、`build_round_stats_rows` に `maxComboDamage` / `maxComboDamageAt` 列を追加、`_max_drop()` の docstring を「コンボ合計の近似」に修正 |
+| `packages/local/src/storage/r2_uploader.py` | round_stats スキーマに `maxComboDamage` / `maxComboDamageAt` を追加 |
+| `packages/web/src/shared/types.ts` / `client/types.ts` | `RoundStatsRow` / `RoundStatsQueryRow` に `maxComboDamage` / `maxComboDamageAt` を追加 |
+| `packages/web/src/client/search.ts` | `queryRoundStats` にコンボ列を追加（列存在チェック付き） |
+| `packages/web/src/client/components/RoundGaugeChart.ts` / `MatchDetailPage.ts` | ラウンド集計テーブルに「最大コンボ」列を追加し、該当シーンへのYouTubeリンク（`roundStartTime + maxComboDamageAt`）を表示 |
 
 ## 関連ADR
 

@@ -179,7 +179,7 @@ export function buildMatchDetailPageHtml(match: Match, data: MatchDetailPageData
       ${buildGaugeNoticeHtml(data.gauges)}
       ${coverageNotice}
       <div class="gg-rounds">${buildGaugeRoundsHtml(match.videoId, data.gauges, data.labels, context)}</div>
-      ${buildRoundStatsTableHtml(data.roundStats, data.labels, data.characterHealth ?? null)}
+      ${buildRoundStatsTableHtml(match.videoId, data.roundStats, data.labels, data.characterHealth ?? null)}
     </div>
   `;
 }

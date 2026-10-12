@@ -1436,11 +1436,12 @@ def _max_drop(events: list[list[float]]) -> float | None:
     return round(biggest, 1)
 
 
-def _max_value(events: list[list[float]]) -> float | None:
-    """変化点列の最大値を返す（ADR-058 の薄い黄色ゲージのピーク＝コンボ被ダメージ）"""
+def _max_value(events: list[list[float]]) -> tuple[float | None, float | None]:
+    """変化点列の最大値とその相対時刻を返す（ADR-058 の薄い黄色ゲージのピーク＝コンボ被ダメージ）"""
     if not events:
-        return None
-    return round(max(float(value) for _, value in events), 1)
+        return None, None
+    peak_time, peak_value = max(events, key=lambda event: float(event[1]))
+    return round(float(peak_value), 1), round(float(peak_time), 2)
 
 
 def _burnout_stats(periods: list[list[float]]) -> tuple[int, float]:
@@ -1510,7 +1511,7 @@ def build_round_stats_rows(
                     burnout_count, burnout_sec = None, None
                 sa_left = _last_value(sa_events)
                 max_hit = _max_drop(health_events)
-                max_combo_damage = _max_value(recoverable_events)
+                max_combo_damage, max_combo_damage_at = _max_value(recoverable_events)
 
                 player = match.get(side) or {}
                 counter_counts = counter_lookup.get((match_id, round_index, side))
@@ -1541,6 +1542,7 @@ def build_round_stats_rows(
                         "healthEnd": health_end,
                         "maxHitTaken": max_hit,
                         "maxComboDamage": max_combo_damage,
+                        "maxComboDamageAt": max_combo_damage_at,
                         "burnoutCount": burnout_count,
                         "burnoutSec": burnout_sec,
                         "counterCount": None if counter_counts is None else counter_counts[0],

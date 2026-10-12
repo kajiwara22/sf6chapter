@@ -1284,6 +1284,25 @@ async function roundStatsHasImprovementColumns(): Promise<boolean> {
 }
 
 /**
+ * round_stats にコンボ被ダメージ列（ADR-058）が存在するかを判定する
+ */
+let roundStatsComboColumnsCache: boolean | null = null;
+
+async function roundStatsHasComboColumns(): Promise<boolean> {
+  if (roundStatsComboColumnsCache !== null) return roundStatsComboColumnsCache;
+  if (!instance) return false;
+  try {
+    const info = await instance.conn.query("PRAGMA table_info('round_stats')");
+    const names = info.toArray().map((row) => String((row as { name?: unknown }).name ?? ''));
+    roundStatsComboColumnsCache =
+      names.includes('maxComboDamage') && names.includes('maxComboDamageAt');
+  } catch {
+    roundStatsComboColumnsCache = false;
+  }
+  return roundStatsComboColumnsCache;
+}
+
+/**
  * 複数試合のラウンド別カウンター回数をまとめて取得する（ADR-049）
  *
  * round_stats テーブルやカウンター列が無い場合は空配列を返す（呼び出し側でフォールバック不要）。
@@ -1333,6 +1352,7 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
   const withCounters = await roundStatsHasCounterColumns();
   const withHealth = await roundStatsHasHealthColumns();
   const withImprovement = await roundStatsHasImprovementColumns();
+  const withCombo = await roundStatsHasComboColumns();
   const query = `
     SELECT
       videoId, matchId, round, side, character,
@@ -1341,6 +1361,7 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
       ${withCounters ? ', counterCount, punishCounterCount' : ''}
       ${withHealth ? ', healthEnd' : ''}
       ${withImprovement ? ', roundResult, roundMethod, saLeftAtEnd, maxHitTaken, burnoutCount, burnoutSec' : ''}
+      ${withCombo ? ', maxComboDamage, maxComboDamageAt' : ''}
     FROM round_stats
     WHERE matchId = $1
     ORDER BY round ASC, side ASC
@@ -1374,6 +1395,8 @@ export async function queryRoundStats(matchId: string): Promise<RoundStatsRow[]>
     detectionCoverage: row.detectionCoverage == null ? null : Number(row.detectionCoverage),
     healthEnd: row.healthEnd == null ? null : Number(row.healthEnd),
     maxHitTaken: row.maxHitTaken == null ? null : Number(row.maxHitTaken),
+    maxComboDamage: row.maxComboDamage == null ? null : Number(row.maxComboDamage),
+    maxComboDamageAt: row.maxComboDamageAt == null ? null : Number(row.maxComboDamageAt),
     burnoutCount: row.burnoutCount == null ? null : Number(row.burnoutCount),
     burnoutSec: row.burnoutSec == null ? null : Number(row.burnoutSec),
     counterCount: row.counterCount == null ? null : Number(row.counterCount),

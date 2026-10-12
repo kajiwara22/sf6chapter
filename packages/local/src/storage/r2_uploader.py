@@ -219,8 +219,11 @@ class R2Uploader:
                 pa.field("detectionCoverage", pa.float64(), nullable=True),
                 # ADR-050/051: 残体力（％、K.O. 札着の敗者は 0 に補正する）
                 pa.field("healthEnd", pa.float64(), nullable=True),
-                # ADR-051: 最大の単発被弾（％）
+                # ADR-051: 最大の変化点間減少（％、コンボ合計の近似）
                 pa.field("maxHitTaken", pa.float64(), nullable=True),
+                # ADR-058: 薄い黄色ゲージのピーク（＝最大コンボ被ダメージ、％）と発生相対秒
+                pa.field("maxComboDamage", pa.float64(), nullable=True),
+                pa.field("maxComboDamageAt", pa.float64(), nullable=True),
                 # ADR-051: バーンアウト回数・累計秒（未計測時は null）
                 pa.field("burnoutCount", pa.int32(), nullable=True),
                 pa.field("burnoutSec", pa.float64(), nullable=True),

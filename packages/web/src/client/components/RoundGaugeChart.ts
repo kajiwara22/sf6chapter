@@ -11,6 +11,7 @@
  */
 
 import type { CharacterHealthTable, GaugeData, GaugeRound, GaugeSideData, RoundStatsRow } from '@shared/types';
+import { createYouTubeLink } from './ResultsGrid';
 
 /** ゲージのサイド（生データのまま） */
 export type GaugeSide = 'player1' | 'player2';
@@ -639,6 +640,7 @@ export function buildGaugeNoticeHtml(gauges: GaugeData | null): string {
  * `characterHealth` を渡すと体力列に実 HP を併記する（ADR-050）。
  */
 export function buildRoundStatsTableHtml(
+  videoId: string,
   rows: RoundStatsRow[],
   labels: GaugeSideLabels,
   characterHealth?: CharacterHealthTable | null,
@@ -675,6 +677,10 @@ export function buildRoundStatsTableHtml(
       const sideLabel = sideText(labels[row.side], row.side);
       const character = row.character ? escapeHtml(row.character) : '-';
       const maxHealth = resolveMaxHealth(row.character, characterHealth);
+      const comboCell =
+        row.maxComboDamage == null || row.maxComboDamageAt == null
+          ? '-'
+          : `<a href="${createYouTubeLink(videoId, Math.round(row.roundStartTime + row.maxComboDamageAt))}" target="_blank" rel="noopener" title="コンボ被ダメージの該当シーンへ">${formatHealthValue(row.maxComboDamage, maxHealth)}</a>`;
       return `
         <tr class="gg-stats-row-${row.roundResult ?? 'unknown'}">
           <td>Round ${row.round}</td>
@@ -684,6 +690,7 @@ export function buildRoundStatsTableHtml(
           <td>${row.roundMethod ? escapeHtml(row.roundMethod) : '-'}</td>
           <td>${formatHealthValue(row.healthEnd, maxHealth)}</td>
           <td>${formatHealthValue(row.maxHitTaken, maxHealth)}</td>
+          <td>${comboCell}</td>
           <td>${formatValue(row.driveMin)} → ${formatValue(row.driveEnd)}</td>
           <td>${formatBurnout(row.burnoutCount, row.burnoutSec)}</td>
           <td>${formatInt(row.saMax)}</td>
@@ -711,6 +718,7 @@ export function buildRoundStatsTableHtml(
               <th title="勝利方法: V=通常 C=Chip T=TimeUp OD SA CA P=Perfect">方法</th>
               <th title="決着時の残体力（K.O. の敗者は 0）">残体力</th>
               <th title="最大の単発被弾">最大被弾</th>
+              <th title="最大コンボ被ダメージ（薄い黄色ゲージのピーク。クリックで該当シーンへ）">最大コンボ</th>
               <th title="最小 → ラウンド終了">ドライブ</th>
               <th title="回数 / 累計秒">バーンアウト</th>
               <th title="到達した最大ストック数">SA最大</th>

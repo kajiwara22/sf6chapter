@@ -387,8 +387,12 @@ export interface RoundStatsRow {
   detectionCoverage: number | null;
   /** 決着時の残体力％（ADR-050/051。K.O. 札着の敗者は 0、未計測時は null） */
   healthEnd: number | null;
-  /** 最大の単発被弾％（ADR-051、未計測時は null） */
+  /** 最大の変化点間減少％（ADR-051、コンボ合計の近似。未計測時は null） */
   maxHitTaken: number | null;
+  /** 最大コンボ被ダメージ％（ADR-058、薄い黄色ゲージのピーク。未検出時は null） */
+  maxComboDamage?: number | null;
+  /** maxComboDamage の発生時刻（ラウンド開始からの相対秒、ADR-058） */
+  maxComboDamageAt?: number | null;
   /** バーンアウト回数（ADR-051、未計測時は null） */
   burnoutCount: number | null;
   /** バーンアウト累計秒（ADR-051、未計測時は null） */

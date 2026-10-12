@@ -330,11 +330,11 @@ describe('buildRoundStatsTableHtml', () => {
   };
 
   it('データが無ければ「集計データなし」', () => {
-    expect(buildRoundStatsTableHtml([], plainLabels)).toContain('集計データなし');
+    expect(buildRoundStatsTableHtml('test', [], plainLabels)).toContain('集計データなし');
   });
 
   it('集計値を表示する', () => {
-    const html = buildRoundStatsTableHtml([row], selfP1Labels);
+    const html = buildRoundStatsTableHtml('test', [row], selfP1Labels);
     expect(html).toContain('Round 1');
     expect(html).toContain('自分');
     expect(html).toContain('GOUKI');
@@ -345,7 +345,7 @@ describe('buildRoundStatsTableHtml', () => {
   });
 
   it('カウンター・パニッシュカウンター回数を表示する（ADR-049）', () => {
-    const html = buildRoundStatsTableHtml([row], selfP1Labels);
+    const html = buildRoundStatsTableHtml('test', [row], selfP1Labels);
     expect(html).toContain('カウンタ');
     expect(html).toContain('パニッシュ');
     expect(html).toContain('gg-stats-counter');
@@ -354,11 +354,11 @@ describe('buildRoundStatsTableHtml', () => {
   });
 
   it('未計測（null）は "-"、0 件は "0" と區別する', () => {
-    const unmeasured = buildRoundStatsTableHtml(
+    const unmeasured = buildRoundStatsTableHtml('test', 
       [{ ...row, counterCount: null, punishCounterCount: null }],
       selfP1Labels,
     );
-    const zero = buildRoundStatsTableHtml(
+    const zero = buildRoundStatsTableHtml('test', 
       [{ ...row, counterCount: 0, punishCounterCount: 0 }],
       selfP1Labels,
     );
@@ -541,7 +541,7 @@ describe('resolveSideCharacters', () => {
 
 describe('buildRoundStatsTableHtml の体力列（ADR-050/051）', () => {
   it('最大体力表があれば実 HP を併記する', () => {
-    const html = buildRoundStatsTableHtml(
+    const html = buildRoundStatsTableHtml('test', 
       [{ ...healthStatsRow('player1', 'GOUKI'), healthEnd: 25.8, maxHitTaken: 30 }],
       plainLabels,
       healthTable,
@@ -551,7 +551,7 @@ describe('buildRoundStatsTableHtml の体力列（ADR-050/051）', () => {
   });
 
   it('旧 Parquet（health 列が null / 未設定）は "-"', () => {
-    const html = buildRoundStatsTableHtml(
+    const html = buildRoundStatsTableHtml('test', 
       [{ ...healthStatsRow('player1', 'GOUKI'), healthEnd: null, maxHitTaken: null }],
       plainLabels,
       healthTable,
@@ -562,7 +562,7 @@ describe('buildRoundStatsTableHtml の体力列（ADR-050/051）', () => {
 
 describe('buildRoundStatsTableHtml の改善指標（ADR-051）', () => {
   it('勝敗・方法・SA 残しを表示する', () => {
-    const html = buildRoundStatsTableHtml(
+    const html = buildRoundStatsTableHtml('test', 
       [{ ...healthStatsRow('player1', 'GOUKI'), roundResult: 'loss', roundMethod: 'CA', saLeftAtEnd: 3 }],
       plainLabels,
       healthTable,
