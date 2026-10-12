@@ -46,10 +46,10 @@ DRIVE_MAX = 6.0
 class GaugeThresholds:
     """ゲージ計測の閾値"""
 
-    drive_filled_v: int = 150
-    drive_filled_s: int = 100
-    drive_filled_h_min: int = 25
-    drive_filled_h_max: int = 60
+    drive_filled_v: int = 135
+    drive_filled_s: int = 150
+    drive_filled_h_min: int = 20
+    drive_filled_h_max: int = 65
     drive_burnout_silver_v: int = 150
     drive_burnout_silver_s_max: int = 60
     drive_burnout_red_h_max: int = 18
@@ -61,6 +61,13 @@ class GaugeThresholds:
     hud_flicker_tolerance_sec: float = 0.5
     burnout_min_duration_sec: float = 1.0
     burnout_merge_gap_sec: float = 1.0
+    # ADR-056: バーンアウト中の白/グレー回復バー（黄緑と空トラックの中間の低彩度・中間明度）
+    drive_recover_v_min: int = 100
+    drive_recover_v_max: int = 210
+    drive_recover_s_max: int = 100
+    drive_recover_column_fill_ratio: float = 0.4
+    drive_recover_min_fraction: float = 0.02
+    burnout_recover_min_ratio: float = 0.3
     sa_digit_min_score: float = 0.45
     sa_bar_filled_v: int = 140
     sa_bar_filled_s: int = 100
@@ -281,6 +288,7 @@ class SideGaugeState:
 
     hud_visible: bool = False
     drive_raw: float | None = None  # 黄緑の充填率から換算した本数（0〜6）。None=黄緑なし
+    drive_recover_raw: float | None = None  # ADR-056: 白/グレー回復バーの充填率（0〜1）。None=検出なし
     burnout_candidate: bool = False  # HUD表示中に黄緑が検出できない状態
     drive: float | None = None  # 平滑化・バーンアウト判定後の本数
     drive_burnout: bool = False
@@ -301,6 +309,7 @@ class SideGaugeState:
             "hudVisible": self.hud_visible,
             "drive": self.drive,
             "driveRaw": self.drive_raw,
+            "driveRecoverRaw": self.drive_recover_raw,
             "driveBurnout": self.drive_burnout,
             "saStock": self.sa_stock,
             "saLabel": self.sa_label,
@@ -522,6 +531,7 @@ class GaugeAnalyzer:
         states: dict[str, SideGaugeState] = {}
         for side in SIDES:
             raw_drive = self._measure_drive(frame, side)
+            drive_recover = self._measure_drive_recover(frame, side)
             sa_stock, sa_label, sa_score, sa_progress, sa_ca = self._measure_sa(frame, side)
             health_raw = self._measure_health(frame, side)
             health_recoverable_raw = self._measure_health_recoverable(frame, side)
@@ -529,6 +539,7 @@ class GaugeAnalyzer:
             states[side] = SideGaugeState(
                 hud_visible=hud_visible,
                 drive_raw=raw_drive,
+                drive_recover_raw=drive_recover,
                 burnout_candidate=hud_visible and raw_drive is None,
                 health_raw=health_raw,
                 health_recoverable_raw=health_recoverable_raw,
@@ -711,6 +722,36 @@ class GaugeAnalyzer:
         raw = min(DRIVE_MAX, filled_fraction * DRIVE_MAX)
         return round(min(DRIVE_MAX, raw * self.params.drive_fill_scale.get(side, 1.0)), 2)
 
+    def _measure_drive_recover(self, frame: np.ndarray, side: str) -> float | None:
+        """バーンアウト中の白/グレー回復バーの充填率（0〜1）を返す（ADR-056）
+
+        回復バーは画面中央側（1P=右端 / 2P=左端）から溜まるため、
+        アンカー側から連続する低彩度・中間明度の列だけを数える。
+        通常時の空トラック（高彩度・低明度）や背景の映り込みを除外する。
+
+        Returns:
+            0〜1。回復バーが検出できない場合は None
+        """
+        thresholds = self.params.thresholds
+        roi = self._crop(frame, self._roi["drive"][side])
+        if roi.size == 0:
+            return None
+
+        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        sat = hsv[:, :, 1].astype(np.int16)
+        val = hsv[:, :, 2].astype(np.int16)
+
+        recover = (
+            (val >= thresholds.drive_recover_v_min)
+            & (val <= thresholds.drive_recover_v_max)
+            & (sat <= thresholds.drive_recover_s_max)
+        )
+
+        fraction = float(recover.mean())
+        if fraction < thresholds.drive_recover_min_fraction:
+            return None
+        return round(fraction, 3)
+
     def _measure_sa(self, frame: np.ndarray, side: str) -> tuple[int | None, str | None, float, float | None, bool]:
         """SAゲージ（ストック数とバー進捗）を計測する
 
@@ -875,15 +916,30 @@ class GaugeAnalyzer:
             filled = _fill_short_gaps(smoothed, timestamps, thresholds.drive_max_gap_sec)
             hud_extended = self._extend_flags(hud, timestamps, thresholds.drive_max_gap_sec)
 
-            # バーンアウト: HUD表示中に黄緑がない状態が一定時間続いた区間（近接区間は結合）
+            # バーンアウト（ADR-056）: HUD表示中に黄緑がなく、白/グレー回復バーが現れる区間。
+            # 黄緑なしだけではラウンド開始直後のゲージ未表示や瞬間的な検出漏れを誤判定するため、
+            # 回復バーが一定割合で観測された区間だけをバーンアウトと確定する。
+            recover_values = [state.drive_recover_raw for state in states]
             candidates = [hud[i] and raw_values[i] is None for i in range(len(states))]
-            self.burnout_periods[side] = _merge_periods(
+            candidate_periods = _merge_periods(
                 _runs_to_periods(_find_runs(candidates, timestamps), timestamps),
                 thresholds.burnout_merge_gap_sec,
             )
+            burnout_periods: list[list[float]] = []
+            for start, end in candidate_periods:
+                indices = [
+                    i
+                    for i in range(len(states))
+                    if start - 1e-6 <= timestamps[i] <= end + 1e-6
+                ]
+                if not indices:
+                    continue
+                recover_ratio = sum(1 for i in indices if recover_values[i] is not None) / len(indices)
+                if recover_ratio >= thresholds.burnout_recover_min_ratio:
+                    burnout_periods.append([start, end])
             self.burnout_periods[side] = [
                 period
-                for period in self.burnout_periods[side]
+                for period in burnout_periods
                 if period[1] - period[0] >= thresholds.burnout_min_duration_sec
             ]
             for start, end in self.burnout_periods[side]:
@@ -1189,6 +1245,7 @@ class GaugeAnalyzer:
                     "hud_visible",
                     "drive",
                     "drive_raw",
+                    "drive_recover_raw",
                     "drive_burnout",
                     "burnout_candidate",
                     "sa_stock",
@@ -1212,6 +1269,7 @@ class GaugeAnalyzer:
                             int(state.hud_visible),
                             "" if state.drive is None else f"{state.drive:.2f}",
                             "" if state.drive_raw is None else f"{state.drive_raw:.2f}",
+                            ("" if state.drive_recover_raw is None else f"{state.drive_recover_raw:.3f}"),
                             int(state.drive_burnout),
                             int(state.burnout_candidate),
                             "" if state.sa_stock is None else state.sa_stock,

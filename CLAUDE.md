@@ -115,6 +115,7 @@ sf6-chapter/
 - [x] SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正（ADR-053） - 実装完了・`DSgD_bQhxp0` を再処理して R2 反映済み（`saUsedCount` 154 → 44、`DSgD_bQhxp0_20` 1R は 2 → 0）
 - [x] 回復可能ダメージ（白ゲージ）の観測と回復ゲート（ADR-054） - 実装完了・手元 3 本を再処理して R2 反映済み（Web 実データ描画確認のみ未実施）
 - [x] OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース）（ADR-055） - 実装完了（Chrome 実機での効果測定・描画確認のみ未実施）
+- [x] バーンアウト判定の白/グレー回復バー検出による高精度化（ADR-056） - 実装完了・f36vyEepil4 で検証（burnoutSec 平均 14.9→7.9秒）。20秒超18件の目視確認と他動画の横断確認は未実施
 
 ## 次のタスク
 
@@ -350,6 +351,7 @@ docker compose up -d
 - [053: SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正](docs/adr/053-sa-stock-revert-suppression.md)
 - [054: 回復可能ダメージ（白ゲージ）の観測と回復ゲート](docs/adr/054-health-recoverable-damage-observation.md)
 - [055: OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース）](docs/adr/055-opfs-client-cache-for-parquet-and-duckdb.md)
+- [056: バーンアウト判定の白/グレー回復バー検出による高精度化](docs/adr/056-burnout-detection-recover-bar.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

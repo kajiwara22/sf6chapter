@@ -61,6 +61,7 @@
 | [053](./053-sa-stock-revert-suppression.md) | SA ストックの一時的な下振れ（誤検出）除去による SA 使用回数の修正 | 採用 | 2026-10-11 |
 | [054](./054-health-recoverable-damage-observation.md) | 回復可能ダメージ（白ゲージ）の観測と回復ゲート | 採用 | 2026-10-11 |
 | [055](./055-opfs-client-cache-for-parquet-and-duckdb.md) | OPFS によるクライアントキャッシュ（Parquet バイトと DuckDB データベース） | 採用 | 2026-10-11 |
+| [056](./056-burnout-detection-recover-bar.md) | バーンアウト判定の白/グレー回復バー検出による高精度化 | 採用 | 2026-10-12 |
 
 ## ADRのフォーマット
 
