@@ -109,6 +109,14 @@
       "player1": [[145, 179], [0, 15]],
       "player2": [[90, 135]]
     },
+    "health_low_hue_ranges": {
+      "player1": [[15, 50]],
+      "player2": [[15, 50]]
+    },
+    "health_poison_hue_ranges": {
+      "player1": [[130, 150]],
+      "player2": [[130, 150]]
+    },
     "health_recoverable_hue_ranges": {
       "player1": [[15, 50]],
       "player2": [[15, 50]]
@@ -159,6 +167,15 @@
         "threshold": 0.4
       }
     ],
+    "ko_color_mask": {
+      "description": "K.O.文字の白/銀マスク照合（ADR-063）。背景に依存しないため、ステージごとのテンプレート追加が不要",
+      "enabled": true,
+      "search_region": [640, 360, 1280, 720],
+      "s_max": 70,
+      "v_min": 150,
+      "threshold": 0.6,
+      "min_consecutive": 2
+    },
     "thresholds": {
       "drive_filled_v": 135,
       "drive_filled_s": 150,
@@ -198,7 +215,8 @@
       "health_max_increase_per_sec": 5.0,
       "health_recoverable_v_min": 130,
       "health_recoverable_s_min": 60,
-      "health_despike_revert_sec": 1.2
+      "health_despike_revert_sec": 1.2,
+      "health_low_v_min": 190
     },
     "templates": {
       "sa_digits": {
@@ -234,15 +252,18 @@
       "round_banners": "ラウンド開始バナーのテンプレート定義（ADR-052）。name / template / search_region / threshold を文字列ごとに指定する",
       "health_roi": "体力ゲージの ROI（ADR-050）。白い縁取りの内側に合わせる",
       "health_hue_ranges": "現在体力と判定する色相範囲（1P: マゼンタ〜赤 / 2P: 青）。回復可能（黄〜白）と空きトラックは含めない",
-      "health_recoverable_hue_ranges": "回復可能ダメージ（白ゲージ）と判定する色相範囲（ADR-054）。現在体力に隣接する帯だけを数える",
+      "health_low_hue_ranges": "低体力時（概ね25%以下）の現在体力が明るい黄色に変わる色相範囲（ADR-061）。暗い黄（コンボ／回復可能）は含めない",
+      "health_poison_hue_ranges": "A.K.I. の毒状態で現在体力バーが紫に変わる色相範囲（ADR-062）。A.K.I. を含む試合でのみ現在体力として採用する",
+      "health_recoverable_hue_ranges": "回復可能ダメージ（白ゲージ）と判定する色相範囲（ADR-054）。現在体力に隣接する帯だけを数える（低体力の明るい黄もこの色域に含まれる）",
       "health_filled_v": "現在体力と判定する明度の下限",
       "health_filled_s": "現在体力と判定する彩度の下限",
       "health_event_epsilon": "体力％の変化点とみなす最小差（％）",
       "health_warmup_sec": "ラウンド開始直後のバー伸長演出を無視する秒数",
       "health_start_min_percent": "これを超えたら計測開始とみなす体力％（演出除外用）",
       "health_max_increase_per_sec": "1秒あたりの許容増加量（％）。これを超える急増は計測ノイズとして前値を保持する",
-      "health_recoverable_v_min": "回復可能ダメージと判定する明度の下限（ADR-054）",
-      "health_recoverable_s_min": "回復可能ダメージと判定する彩度の下限（ADR-054）",
+      "health_recoverable_v_min": "回復可能ダメージ／コンボダメージと判定する明度の下限（ADR-054 / ADR-058）",
+      "health_recoverable_s_min": "回復可能ダメージ／コンボダメージと判定する彩度の下限（ADR-054）",
+      "health_low_v_min": "低体力の明るい黄色を現在体力と判定する明度の下限（ADR-061）。これ未満の暗い黄は現在体力に含めない",
       "health_despike_revert_sec": "体力の一時的な下振れ（遮蔽・演出）を前値で塗り直す復帰許容秒数（ADR-054）",
       "health_smoothing_window": "体力％のメディアン平滑化の点数"
     }

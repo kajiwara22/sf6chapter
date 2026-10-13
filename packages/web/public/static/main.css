@@ -1359,6 +1359,63 @@ body {
   font-size: 0.75rem;
 }
 
+/* サイド表示フィルター（ADR-060）: 線が重なるときに片側だけ表示する */
+.gg-side-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.gg-side-filter-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.gg-side-filter-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.gg-side-filter-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.gg-side-filter-btn.is-active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #08131a;
+  font-weight: 600;
+}
+
+.gg-side-filter-hint {
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+}
+
+.match-detail-inner[data-visible-side='player1'] .gg-line-player2,
+.match-detail-inner[data-visible-side='player1'] .gg-band-player2,
+.match-detail-inner[data-visible-side='player1'] .gg-marker-player2,
+.match-detail-inner[data-visible-side='player1'] .gg-marker-combo-player2,
+.match-detail-inner[data-visible-side='player1'] .gg-legend-item-player2,
+.match-detail-inner[data-visible-side='player2'] .gg-line-player1,
+.match-detail-inner[data-visible-side='player2'] .gg-band-player1,
+.match-detail-inner[data-visible-side='player2'] .gg-marker-player1,
+.match-detail-inner[data-visible-side='player2'] .gg-marker-combo-player1,
+.match-detail-inner[data-visible-side='player2'] .gg-legend-item-player1 {
+  display: none;
+}
+
 .gg-chart-block + .gg-chart-block {
   margin-top: var(--space-sm);
 }

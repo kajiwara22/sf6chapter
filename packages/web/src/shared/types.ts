@@ -319,8 +319,10 @@ export interface GaugeRound {
   round: number;
   /** ラウンド開始の動画内絶対時刻（秒） */
   roundStartTime: number;
-  /** ラウンド終了の動画内絶対時刻（秒） */
+  /** ラウンド終了の動画内絶対時刻（秒）。K.O. で打ち切った実効終了（ADR-063） */
   roundEndTime: number;
+  /** 次ラウンド開始バナー / 試合終了の境界時刻（秒、ADR-063。旧データは undefined） */
+  boundaryEndTime?: number;
   /** ラウンド終了理由（next_round / match_end など） */
   endReason: string;
   /** ROUND バナーを検出できたか */

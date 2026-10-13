@@ -20,7 +20,17 @@ def main() -> None:
     analyzer = GaugeAnalyzer(params.gauge_analysis, app_root=app_root)
 
     video_data = json.load(open(app_root / "intermediate" / video_id / "video_data.json"))
-    matches = [(ch["matchId"], float(ch["startTime"])) for ch in video_data["chapters"]]
+    chapters = video_data["chapters"]
+    matches = [(ch["matchId"], float(ch["startTime"])) for ch in chapters]
+    # ADR-054（エレナの SA2）と ADR-062（A.K.I. の毒）は試合のキャラクター情報が必要。
+    # 本線パイプライン（main.py）と同じ形で characters を渡す
+    characters = {
+        ch["matchId"]: {
+            "player1": ch.get("player1_character") or "",
+            "player2": ch.get("player2_character") or "",
+        }
+        for ch in chapters
+    }
 
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -34,7 +44,7 @@ def main() -> None:
     cap.release()
     video_end = frame_idx / fps
 
-    result = analyzer.build(matches, video_end=video_end)
+    result = analyzer.build(matches, video_end=video_end, characters=characters)
     result["videoId"] = video_id
 
     gauges_dir = app_root / "intermediate" / video_id / "gauges"

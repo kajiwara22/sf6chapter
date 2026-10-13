@@ -41,6 +41,20 @@ SIDES: tuple[str, str] = ("player1", "player2")
 # ドライブゲージの満タン時の本数
 DRIVE_MAX = 6.0
 
+# ADR-062: 毒（体力バーが紫に変わる）を与えるキャラクター
+POISON_CHARACTERS = frozenset({"AKI"})
+
+
+def _is_poison_character(name: str | None) -> bool:
+    """毒（紫の体力バー）を与えるキャラクターかどうか（ADR-062）
+
+    キャラクター名の表記揺れ（`A.K.I.` / `AKI` / `aki` 等）を吸収する。
+    """
+    if not name:
+        return False
+    normalized = str(name).upper().replace(".", "").replace(" ", "").replace("-", "")
+    return normalized in POISON_CHARACTERS
+
 
 @dataclass
 class GaugeThresholds:
@@ -92,6 +106,9 @@ class GaugeThresholds:
     health_recoverable_v_min: int = 130
     health_recoverable_s_min: int = 60
     health_despike_revert_sec: float = 1.2
+    # ADR-061: 低体力（概ね25%以下）では現在体力バーが明るい黄色に変わる。
+    # コンボダメージ／回復可能表示の「暗い黄色」とは明度で分離する
+    health_low_v_min: int = 190
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -148,6 +165,61 @@ class RoundBannerTemplate:
 
 
 @dataclass
+class KoColorMaskParams:
+    """K.O.文字の白/銀マスク照合パラメータ（ADR-063）
+
+    K.O. 文字は背景が透ける半透明の白/銀文字で、輪郭はどのステージでも共通する。
+    エッジ（輝度勾配）は背景のエッジに埋もれてしまうため、明るく低彩度な
+    「文字の形」を二値マスクにして IoU で照合する。これにより背景ごとの
+    テンプレート追加が不要になる。
+    """
+
+    enabled: bool = False
+    search_region: tuple[int, int, int, int] = (640, 360, 1280, 720)
+    s_max: int = 70
+    v_min: int = 150
+    threshold: float = 0.6
+    min_consecutive: int = 2
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> KoColorMaskParams:
+        region = data.get("search_region")
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            search_region=tuple(int(v) for v in region) if region else cls.search_region,
+            s_max=int(data.get("s_max", 70)),
+            v_min=int(data.get("v_min", 150)),
+            threshold=float(data.get("threshold", 0.6)),
+            min_consecutive=int(data.get("min_consecutive", 2)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "search_region": list(self.search_region),
+            "s_max": self.s_max,
+            "v_min": self.v_min,
+            "threshold": self.threshold,
+            "min_consecutive": self.min_consecutive,
+        }
+
+    def _validate(self) -> None:
+        if len(self.search_region) != 4:
+            raise ValueError(f"ko_color_mask search_region must have 4 elements, got {self.search_region}")
+        x1, y1, x2, y2 = self.search_region
+        if x2 <= x1 or y2 <= y1:
+            raise ValueError(f"ko_color_mask search_region must be (x1, y1, x2, y2), got {self.search_region}")
+        if not 0 <= self.s_max <= 255:
+            raise ValueError(f"ko_color_mask s_max must be in [0, 255], got {self.s_max}")
+        if not 0 <= self.v_min <= 255:
+            raise ValueError(f"ko_color_mask v_min must be in [0, 255], got {self.v_min}")
+        if not 0 < self.threshold <= 1.0:
+            raise ValueError(f"ko_color_mask threshold must be in (0, 1.0], got {self.threshold}")
+        if self.min_consecutive < 1:
+            raise ValueError(f"ko_color_mask min_consecutive must be >= 1, got {self.min_consecutive}")
+
+
+@dataclass
 class GaugeAnalysisParams:
     """ゲージ計測パラメータ（座標は base_width x base_height 基準）"""
 
@@ -162,11 +234,14 @@ class GaugeAnalysisParams:
     sa_bar_roi: dict[str, tuple[int, int, int, int]]
     health_roi: dict[str, tuple[int, int, int, int]]
     health_hue_ranges: dict[str, list[tuple[int, int]]]
+    health_low_hue_ranges: dict[str, list[tuple[int, int]]]
+    health_poison_hue_ranges: dict[str, list[tuple[int, int]]]
     health_recoverable_hue_ranges: dict[str, list[tuple[int, int]]]
     thresholds: GaugeThresholds
     sa_digit_templates: dict[str, str]
     round_banners: list[RoundBannerTemplate]
     ko_banners: list[RoundBannerTemplate] = field(default_factory=list)
+    ko_color_mask: KoColorMaskParams = field(default_factory=KoColorMaskParams)
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
     health_fill_scale: dict[str, float] = field(default_factory=dict)
 
@@ -192,6 +267,20 @@ class GaugeAnalysisParams:
             health_hue_ranges={
                 side: [tuple(int(v) for v in pair) for pair in data["health_hue_ranges"][side]] for side in SIDES
             },
+            health_low_hue_ranges={
+                side: [
+                    tuple(int(v) for v in pair)
+                    for pair in (data.get("health_low_hue_ranges") or {}).get(side, [])
+                ]
+                for side in SIDES
+            },
+            health_poison_hue_ranges={
+                side: [
+                    tuple(int(v) for v in pair)
+                    for pair in (data.get("health_poison_hue_ranges") or {}).get(side, [])
+                ]
+                for side in SIDES
+            },
             health_recoverable_hue_ranges={
                 side: [
                     tuple(int(v) for v in pair)
@@ -203,6 +292,7 @@ class GaugeAnalysisParams:
             sa_digit_templates=dict(templates.get("sa_digits") or {}),
             round_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("round_banners", [])],
             ko_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("ko_banners", [])],
+            ko_color_mask=KoColorMaskParams.from_dict(data.get("ko_color_mask") or {}),
             drive_fill_scale=drive_fill_scale,
             health_fill_scale=health_fill_scale,
         )
@@ -220,6 +310,8 @@ class GaugeAnalysisParams:
             "sa_bar_roi": {k: list(v) for k, v in self.sa_bar_roi.items()},
             "health_roi": {k: list(v) for k, v in self.health_roi.items()},
             "health_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_hue_ranges.items()},
+            "health_low_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_low_hue_ranges.items()},
+            "health_poison_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_poison_hue_ranges.items()},
             "health_recoverable_hue_ranges": {
                 k: [list(pair) for pair in v] for k, v in self.health_recoverable_hue_ranges.items()
             },
@@ -229,6 +321,7 @@ class GaugeAnalysisParams:
             },
             "round_banners": [banner.to_dict() for banner in self.round_banners],
             "ko_banners": [banner.to_dict() for banner in self.ko_banners],
+            "ko_color_mask": self.ko_color_mask.to_dict(),
             "calibration": {
                 "drive_fill_scale": dict(self.drive_fill_scale),
                 "health_fill_scale": dict(self.health_fill_scale),
@@ -257,6 +350,7 @@ class GaugeAnalysisParams:
             banner._validate()
         for banner in self.ko_banners:
             banner._validate()
+        self.ko_color_mask._validate()
 
     def log_params(self) -> None:
         logger.info("  [Gauge Analysis]")
@@ -272,6 +366,10 @@ class GaugeAnalysisParams:
             logger.info("    health_roi[%s]:      %s", side, self.health_roi[side])
         for side in SIDES:
             logger.info("    health_hue_ranges[%s]: %s", side, self.health_hue_ranges[side])
+        for side in SIDES:
+            logger.info("    health_low_hue_ranges[%s]: %s", side, self.health_low_hue_ranges[side])
+        for side in SIDES:
+            logger.info("    health_poison_hue_ranges[%s]: %s", side, self.health_poison_hue_ranges[side])
         for side in SIDES:
             logger.info("    health_recoverable_hue_ranges[%s]: %s", side, self.health_recoverable_hue_ranges[side])
         for banner in self.round_banners:
@@ -290,6 +388,16 @@ class GaugeAnalysisParams:
                 banner.threshold,
                 banner.template,
             )
+        km = self.ko_color_mask
+        logger.info(
+            "    ko_color_mask: enabled=%s region=%s s_max=%d v_min=%d threshold=%.2f min_consecutive=%d",
+            km.enabled,
+            km.search_region,
+            km.s_max,
+            km.v_min,
+            km.threshold,
+            km.min_consecutive,
+        )
         self.thresholds.log()
 
 
@@ -315,6 +423,9 @@ class SideGaugeState:
     # ADR-050: 現在体力（％）。None=未計測
     health_raw: float | None = None
     health: float | None = None
+    # ADR-062: 毒の紫を含めた現在体力（％）。A.K.I. の試合でのみ採用する
+    health_poison_raw: float | None = None
+    health_poison: float | None = None
     # ADR-054: 回復可能ダメージ（％）。None=未計測
     health_recoverable_raw: float | None = None
     health_recoverable: float | None = None
@@ -333,6 +444,8 @@ class SideGaugeState:
             "saProgress": self.sa_progress,
             "health": self.health,
             "healthRaw": self.health_raw,
+            "healthPoison": self.health_poison,
+            "healthPoisonRaw": self.health_poison_raw,
             "healthRecoverable": self.health_recoverable,
             "healthRecoverableRaw": self.health_recoverable_raw,
         }
@@ -486,6 +599,8 @@ class GaugeAnalyzer:
         self.samples: list[GaugeSample] = []
         self.round_banner_times: list[float] = []
         self.ko_times: list[float] = []
+        self._ko_color_streak = 0
+        self._ko_color_first: float | None = None
         self.snapshots: list[dict[str, Any]] = []
         self.burnout_periods: dict[str, list[list[float]]] = {side: [] for side in SIDES}  # noqa: C420 (共有リスト回避のため内包表記)
 
@@ -525,6 +640,8 @@ class GaugeAnalyzer:
         self._roi: dict[str, dict[str, tuple[int, int, int, int]]] = {}
         self._round_banner_prepared: list[dict[str, Any]] = []
         self._ko_banner_prepared: list[dict[str, Any]] = []
+        self._ko_color_masks: list[np.ndarray] = []
+        self._ko_color_search: tuple[int, int, int, int] | None = None
 
     # ------------------------------------------------------------------
     # 計測本体
@@ -548,9 +665,10 @@ class GaugeAnalyzer:
                 self.round_banner_times.append(timestamp)
                 self._add_snapshot(frame, timestamp, "round_banner")
                 logger.info("[Gauge] ROUND banner detected at %.2fs", timestamp)
-            if self._detect_ko(frame, timestamp):
-                self.ko_times.append(timestamp)
-                logger.info("[Gauge] K.O. banner detected at %.2fs", timestamp)
+            ko_time = self._detect_ko(frame, timestamp)
+            if ko_time is not None:
+                self.ko_times.append(ko_time)
+                logger.info("[Gauge] K.O. banner detected at %.2fs", ko_time)
 
         interval = self.params.sample_interval_sec
         if self._last_sample_time is not None and timestamp - self._last_sample_time < interval:
@@ -562,7 +680,8 @@ class GaugeAnalyzer:
             raw_drive = self._measure_drive(frame, side)
             drive_recover = self._measure_drive_recover(frame, side)
             sa_stock, sa_label, sa_score, sa_progress, sa_ca = self._measure_sa(frame, side)
-            health_raw = self._measure_health(frame, side)
+            health_raw = self._measure_health(frame, side, include_poison=False)
+            health_poison_raw = self._measure_health(frame, side, include_poison=True)
             health_recoverable_raw = self._measure_health_recoverable(frame, side)
             hud_visible = sa_score >= self.params.thresholds.sa_digit_min_score
             states[side] = SideGaugeState(
@@ -571,6 +690,7 @@ class GaugeAnalyzer:
                 drive_recover_raw=drive_recover,
                 burnout_candidate=hud_visible and raw_drive is None,
                 health_raw=health_raw,
+                health_poison_raw=health_poison_raw,
                 health_recoverable_raw=health_recoverable_raw,
                 sa_stock=sa_stock,
                 sa_label=sa_label,
@@ -687,6 +807,20 @@ class GaugeAnalyzer:
                 }
             )
 
+        # K.O. 文字の白/銀マスクテンプレート（ADR-063）。既存の K.O. テンプレート画像から
+        # 明るく低彩度な画素だけを抜き出し、背景に依存しない形状として使う
+        self._ko_color_masks = []
+        ko_color = self.params.ko_color_mask
+        if ko_color.enabled and self._ko_banner_templates:
+            color_search = scale_roi(ko_color.search_region)
+            mask_w = max(1, color_search[2] - color_search[0])
+            mask_h = max(1, color_search[3] - color_search[1])
+            for _banner, image in self._ko_banner_templates:
+                resized = cv2.resize(image, (mask_w, mask_h), interpolation=cv2.INTER_AREA)
+                self._ko_color_masks.append(self._white_mask(resized, ko_color))
+            self._ko_color_search = color_search
+            logger.info("[Gauge] K.O. color mask prepared with %d templates", len(self._ko_color_masks))
+
         logger.info("[Gauge] Geometry prepared for %dx%d (scale x%.3f, y%.3f)", width, height, scale_x, scale_y)
         return True
 
@@ -732,13 +866,39 @@ class GaugeAnalyzer:
 
         return False
 
-    def _detect_ko(self, frame: np.ndarray, timestamp: float) -> bool:
-        """K.O. バナー（勝利演出の開始）を検出する（ADR-059）
+    def _detect_ko(self, frame: np.ndarray, timestamp: float) -> float | None:
+        """K.O. バナー（勝利演出の開始）を検出し、確定時刻を返す（ADR-059 / ADR-063）
 
-        K.O. は画面中央に固定表示される。背景が試合ごとに異なるため、
-        複数テンプレートを照合し、いずれかが閾値を超えれば検出とする。
+        エッジテンプレート（背景依存）と白/銀マスク（背景非依存）を併用する。
+        マスク照合は min_consecutive 回連続で閾値を超えた時点で確定し、
+        最初に閾値を超えた時刻を返す（単発の白フラッシュを除外するため）。
         検出時刻は ko_times に記録され、勝利演出中の health 誤読の除去に使う。
         """
+        if self._detect_ko_edge(frame):
+            self._ko_color_streak = 0
+            self._ko_color_first = None
+            return self._register_ko_time(timestamp)
+
+        if self._ko_color_masks and self._ko_color_search is not None:
+            score = self._ko_color_score(frame)
+            if score >= self.params.ko_color_mask.threshold:
+                if self._ko_color_streak == 0:
+                    self._ko_color_first = timestamp
+                self._ko_color_streak += 1
+                if self._ko_color_streak >= self.params.ko_color_mask.min_consecutive:
+                    first = self._ko_color_first if self._ko_color_first is not None else timestamp
+                    self._ko_color_streak = 0
+                    self._ko_color_first = None
+                    logger.debug("[Gauge] K.O. color mask matched at %.2fs (IoU %.3f)", first, score)
+                    return self._register_ko_time(first)
+            else:
+                self._ko_color_streak = 0
+                self._ko_color_first = None
+
+        return None
+
+    def _detect_ko_edge(self, frame: np.ndarray) -> bool:
+        """エッジテンプレートによる K.O. 検出（ADR-059）"""
         if not self._ko_banner_prepared:
             return False
 
@@ -758,18 +918,46 @@ class GaugeAnalyzer:
             if score < prepared["threshold"]:
                 continue
 
-            # 近接フレームの多重検出を抑制（K.O. は約2秒表示される）
-            if self.ko_times and timestamp - self.ko_times[-1] < 3.0:
-                return False
-            logger.debug(
-                "[Gauge] K.O. banner '%s' matched at %.2fs (score %.3f)",
-                prepared["name"],
-                timestamp,
-                score,
-            )
+            logger.debug("[Gauge] K.O. banner '%s' matched (score %.3f)", prepared["name"], score)
             return True
 
         return False
+
+    def _register_ko_time(self, timestamp: float) -> float | None:
+        """近接する多重検出を抑制して K.O. 時刻を確定する
+
+        K.O. 文字は約2秒表示されるため、直近3秒以内の再検出は無視する。
+        """
+        if self.ko_times and timestamp - self.ko_times[-1] < 3.0:
+            return None
+        return timestamp
+
+    @staticmethod
+    def _white_mask(image: np.ndarray, params: KoColorMaskParams) -> np.ndarray:
+        """明るく低彩度な画素（白/銀の K.O. 文字）を二値マスク化する（ADR-063）"""
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        saturation = hsv[:, :, 1].astype(np.int16)
+        value = hsv[:, :, 2].astype(np.int16)
+        return ((saturation < params.s_max) & (value > params.v_min)).astype(np.uint8)
+
+    def _ko_color_score(self, frame: np.ndarray) -> float:
+        """K.O. 文字の白/銀マスクと検索領域のマスクの最大 IoU を返す（ADR-063）"""
+        if self._ko_color_search is None:
+            return 0.0
+        region = self._crop(frame, self._ko_color_search)
+        if region.size == 0:
+            return 0.0
+        mask = self._white_mask(region, self.params.ko_color_mask)
+        total = int(mask.sum())
+        if total == 0:
+            return 0.0
+        best = 0.0
+        for template in self._ko_color_masks:
+            inter = int(np.logical_and(mask, template).sum())
+            union = total + int(template.sum()) - inter
+            if union > 0:
+                best = max(best, inter / union)
+        return best
 
     def _measure_drive(self, frame: np.ndarray, side: str) -> float | None:
         """ドライブゲージの黄緑（通常ゲージ）の充填量を本数で返す
@@ -871,11 +1059,50 @@ class GaugeAnalyzer:
 
         return stock, best_label, best_score, progress, critical_art
 
-    def _measure_health(self, frame: np.ndarray, side: str) -> float | None:
-        """体力ゲージ（現在体力のみ）を％で計測する（ADR-050）
+    def _current_health_mask(
+        self, hue: np.ndarray, sat: np.ndarray, val: np.ndarray, side: str, include_poison: bool = True
+    ) -> np.ndarray:
+        """現在体力とみなす画素マスク（プレイヤー色 + 低体力の明るい黄色 + 毒の紫, ADR-061/062）
 
-        各列を「現在体力の色（1P: マゼンタ〜赤 / 2P: 青）」で判定し、
-        その列数 ÷ バー幅 を体力％とする。回復可能（黄〜白）と空きトラックは数えない。
+        - 通常時: 1P マゼンタ〜赤 / 2P 青
+        - 低体力時（概ね 25% 以下）: 現在体力バーが明るい黄色に変わるため、
+          `health_low_hue_ranges` かつ明度 `health_low_v_min` 以上を現在体力に含める。
+          コンボダメージ／回復可能表示の「暗い黄色」は明度が低く、ここでは含めない。
+        - A.K.I. の毒状態: 現在体力バーが紫（H≈139）に変わるため、
+          `health_poison_hue_ranges` を現在体力に含める（ADR-062）。毒は画面演出の紫とも
+          色相が重なるため、採用は A.K.I. を含む試合に限定する（include_poison）。
+        """
+        thresholds = self.params.thresholds
+        mask = (val > thresholds.health_filled_v) & (sat > thresholds.health_filled_s)
+        hue_mask = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in self.params.health_hue_ranges.get(side, []):
+            hue_mask |= (hue >= h_min) & (hue <= h_max)
+        mask &= hue_mask
+
+        low_mask = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in self.params.health_low_hue_ranges.get(side, []):
+            low_mask |= (hue >= h_min) & (hue <= h_max)
+        low = low_mask & (val >= thresholds.health_low_v_min) & (sat > thresholds.health_filled_s)
+
+        if not include_poison:
+            return mask | low
+
+        poison_mask = np.zeros(hue.shape, dtype=bool)
+        for h_min, h_max in self.params.health_poison_hue_ranges.get(side, []):
+            poison_mask |= (hue >= h_min) & (hue <= h_max)
+        poison = poison_mask & (val > thresholds.health_filled_v) & (sat > thresholds.health_filled_s)
+
+        return mask | low | poison
+
+    def _measure_health(self, frame: np.ndarray, side: str, include_poison: bool = True) -> float | None:
+        """体力ゲージ（現在体力のみ）を％で計測する（ADR-050 / ADR-061 / ADR-062）
+
+        各列を「現在体力の色（1P: マゼンタ〜赤 / 2P: 青 / 低体力時: 明るい黄色 / 毒時: 紫）」で判定し、
+        その列数 ÷ バー幅 を体力％とする。暗い黄（コンボダメージ／回復可能）と
+        空きトラックは数えない。
+
+        Args:
+            include_poison: 毒の紫を現在体力に含めるか（A.K.I. を含む試合でのみ True）
 
         Returns:
             0〜100（小数1桁）。計測できない場合は None
@@ -890,12 +1117,7 @@ class GaugeAnalyzer:
         sat = hsv[:, :, 1].astype(np.int16)
         val = hsv[:, :, 2].astype(np.int16)
 
-        current = val > thresholds.health_filled_v
-        current &= sat > thresholds.health_filled_s
-        hue_mask = np.zeros(hue.shape, dtype=bool)
-        for h_min, h_max in self.params.health_hue_ranges.get(side, []):
-            hue_mask |= (hue >= h_min) & (hue <= h_max)
-        current &= hue_mask
+        current = self._current_health_mask(hue, sat, val, side, include_poison=include_poison)
 
         width = float(hsv.shape[1])
         filled_fraction = float((current.mean(axis=0) >= thresholds.health_column_fill_ratio).sum()) / width
@@ -914,6 +1136,10 @@ class GaugeAnalyzer:
         バーは画面中央側を基準に減るため、**現在体力に隣接する外側の帯**だけを
         回復可能分として数える。空きトラックは半透明でステージが透けて見えるため、
         ROI 内の回復可能色を単純に数えると背景を誤検出する。
+
+        注: この色域は低体力時に現在体力が変わる明るい黄色も含む（ADR-061 参照）。
+        現行の WALK は連続性を前提にしており、明るい黄を除外するとコンボゲージを
+        取り落とすため、ADR-061 では本系列の判定は変更しない。
 
         Returns:
             0〜100（小数1桁）。計測できない場合は None
@@ -1047,6 +1273,14 @@ class GaugeAnalyzer:
             # 「回復可能分では説明できない増加」に化けるため、ここで除去する（ADR-054）
             health_filled = _suppress_transient_reverts(health_filled, timestamps, thresholds.health_despike_revert_sec)
 
+            # 毒込みの体力（ADR-062）: A.K.I. を含む試合でのみ採用する。同じ平滑化をかける
+            health_poison_values = [states[i].health_poison_raw if hud[i] else None for i in range(len(states))]
+            health_poison_smoothed = _median_filter(health_poison_values, thresholds.health_smoothing_window)
+            health_poison_filled = _fill_short_gaps(health_poison_smoothed, timestamps, thresholds.health_max_gap_sec)
+            health_poison_filled = _suppress_transient_reverts(
+                health_poison_filled, timestamps, thresholds.health_despike_revert_sec
+            )
+
             # 回復可能ダメージ（ADR-054）: メディアン平滑化 → 短い欠損補完
             recoverable_values = [states[i].health_recoverable_raw if hud[i] else None for i in range(len(states))]
             recoverable_smoothed = _median_filter(recoverable_values, thresholds.health_smoothing_window)
@@ -1064,6 +1298,7 @@ class GaugeAnalyzer:
                     state.sa_stock = int(round(sa_filled[index]))
                 state.sa_progress = progress_filled[index]
                 state.health = health_filled[index] if hud_extended[index] else None
+                state.health_poison = health_poison_filled[index] if hud_extended[index] else None
                 state.health_recoverable = recoverable_filled[index] if hud_extended[index] else None
 
         self._derived = True
@@ -1092,17 +1327,34 @@ class GaugeAnalyzer:
         )
 
         characters = characters or {}
+        # ADR-062: A.K.I. を含む試合でのみ毒の紫を現在体力として採用する
+        poison = any(_is_poison_character(name) for name in characters.values())
         rounds: list[dict[str, Any]] = []
         for window in windows:
+            player1 = self._side_round_payload(window, "player1", characters.get("player1"), poison)
+            player2 = self._side_round_payload(window, "player2", characters.get("player2"), poison)
+            # ADR-063: ラウンドの実効終了は HUD が見えている最後の時刻（K.O. で打ち切り）とする。
+            # 従来は次ラウンド開始バナーまでを roundEndTime としていたため、勝利演出・待ち受けが
+            # ゲージ詳細の表示区間に含まれていた。境界そのものは boundaryEndTime に残す
+            visible_ends = [
+                float(payload["visibleTo"])
+                for payload in (player1, player2)
+                if payload.get("visibleTo") is not None
+            ]
+            if visible_ends:
+                effective_end = min(window.end_time, window.start_time + max(visible_ends))
+            else:
+                effective_end = window.end_time
             rounds.append(
                 {
                     "round": window.index,
                     "roundStartTime": round(window.start_time, 2),
-                    "roundEndTime": round(window.end_time, 2),
+                    "roundEndTime": round(effective_end, 2),
+                    "boundaryEndTime": round(window.end_time, 2),
                     "endReason": window.end_reason,
                     "bannerDetected": window.banner_detected,
-                    "player1": self._side_round_payload(window, "player1", characters.get("player1")),
-                    "player2": self._side_round_payload(window, "player2", characters.get("player2")),
+                    "player1": player1,
+                    "player2": player2,
                 }
             )
 
@@ -1211,12 +1463,19 @@ class GaugeAnalyzer:
         stock = [sample.states[side].sa_stock for sample in samples if sample.states[side].sa_stock is not None]
         return any(current < previous for previous, current in zip(stock, stock[1:], strict=False))
 
-    def _side_round_payload(self, window: RoundWindow, side: str, character: str | None = None) -> dict[str, Any]:
-        """ラウンド内の片側の変化点列を作る（時刻はラウンド開始からの相対秒）"""
+    def _side_round_payload(
+        self, window: RoundWindow, side: str, character: str | None = None, poison: bool = False
+    ) -> dict[str, Any]:
+        """ラウンド内の片側の変化点列を作る（時刻はラウンド開始からの相対秒）
+
+        Args:
+            poison: A.K.I. を含む試合なら True。毒の紫を含めた体力系列（ADR-062）を使う
+        """
         base = window.start_time
         samples = self._round_samples(window)
         valid_samples = sum(1 for sample in samples if sample.states[side].drive is not None)
         coverage = round(valid_samples / len(samples), 3) if samples else 0.0
+        health_attr = "health_poison" if poison else "health"
 
         drive_events: list[list[float]] = []
         sa_events: list[list[float]] = []
@@ -1272,15 +1531,16 @@ class GaugeAnalyzer:
             # ラウンド開始直後のバー伸長演出を除外し、増加は「回復可能分の減少」で
             # 説明できる分だけ許可する（ADR-054）。説明できない増加は計測ノイズとして前値を保持する
             recoverable = state.health_recoverable
-            if state.health is not None:
+            health_value = getattr(state, health_attr)
+            if health_value is not None:
                 health_valid_samples += 1
                 if not health_started:
-                    if rel >= thresholds.health_warmup_sec or state.health >= thresholds.health_start_min_percent:
+                    if rel >= thresholds.health_warmup_sec or health_value >= thresholds.health_start_min_percent:
                         health_started = True
                     else:
                         previous_recoverable = recoverable
                         continue
-                value = state.health
+                value = health_value
                 if previous_health is not None and not heal_allowed:
                     elapsed = max(1e-6, rel - previous_health_rel)
                     # 上限1: 現行のレート上限（5%/s）

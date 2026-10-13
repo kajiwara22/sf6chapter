@@ -13,6 +13,7 @@ from src.detection.gauge import (
     GaugeSample,
     SideGaugeState,
     _fill_short_gaps,
+    _is_poison_character,
     _median_filter,
     _merge_periods,
     _series_stats,
@@ -150,6 +151,71 @@ class TestRoundBannerDetection:
         frame = make_frame()
         analyzer._prepare_geometry(frame)
         assert analyzer._detect_round_banner(frame, 50.0) is False
+
+
+class TestKoColorMaskDetection:
+    """K.O. 文字の白/銀マスク照合（ADR-063）"""
+
+    def _prepare(self) -> tuple[GaugeAnalyzer, np.ndarray]:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        frame = make_frame()
+        analyzer._prepare_geometry(frame)
+        # エッジテンプレート経路を無効化し、色マスク経路だけを検証する
+        analyzer._ko_banner_prepared = []
+        return analyzer, frame
+
+    @staticmethod
+    def _paste_ko(frame: np.ndarray) -> None:
+        template = cv2.imread(str(APP_ROOT / "template/gauge/ko_banner.png"))
+        assert template is not None
+        frame[360 : 360 + template.shape[0], 640 : 640 + template.shape[1]] = template
+
+    def test_config_enables_color_mask(self):
+        params = make_params()
+        assert params.ko_color_mask.enabled is True
+        assert params.ko_color_mask.min_consecutive >= 2
+
+    def test_validate_rejects_bad_threshold(self):
+        params = make_params()
+        params.ko_color_mask.threshold = 0.0
+        with pytest.raises(ValueError):
+            params._validate()
+
+    def test_color_score_high_for_ko_frame(self):
+        analyzer, frame = self._prepare()
+        self._paste_ko(frame)
+        assert analyzer._ko_color_score(frame) >= 0.9
+
+    def test_color_score_zero_for_empty_frame(self):
+        analyzer, frame = self._prepare()
+        assert analyzer._ko_color_score(frame) == 0.0
+
+    def test_requires_consecutive_detections(self):
+        analyzer, frame = self._prepare()
+        self._paste_ko(frame)
+        # 1回目は確定しない
+        assert analyzer._detect_ko(frame, 10.0) is None
+        # 2回連続で、最初に閾値を超えた時刻を返す
+        assert analyzer._detect_ko(frame, 10.25) == 10.0
+
+    def test_streak_resets_on_miss(self):
+        analyzer, frame = self._prepare()
+        self._paste_ko(frame)
+        assert analyzer._detect_ko(frame, 10.0) is None
+        assert analyzer._detect_ko(make_frame(), 10.25) is None
+        # リセット後は再び2回連続が必要
+        assert analyzer._detect_ko(frame, 10.5) is None
+        assert analyzer._detect_ko(frame, 10.75) == 10.5
+
+    def test_edge_template_detects_immediately(self):
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        frame = make_frame()
+        analyzer._prepare_geometry(frame)
+        self._paste_ko(frame)
+        assert analyzer._detect_ko(frame, 20.0) == 20.0
+        # 直近3秒以内の多重検出は抑制する
+        analyzer.ko_times.append(20.0)
+        assert analyzer._detect_ko(frame, 20.5) is None
 
 
 class TestFilters:
@@ -529,7 +595,12 @@ class TestHudFlickerTolerance:
 # ADR-050: 体力ゲージ
 MAGENTA_BGR = (200, 30, 200)  # P1 の現在体力色（H≈150 のマゼンタ）
 BLUE_BGR = (200, 100, 30)  # P2 の現在体力色（H≈105 の青）
-YELLOW_BGR = (0, 220, 220)  # 回復可能ダメージ（黄）
+# ADR-061: 低体力（概ね25%以下）の現在体力は「明るい黄色」で描画される
+BRIGHT_YELLOW_BGR = (98, 231, 249)  # H≈26 S≈155 V≈249
+# コンボダメージ／回復可能ダメージは「暗い黄〜オリーブ」で描画される
+DARK_YELLOW_BGR = (35, 118, 133)  # H≈25 S≈189 V≈133
+# ADR-062: A.K.I. の毒状態では現在体力バーが紫に変わる
+POISON_PURPLE_BGR = (176, 82, 146)  # H≈140 S≈136 V≈176
 
 
 class TestHealthMeasurement:
@@ -564,29 +635,86 @@ class TestHealthMeasurement:
         # P1 の色域はマゼンタ〜赤なので、青は P1 では計測されない
         assert analyzer._measure_health(frame, "player1") is None
 
-    def test_recoverable_yellow_is_not_counted(self):
-        # ADR-050 決定1: 回復可能（黄）は現在体力に含めない
+    def test_dark_yellow_is_not_counted(self):
+        # ADR-050 決定1 / ADR-061: 暗い黄（コンボ／回復可能）は現在体力に含めない
         frame = make_frame()
         analyzer = self._analyzer(frame)
         x1, y1, x2, y2 = make_params().health_roi["player1"]
-        frame[y1:y2, x1:x2] = YELLOW_BGR
+        frame[y1:y2, x1:x2] = DARK_YELLOW_BGR
         assert analyzer._measure_health(frame, "player1") is None
 
-    def test_recoverable_yellow_is_measured_separately(self):
-        # ADR-054: 回復可能ダメージ（黄）を別系列として計測する
+    def test_low_health_bright_yellow_is_current_health(self):
+        # ADR-061: 低体力時（概ね25%以下）はバーが明るい黄色に変わるため現在体力として計測する
         frame = make_frame()
         analyzer = self._analyzer(frame)
         x1, y1, x2, y2 = make_params().health_roi["player1"]
-        frame[y1:y2, x1:x2] = YELLOW_BGR
+        frame[y1:y2, x1:x2] = BRIGHT_YELLOW_BGR
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(100.0, abs=0.5)
+
+    def test_half_low_health_bright_yellow_is_50_percent(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        middle = (x1 + x2) // 2
+        frame[y1:y2, middle:x2] = BRIGHT_YELLOW_BGR
+        scale = make_params().health_fill_scale["player1"]
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(50.0 * scale, abs=1.0)
+
+    def test_poison_purple_is_current_health(self):
+        # ADR-062: A.K.I. の毒でバーが紫に変わっても現在体力として計測する
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        for side, roi_key in (("player1", "player1"), ("player2", "player2")):
+            x1, y1, x2, y2 = make_params().health_roi[roi_key]
+            frame[y1:y2, x1:x2] = POISON_PURPLE_BGR
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(100.0, abs=0.5)
+        assert analyzer._measure_health(frame, "player2") == pytest.approx(100.0, abs=0.5)
+
+    def test_half_poison_purple_is_50_percent(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        middle = (x1 + x2) // 2
+        frame[y1:y2, middle:x2] = POISON_PURPLE_BGR
+        scale = make_params().health_fill_scale["player1"]
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(50.0 * scale, abs=1.0)
+
+    def test_poison_purple_is_excluded_when_not_poison_match(self):
+        # ADR-062: A.K.I. を含まない試合では毒の紫を現在体力に含めない
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = POISON_PURPLE_BGR
+        assert analyzer._measure_health(frame, "player1", include_poison=False) is None
+
+    def test_recoverable_yellow_is_measured_separately(self):
+        # ADR-054 / ADR-061: 暗い黄（コンボ／回復可能）を別系列として計測する
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = DARK_YELLOW_BGR
         assert analyzer._measure_health_recoverable(frame, "player1") == pytest.approx(100.0, abs=0.5)
+        # 暗い黄は現在体力には含まれない
+        assert analyzer._measure_health(frame, "player1") is None
+
+    def test_bright_low_health_yellow_is_recoverable_side(self):
+        # ADR-061: `healthRecoverable`（ADR-054/058）の判定は今回変更しない。
+        # 低体力の明るい黄もこの色域に含まれるため、別系列として引き続き計測される。
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().health_roi["player1"]
+        frame[y1:y2, x1:x2] = BRIGHT_YELLOW_BGR
+        assert analyzer._measure_health_recoverable(frame, "player1") == pytest.approx(100.0, abs=0.5)
+        # 現在体力としても計測される（ADR-061）
+        assert analyzer._measure_health(frame, "player1") == pytest.approx(100.0, abs=0.5)
 
     def test_half_recoverable_is_50_percent(self):
         frame = make_frame()
         analyzer = self._analyzer(frame)
         x1, y1, x2, y2 = make_params().health_roi["player1"]
-        # 外側（左）半分を回復可能（黄）、内側（右）半分を現在体力（マゼンタ）にする
+        # 外側（左）半分を回復可能（暗い黄）、内側（右）半分を現在体力（マゼンタ）にする
         middle = (x1 + x2) // 2
-        frame[y1:y2, x1:middle] = YELLOW_BGR
+        frame[y1:y2, x1:middle] = DARK_YELLOW_BGR
         frame[y1:y2, middle:x2] = MAGENTA_BGR
         assert analyzer._measure_health_recoverable(frame, "player1") == pytest.approx(50.0, abs=1.5)
         scale = make_params().health_fill_scale["player1"]
@@ -603,6 +731,16 @@ class TestHealthMeasurement:
         frame = make_frame()
         analyzer = self._analyzer(frame)
         assert analyzer._measure_health(frame, "player1") is None
+
+
+class TestPoisonCharacter:
+    def test_is_poison_character(self):
+        assert _is_poison_character("A.K.I.")
+        assert _is_poison_character("AKI")
+        assert _is_poison_character("aki")
+        assert not _is_poison_character("JP")
+        assert not _is_poison_character(None)
+        assert not _is_poison_character("")
 
 
 class TestHealthDerivation:

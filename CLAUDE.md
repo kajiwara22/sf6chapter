@@ -119,6 +119,10 @@ sf6-chapter/
 - [x] ラウンド終端のHUD途切れ検出によるdurationSecの正確化（ADR-057） - 実装完了・DSgD_bQhxp0/f36vyEepil4 で検証（99秒超0件）
 - [x] 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加（ADR-058） - 実装完了。真の白ゲージ（回復可能ダメージ）検出は将来課題
 - [x] K.O.バナー検出による勝利演出中のhealth誤読の除去（ADR-059） - 実装完了（_38 R3 が 5.1%→94.0% に修正）。テンプレートの背景汎化は継続課題
+- [x] ゲージ詳細ページのサイド表示切り替え（ADR-060） - 実装完了（Web 実データでの描画確認のみ未実施）
+- [x] 低体力（25%以下）の黄色い体力ゲージの現在体力としての計測（ADR-061） - 実装完了・手元4本を再処理して R2 反映済み
+- [x] A.K.I. の毒状態で紫になる体力ゲージの現在体力としての計測（ADR-062） - 実装完了・rNhYCktBpPM を再処理して R2 反映済み
+- [x] K.O.文字の白/銀マスク照合による背景非依存のK.O.検出（ADR-063） - 実装完了・rNhYCktBpPM を再処理して R2 反映済み（koTimes 9→46件、ラウンド数不一致 0件）
 
 ## 次のタスク
 
@@ -134,6 +138,7 @@ sf6-chapter/
 ### 中優先度
 3. **ADR-048〜052 の実運用**: R2 への反映は完了（手元3本）。残りは独立ページ `/matches/{matchId}`（試合サマリ・3ゲージ・ラウンド集計）の実データ描画確認
    - ADR-052 のラウンド検出修正で手元 3 本（`DSgD_bQhxp0` / `JzKWGcwFt2w` / `Ndwu08Q--_M`）を再処理済み。`Ndwu08Q--_M_962` は検出 1 ラウンド / Battlelog 2 ラウンドの不一致が残る
+   - ADR-060 のサイド表示切り替え（両方 / 自分 / 相手）も Web 実データでの動作確認が未実施
 4. **本番環境の動作確認**: デプロイ済みアプリケーションの総合テスト
 5. **継続的な運用**: Cloud Schedulerによる定期実行とローカルPC処理の安定稼働
 6. **検出精度の継続的改善**: 他の動画での検証とパラメータの微調整
@@ -358,6 +363,10 @@ docker compose up -d
 - [057: ラウンド終端のHUD途切れ検出によるdurationSecの正確化](docs/adr/057-round-end-hud-gap-detection.md)
 - [058: 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加](docs/adr/058-combo-damage-yellow-gauge-peak.md)
 - [059: K.O.バナー検出による勝利演出中のhealth誤読の除去](docs/adr/059-ko-banner-detection.md)
+- [060: ゲージ詳細ページのサイド表示切り替え（片側のみ表示）](docs/adr/060-gauge-side-visibility-toggle.md)
+- [061: 低体力（25%以下）の黄色い体力ゲージを現在体力として計測](docs/adr/061-low-health-yellow-gauge-as-current-health.md)
+- [062: A.K.I. の毒状態で紫になる体力ゲージを現在体力として計測](docs/adr/062-poison-purple-health-gauge.md)
+- [063: K.O.文字の白/銀マスク照合による背景非依存のK.O.検出](docs/adr/063-ko-banner-white-mask-detection.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

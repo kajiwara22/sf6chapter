@@ -65,6 +65,10 @@
 | [057](./057-round-end-hud-gap-detection.md) | ラウンド終端のHUD途切れ検出によるdurationSecの正確化 | 採用 | 2026-10-12 |
 | [058](./058-combo-damage-yellow-gauge-peak.md) | 薄い黄色ゲージ（コンボダメージ表示）のピーク検出による maxComboDamage の追加 | 採用 | 2026-10-12 |
 | [059](./059-ko-banner-detection.md) | K.O.バナー検出による勝利演出中のhealth誤読の除去 | 採用 | 2026-10-12 |
+| [060](./060-gauge-side-visibility-toggle.md) | ゲージ詳細ページのサイド表示切り替え（片側のみ表示） | 採用 | 2026-10-12 |
+| [061](./061-low-health-yellow-gauge-as-current-health.md) | 低体力（25%以下）の黄色い体力ゲージを現在体力として計測 | 採用 | 2026-10-13 |
+| [062](./062-poison-purple-health-gauge.md) | A.K.I. の毒状態で紫になる体力ゲージを現在体力として計測 | 採用 | 2026-10-13 |
+| [063](./063-ko-banner-white-mask-detection.md) | K.O.文字の白/銀マスク照合による背景非依存のK.O.検出 | 採用 | 2026-10-13 |
 
 ## ADRのフォーマット
 

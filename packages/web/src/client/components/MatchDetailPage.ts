@@ -9,11 +9,14 @@ import type { CharacterHealthTable, GaugeData, Match, MatchBattlelogSides, Round
 import {
   buildGaugeNoticeHtml,
   buildGaugeRoundsHtml,
+  buildGaugeSideFilterHtml,
   buildRoundStatsTableHtml,
+  GAUGE_SIDE_FILTER_STORAGE_KEY,
   resolveSideCharacters,
   type GaugeChartContext,
   type GaugeSide,
   type GaugeSideLabels,
+  type GaugeVisibleSide,
 } from './RoundGaugeChart';
 import { createYouTubeLink, formatDate, formatTime } from './ResultsGrid';
 import { MY_PLAYER_ID } from '../search';
@@ -178,6 +181,7 @@ export function buildMatchDetailPageHtml(match: Match, data: MatchDetailPageData
       ${createHeaderHtml(match, data)}
       ${buildGaugeNoticeHtml(data.gauges)}
       ${coverageNotice}
+      ${buildGaugeSideFilterHtml(data.labels)}
       <div class="gg-rounds">${buildGaugeRoundsHtml(match.videoId, data.gauges, data.labels, context)}</div>
       ${buildRoundStatsTableHtml(match.videoId, data.roundStats, data.labels, data.characterHealth ?? null)}
     </div>
@@ -187,7 +191,53 @@ export function buildMatchDetailPageHtml(match: Match, data: MatchDetailPageData
 function render(html: string): void {
   const container = enterMatchDetailPageMode();
   container.innerHTML = html;
+  setupGaugeSideFilter(container);
   window.scrollTo({ top: 0 });
+}
+
+/**
+ * サイド表示フィルター（両方 / 自分 / 相手）を初期化する（ADR-060）
+ *
+ * 選択状態は `data-visible-side` としてコンテナに付与し、CSS で片側を非表示にする。
+ * 前回の選択は localStorage に保存し、次回表示時に復元する。
+ */
+export function setupGaugeSideFilter(root: Document | HTMLElement = document): void {
+  const inner = root.querySelector<HTMLElement>('.match-detail-inner');
+  if (!inner) return;
+
+  const buttons = Array.from(inner.querySelectorAll<HTMLButtonElement>('.gg-side-filter-btn'));
+  if (buttons.length === 0) return;
+
+  const apply = (side: GaugeVisibleSide): void => {
+    inner.dataset.visibleSide = side;
+    for (const button of buttons) {
+      const active = button.dataset.side === side;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  };
+
+  let initial: GaugeVisibleSide = 'both';
+  try {
+    const stored = window.localStorage.getItem(GAUGE_SIDE_FILTER_STORAGE_KEY);
+    if (stored === 'both' || stored === 'player1' || stored === 'player2') initial = stored;
+  } catch {
+    // localStorage が使えない環境では既定値（両方）のまま
+  }
+  apply(initial);
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const side = button.dataset.side;
+      if (side !== 'both' && side !== 'player1' && side !== 'player2') return;
+      apply(side);
+      try {
+        window.localStorage.setItem(GAUGE_SIDE_FILTER_STORAGE_KEY, side);
+      } catch {
+        // 保存できなくても表示切り替え自体は機能する
+      }
+    });
+  }
 }
 
 /** 読み込み中の表示 */

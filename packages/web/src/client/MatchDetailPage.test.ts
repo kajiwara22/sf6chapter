@@ -129,4 +129,18 @@ describe('buildMatchDetailPageHtml', () => {
 
     expect(html).toContain('計測率が低いラウンドがあります');
   });
+
+  it('サイド表示フィルター（両方 / 自分 / 相手）を含む（ADR-060）', () => {
+    const html = buildMatchDetailPageHtml(match, {
+      gauges: { videoId: 'vid', matchId: 'vid_20', rounds: [] },
+      roundStats,
+      labels,
+      battlelog: null,
+    });
+
+    expect(html).toContain('gg-side-filter');
+    expect(html).toContain('data-side="both"');
+    expect(html).toContain('自分のみ');
+    expect(html).toContain('相手のみ');
+  });
 });

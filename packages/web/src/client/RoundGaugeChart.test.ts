@@ -3,6 +3,7 @@ import {
   buildDriveSvg,
   buildGaugeNoticeHtml,
   buildGaugeRoundsHtml,
+  buildGaugeSideFilterHtml,
   buildHealthPath,
   buildHealthSvg,
   buildRoundGaugeHtml,
@@ -189,6 +190,25 @@ describe('sideText', () => {
     expect(sideText('opponent', 'player2')).toBe('相手');
     expect(sideText(null, 'player1')).toBe('1P');
     expect(sideText(null, 'player2')).toBe('2P');
+  });
+});
+
+describe('buildGaugeSideFilterHtml（ADR-060）', () => {
+  it('自分/相手の片側表示ボタンを出す', () => {
+    const html = buildGaugeSideFilterHtml(selfP1Labels);
+    expect(html).toContain('gg-side-filter');
+    expect(html).toContain('data-side="both"');
+    expect(html).toContain('data-side="player1"');
+    expect(html).toContain('data-side="player2"');
+    expect(html).toContain('両方');
+    expect(html).toContain('自分のみ');
+    expect(html).toContain('相手のみ');
+  });
+
+  it('サイド未判定なら 1P/2P 表記にする', () => {
+    const html = buildGaugeSideFilterHtml(plainLabels);
+    expect(html).toContain('1Pのみ');
+    expect(html).toContain('2Pのみ');
   });
 });
 

@@ -371,6 +371,46 @@ export function sideText(label: GaugeSideLabel, side: GaugeSide): string {
   return side === 'player1' ? '1P' : '2P';
 }
 
+/**
+ * ゲージ詳細ページで表示するサイド（ADR-060）
+ *
+ * `both` は両サイド、`player1` / `player2` は片側のみを表示する。
+ */
+export type GaugeVisibleSide = 'both' | GaugeSide;
+
+/** 選択中のサイドを保存する localStorage キー（ADR-060） */
+export const GAUGE_SIDE_FILTER_STORAGE_KEY = 'sf6-chapter:gauge-visible-side';
+
+/** サイド表示フィルターの選択肢（表示順） */
+export const GAUGE_SIDE_FILTER_OPTIONS: GaugeVisibleSide[] = ['both', 'player1', 'player2'];
+
+/**
+ * サイド表示フィルター（両方 / 自分 / 相手）の HTML を生成する（ADR-060）
+ *
+ * 線が重なって見づらいときに片側だけ表示するためのトグル。
+ * グラフ自体は両サイド分を描画したまま CSS（`data-visible-side`）で片側を隠すため、
+ * 切り替え時に再描画は不要。
+ */
+export function buildGaugeSideFilterHtml(labels: GaugeSideLabels): string {
+  const optionLabel = (side: GaugeVisibleSide): string => {
+    if (side === 'both') return '両方';
+    return `${sideText(labels[side], side)}のみ`;
+  };
+
+  const buttons = GAUGE_SIDE_FILTER_OPTIONS.map(
+    (side) =>
+      `<button type="button" class="gg-side-filter-btn" data-side="${side}" aria-pressed="false">${escapeHtml(optionLabel(side))}</button>`,
+  ).join('');
+
+  return `
+    <div class="gg-side-filter" role="group" aria-label="表示するサイド">
+      <span class="gg-side-filter-label">表示</span>
+      ${buttons}
+      <span class="gg-side-filter-hint">片方だけ表示すると線が重ならず見やすくなります</span>
+    </div>
+  `;
+}
+
 /** ゲージチャートの表示コンテキスト（ADR-050） */
 export interface GaugeChartContext {
   /** キャラクター別最大体力表（未取得時は null）。実 HP の計算に使う */
@@ -569,8 +609,8 @@ export function buildRoundGaugeHtml(
 
   const legend = `
     <div class="gg-legend">
-      <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player1"></span>${escapeHtml(sideText(labels.player1, 'player1'))}</span>
-      <span class="gg-legend-item"><span class="gg-legend-swatch gg-legend-swatch-player2"></span>${escapeHtml(sideText(labels.player2, 'player2'))}</span>
+      <span class="gg-legend-item gg-legend-item-player1"><span class="gg-legend-swatch gg-legend-swatch-player1"></span>${escapeHtml(sideText(labels.player1, 'player1'))}</span>
+      <span class="gg-legend-item gg-legend-item-player2"><span class="gg-legend-swatch gg-legend-swatch-player2"></span>${escapeHtml(sideText(labels.player2, 'player2'))}</span>
       <span class="gg-legend-note">帯: バーンアウト / マーカー: CA / 体力: 太線 / 縦線: コンボ</span>
     </div>
   `;
