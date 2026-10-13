@@ -379,19 +379,18 @@ export function convertJstDateToUtc(dateStr: string, isEndOfDay: boolean): strin
   // JST 23:59:59 → UTC 当日14:59:59
   const [year, month, day] = dateStr.split('-').map(Number);
 
-  if (isEndOfDay) {
-    // JST 23:59:59 → UTC 当日14:59:59
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T14:59:59Z`;
-  } else {
-    // JST 00:00:00 → UTC 前日15:00:00
-    const jstDate = new Date(year, month - 1, day, 0, 0, 0);
-    // JSTから9時間引いてUTCに変換
-    const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
-    const utcYear = utcDate.getUTCFullYear();
-    const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
-    const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
-    return `${utcYear}-${utcMonth}-${utcDay}T15:00:00Z`;
-  }
+  // ブラウザのローカルタイムゾーンに依存しないよう Date.UTC で組み立てる
+  const jstMs = isEndOfDay
+    ? Date.UTC(year, month - 1, day, 23, 59, 59)
+    : Date.UTC(year, month - 1, day, 0, 0, 0);
+  const utcDate = new Date(jstMs - 9 * 60 * 60 * 1000);
+  const utcYear = utcDate.getUTCFullYear();
+  const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+  const utcDay = String(utcDate.getUTCDate()).padStart(2, '0');
+  const utcHours = String(utcDate.getUTCHours()).padStart(2, '0');
+  const utcMinutes = String(utcDate.getUTCMinutes()).padStart(2, '0');
+  const utcSeconds = String(utcDate.getUTCSeconds()).padStart(2, '0');
+  return `${utcYear}-${utcMonth}-${utcDay}T${utcHours}:${utcMinutes}:${utcSeconds}Z`;
 }
 
 /**
@@ -700,7 +699,10 @@ export function convertJstDateTimeToTimestamp(dateStr: string, isEndOfDay: boole
   }
 
   // JSTからUTCに変換（-9時間）
-  const jstDate = new Date(year, month - 1, day, hours, minutes, seconds);
+  // ブラウザのローカルタイムゾーンに依存しないよう Date.UTC で組み立てる。
+  // ここで new Date(y, m, d, ...) を使うとローカル時刻として解釈され、
+  // UTC 環境以外（例: JST ブラウザ）では 9 時間ずれる。
+  const jstDate = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
   const utcDate = new Date(jstDate.getTime() - 9 * 60 * 60 * 1000);
   const utcYear = utcDate.getUTCFullYear();
   const utcMonth = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
