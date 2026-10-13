@@ -311,9 +311,22 @@ class TestFilters:
 class TestDeriveStates:
     """平滑化・欠損補完・バーンアウト判定の検証"""
 
-    def _analyzer_with_samples(self, states: list[tuple[float, float | None, bool, int | None]]) -> GaugeAnalyzer:
+    def _analyzer_with_samples(
+        self,
+        states: list[tuple[float, float | None, bool, int | None]],
+        recover_raws: list[float | None] | None = None,
+    ) -> GaugeAnalyzer:
+        """サンプル列から GaugeAnalyzer を構築して派生状態を計算する。
+
+        `recover_raws` を省略した場合は「HUD 表示中に黄緑が無い」サンプルで
+        白/グレー回復バーが観測されたものとして扱う（ADR-056 のバーンアウト判定条件）。
+        """
         analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
-        for timestamp, drive_raw, hud_visible, sa_stock in states:
+        for index, (timestamp, drive_raw, hud_visible, sa_stock) in enumerate(states):
+            if recover_raws is None:
+                drive_recover_raw = 0.5 if (hud_visible and drive_raw is None) else None
+            else:
+                drive_recover_raw = recover_raws[index]
             analyzer.samples.append(
                 GaugeSample(
                     timestamp=timestamp,
@@ -321,6 +334,7 @@ class TestDeriveStates:
                         "player1": SideGaugeState(
                             hud_visible=hud_visible,
                             drive_raw=drive_raw,
+                            drive_recover_raw=drive_recover_raw,
                             burnout_candidate=hud_visible and drive_raw is None,
                             sa_stock=sa_stock,
                         ),
@@ -332,7 +346,7 @@ class TestDeriveStates:
         return analyzer
 
     def test_burnout_run_is_detected(self):
-        # 6秒分のサンプル: 前半は通常、後半は HUD 表示中に黄緑なし（バーンアウト）
+        # 6秒分のサンプル: 前半は通常、後半は HUD 表示中に黄緑なし＋回復バーあり（バーンアウト）
         states = [(i * 0.1, 5.0, True, 0) for i in range(20)]
         states += [(2.0 + i * 0.1, None, True, 0) for i in range(20)]
         analyzer = self._analyzer_with_samples(states)
@@ -346,6 +360,16 @@ class TestDeriveStates:
         burnout_samples = [s for s in analyzer.samples if s.timestamp >= 2.0]
         assert all(s.states["player1"].drive == 0.0 for s in burnout_samples)
         assert all(s.states["player1"].drive_burnout for s in burnout_samples)
+
+    def test_drive_gap_without_recover_bar_is_not_burnout(self):
+        # ADR-056: HUD 表示中でも回復バーが観測されない黄緑の欠落はバーンアウトではない
+        # （ラウンド開始直後のゲージ未表示や瞬間的な検出漏れを想定）
+        states = [(i * 0.1, 5.0, True, 0) for i in range(20)]
+        states += [(2.0 + i * 0.1, None, True, 0) for i in range(20)]
+        analyzer = self._analyzer_with_samples(states, recover_raws=[None] * len(states))
+
+        assert analyzer.burnout_periods["player1"] == []
+        assert not any(s.states["player1"].drive_burnout for s in analyzer.samples)
 
     def test_short_burnout_is_ignored(self):
         # 0.3秒だけ黄緑が消える（単発の誤検出）→ バーンアウト扱いしない
