@@ -123,6 +123,7 @@ sf6-chapter/
 - [x] 低体力（25%以下）の黄色い体力ゲージの現在体力としての計測（ADR-061） - 実装完了・手元4本を再処理して R2 反映済み
 - [x] A.K.I. の毒状態で紫になる体力ゲージの現在体力としての計測（ADR-062） - 実装完了・rNhYCktBpPM を再処理して R2 反映済み
 - [x] K.O.文字の白/銀マスク照合による背景非依存のK.O.検出（ADR-063） - 実装完了・rNhYCktBpPM を再処理して R2 反映済み（koTimes 9→46件、ラウンド数不一致 0件）
+- [x] 動画ID指定による本線フローの単発実行（1回走査）（ADR-064） - 実装完了・ovM5BMIsyKw で検証（従来の2回走査とゲージ本体データ一致）
 
 ## 次のタスク
 
@@ -248,6 +249,26 @@ sf6-chapter/
 User: ml-tune スキルを使って、閾値分析用のNotebookを作成してください
 ```
 
+### `/analyze-video` - 動画解析（チャプター生成・ゲージ計測・R2反映）
+
+動画IDを指定して1本の配信を解析するスキル。本線フローの単発処理（1回走査）で、検出＋ゲージ（ADR-048）＋カウンター（ADR-049）→ 認識 → YouTubeチャプター更新 → R2アップロードまでを実行し、検証・報告まで行います。
+
+**実体**: [.agents/skills/analyze-video/SKILL.md](.agents/skills/analyze-video/SKILL.md)（`.claude/skills/analyze-video` はシンボリックリンク）
+
+**主なコマンド**:
+```bash
+cd packages/local
+# 本番同様（Firestore に処理状態を記録）
+ENABLE_R2=true uv run python main.py --video-id <VIDEO_ID>
+# 再実行・検証用（Firestore を参照・更新しない）
+ENABLE_R2=true uv run python main.py --video-id <VIDEO_ID> --no-firestore
+```
+
+**使い方**:
+```
+User: この動画を解析して https://youtube.com/live/<VIDEO_ID>
+```
+
 ## OBS Title Updater
 
 OBSストリーミングイベント連動でYouTube動画タイトルのプレースホルダー`{DateTime}`を自動置き換えするスクリプト。
@@ -367,6 +388,7 @@ docker compose up -d
 - [061: 低体力（25%以下）の黄色い体力ゲージを現在体力として計測](docs/adr/061-low-health-yellow-gauge-as-current-health.md)
 - [062: A.K.I. の毒状態で紫になる体力ゲージを現在体力として計測](docs/adr/062-poison-purple-health-gauge.md)
 - [063: K.O.文字の白/銀マスク照合による背景非依存のK.O.検出](docs/adr/063-ko-banner-white-mask-detection.md)
+- [064: 動画ID指定による本線フローの単発実行（1回走査）](docs/adr/064-single-scan-video-id-entrypoint.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

@@ -184,15 +184,24 @@ R2_BUCKET_NAME=sf6-chapter-data
 ```bash
 cd packages/local
 
-# 常駐モード（Pub/Subストリーミング受信）
+# 動画IDを指定した単発処理（1回走査・推奨）
+# 検出＋ゲージ＋カウンターを1回の走査で計測し、YouTube更新・R2アップロードまで実行
+ENABLE_R2=true uv run python main.py --video-id <VIDEO_ID>
+
+# 再実行・検証用（Firestore を参照・更新しない）
+ENABLE_R2=true uv run python main.py --video-id <VIDEO_ID> --no-firestore
+
+# 常駐モード（Firestoreキューをポーリングして処理）
 uv run python main.py --mode daemon
 
-# ワンショットモード（1回だけPull）
+# ワンショットモード（Firestoreキューを1回取得）
 uv run python main.py --mode once
 
 # テストモード（個別処理）
 uv run python main.py --mode test --test-step all --video-id <VIDEO_ID>
 ```
+
+> `--mode test --test-step all` はテスト用の個別ステップ実行で、ゲージ・カウンターは計測されません（別途 `scripts/analyze_counters.py` などで計測が必要）。通常の動画処理には `--video-id` の単発処理を使ってください。詳細は [packages/local/README.md](packages/local/README.md) を参照。
 
 ### Docker（常駐PC推奨）
 

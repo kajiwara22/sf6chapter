@@ -69,6 +69,7 @@
 | [061](./061-low-health-yellow-gauge-as-current-health.md) | 低体力（25%以下）の黄色い体力ゲージを現在体力として計測 | 採用 | 2026-10-13 |
 | [062](./062-poison-purple-health-gauge.md) | A.K.I. の毒状態で紫になる体力ゲージを現在体力として計測 | 採用 | 2026-10-13 |
 | [063](./063-ko-banner-white-mask-detection.md) | K.O.文字の白/銀マスク照合による背景非依存のK.O.検出 | 採用 | 2026-10-13 |
+| [064](./064-single-scan-video-id-entrypoint.md) | 動画ID指定による本線フローの単発実行（1回走査） | 採用 | 2026-10-14 |
 
 ## ADRのフォーマット
 

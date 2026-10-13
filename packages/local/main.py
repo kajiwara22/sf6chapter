@@ -43,12 +43,14 @@ logger = setup_logger()
 class SF6ChapterProcessor:
     """SF6チャプター処理のメインクラス"""
 
-    def __init__(self, detection_profile: str = "production"):
+    def __init__(self, detection_profile: str = "production", use_firestore: bool = True):
         """
         初期化
 
         Args:
             detection_profile: 検出パラメータのプロファイル名 (production/test/legacy)
+            use_firestore: Firestore による処理状態の参照・更新を行うか。
+                動画IDを直接指定した単発処理（--no-firestore）では False にする
         """
         # アプリケーションルートディレクトリ（ローカル: packages/local/, Docker: /app/）
         self.app_root = Path(__file__).parent
@@ -68,7 +70,9 @@ class SF6ChapterProcessor:
         self.enable_r2 = os.environ.get("ENABLE_R2", "false").lower() in ("true", "1", "yes")
 
         # モジュール初期化
-        self.firestore = FirestoreClient()
+        # use_firestore=False の場合は Firestore に接続しない（認証・ネットワーク不要で再実行できる）
+        self.use_firestore = use_firestore
+        self.firestore = FirestoreClient() if use_firestore else None
         self.downloader = VideoDownloader(download_dir=self.download_dir)
 
         self.matcher = TemplateMatcher(
@@ -472,12 +476,16 @@ class SF6ChapterProcessor:
             total["player2"]["punish"],
         )
 
-    def process_video(self, message_data: dict[str, Any]) -> None:
+    def process_video(self, message_data: dict[str, Any], *, skip_download_if_exists: bool = False) -> None:
         """
         動画処理のメインフロー
 
+        検出と同時にゲージ（ADR-048）・カウンター（ADR-049）を同じデコードループで
+        計測するため、動画の走査は 1 回だけ行われる。
+
         Args:
-            message_data: Pub/Subメッセージデータ
+            message_data: Pub/Subメッセージデータ（videoId / title / publishedAt）
+            skip_download_if_exists: 既にダウンロード済みのファイルがあれば再利用する
         """
         video_id = message_data.get("videoId")
         if not video_id:
@@ -490,19 +498,20 @@ class SF6ChapterProcessor:
         logger.info("=" * 60)
 
         # 0. Firestoreで処理済みかチェック
-        if self.firestore.is_completed(video_id):
+        if self.firestore and self.firestore.is_completed(video_id):
             logger.info("Video already completed, skipping")
             logger.info("=" * 60)
             return
 
-        self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
+        if self.firestore:
+            self.firestore.update_status(video_id, FirestoreClient.STATUS_PROCESSING)
         video_intermediate_dir = self.intermediate_dir / video_id
         video_intermediate_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # 1. 動画ダウンロード
             logger.info("[1/6] Downloading video...")
-            video_path = self.downloader.download(video_id)
+            video_path = self.downloader.download(video_id, skip_if_exists=skip_download_if_exists)
             logger.info("Downloaded: %s", video_path)
 
             # 2-3. 検出・認識
@@ -551,7 +560,8 @@ class SF6ChapterProcessor:
             # 検出直後に保存した detection_summary.json を RESULT 検出情報付きで更新する
             self._save_detection_summary(video_id, video_intermediate_dir, detections, chapters_with_result)
 
-            self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
+            if self.firestore:
+                self.firestore.update_status(video_id, FirestoreClient.STATUS_COMPLETED)
 
             logger.info("")
             logger.info("✅ Successfully processed video: %s", video_id)
@@ -564,7 +574,8 @@ class SF6ChapterProcessor:
                 logger.info("   - Saved locally to ./output/")
 
         except Exception as e:
-            self.firestore.update_status(video_id, FirestoreClient.STATUS_FAILED, error_message=str(e))
+            if self.firestore:
+                self.firestore.update_status(video_id, FirestoreClient.STATUS_FAILED, error_message=str(e))
             logger.error("")
             logger.exception("❌ Error processing video %s", video_id)
 
@@ -1736,6 +1747,42 @@ def test_r2_upload(
     return video_data, matches
 
 
+def run_video_by_id(processor: SF6ChapterProcessor, video_id: str, cookie_path: str | None = None) -> None:
+    """指定した動画IDのみを本線フローで処理する（1回走査）
+
+    Pub/Sub / Firestore のキューを使わずに、検出・認識・ゲージ計測・カウンター計測・
+    YouTubeチャプター更新・R2アップロードを一度に実行する。検出とゲージ（ADR-048）・
+    カウンター（ADR-049）は同じデコードループで計測されるため、動画の走査は 1 回で済む。
+
+    Args:
+        processor: SF6ChapterProcessor インスタンス
+        video_id: YouTube動画ID
+        cookie_path: yt-dlp に渡す cookie ファイル（存在する場合のみ使用）
+    """
+    info = processor.youtube_updater.get_video_info(video_id)
+    logger.info("=" * 60)
+    logger.info("Processing single video: %s", video_id)
+    logger.info("Title: %s", info["title"])
+    logger.info("=" * 60)
+
+    if cookie_path:
+        cookie = Path(cookie_path)
+        if cookie.exists():
+            processor.downloader.cookie_path = str(cookie)
+            logger.info("Using cookie file: %s", cookie)
+        else:
+            logger.warning("Cookie file not found, continuing without it: %s", cookie)
+
+    processor.process_video(
+        {
+            "videoId": video_id,
+            "title": info["title"],
+            "publishedAt": info["publishedAt"],
+        },
+        skip_download_if_exists=True,
+    )
+
+
 def main():
     """エントリーポイント"""
     import argparse
@@ -1758,7 +1805,7 @@ def main():
     )
     parser.add_argument(
         "--video-id",
-        help="YouTube video ID for testing",
+        help="YouTube video ID。テストモードでは対象ステップ、通常モードでは本線フローの単発処理に使う",
     )
     parser.add_argument(
         "--video-path",
@@ -1781,6 +1828,16 @@ def main():
         choices=available_profiles,
         default="production",
         help=f"Detection parameters profile ({'/'.join(available_profiles)})",
+    )
+    parser.add_argument(
+        "--no-firestore",
+        action="store_true",
+        help="Firestore を使わずに実行する（--video-id 指定時の単発処理用。再実行・検証向け）",
+    )
+    parser.add_argument(
+        "--cookie-path",
+        default="./cookie/cookie.txt",
+        help="yt-dlp に渡す cookie ファイル（--video-id 指定時に使用。存在しない場合は無視）",
     )
 
     args = parser.parse_args()
@@ -1867,7 +1924,20 @@ def main():
         return
 
     # 通常モード
-    processor = SF6ChapterProcessor(detection_profile=args.detection_profile)
+    # --no-firestore は動画IDを直接指定した単発処理でのみ使える
+    # （キュー処理 run_once / run_forever は Firestore が必須）
+    if args.no_firestore and not args.video_id:
+        parser.error("--no-firestore は --video-id と併用してください（キュー処理では Firestore が必須です）")
+
+    processor = SF6ChapterProcessor(
+        detection_profile=args.detection_profile,
+        use_firestore=not args.no_firestore,
+    )
+
+    # --video-id 指定時は本線フローでその動画だけを処理して終了する（1回走査）
+    if args.video_id:
+        run_video_by_id(processor, args.video_id, cookie_path=args.cookie_path)
+        return
 
     if args.mode == "once":
         processor.run_once()

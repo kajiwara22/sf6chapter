@@ -281,13 +281,38 @@ uv run python main.py --mode test --test-step detect --video-id XXX
 
 ## 実行方法
 
-### ワンショットモード（1回だけPub/SubからPull）
+### 動画IDを指定した単発処理（1回走査・推奨）
+
+キュー（Firestore）を介さず、指定した動画だけを**本線フロー**で処理します。検出・ゲージ計測（ADR-048）・カウンター計測（ADR-049）を同じデコードループで実行するため、**動画の走査は1回**で済みます。認識（Gemini）、YouTubeチャプター更新、R2アップロード（`gauges/`・`round_stats.parquet` を含む）まで一括で行います。
+
+```bash
+# 本番と同じ動作（Firestore に処理状態を記録）
+ENABLE_R2=true uv run python main.py --video-id ovM5BMIsyKw
+
+# 再実行・検証向け（Firestore を参照・更新しない）
+ENABLE_R2=true uv run python main.py --video-id ovM5BMIsyKw --no-firestore
+```
+
+**動作**:
+1. 既存のダウンロード済みファイルがあれば再利用（なければダウンロード）
+2. 検出＋ゲージ＋カウンターを**1回の走査**で計測
+3. Gemini でキャラクター認識
+4. YouTube チャプター更新
+5. Battlelog マッピング → R2 アップロード（videos / matches / gauges / round_stats / battlelog_replays / manifest）
+
+**オプション**:
+- `--no-firestore`: Firestore を参照・更新しない（再処理・検証用）。`--video-id` との併用が必須
+- `--cookie-path`: yt-dlp に渡す cookie ファイル（デフォルト `./cookie/cookie.txt`。存在しない場合は無視）
+
+> `--mode test --test-step all` はテスト用の個別ステップ実行で、ゲージ・カウンターは計測されません（別途 `scripts/analyze_counters.py` などで計測する必要があります）。通常の動画処理には `--video-id` の単発処理を使ってください。
+
+### ワンショットモード（1回だけFirestoreキューを取得）
 
 ```bash
 uv run python main.py --mode once
 ```
 
-### 常駐モード（ストリーミング受信）
+### 常駐モード（Firestoreをポーリングして処理）
 
 ```bash
 uv run python main.py --mode daemon
@@ -387,10 +412,12 @@ ENABLE_R2=true uv run python main.py --mode test --test-step all --video-id YFQU
 
 ### オプションパラメータ
 
-- `--video-id`: YouTube動画ID（テストモードでは必須）
+- `--video-id`: YouTube動画ID（テストモードでは必須。通常モードでは本線フローの単発処理に使用）
 - `--video-path`: ダウンロード済みファイルのパス（省略可、上級者向け）
 - `--from-intermediate`: 中間ファイルから検出・認識結果を読み込む（`--test-step recognize/chapters/r2` で使用可能）
 - `--no-r2`: R2アップロードをスキップ（`--test-step chapters` で使用可能）
+- `--no-firestore`: Firestore を参照・更新しない（`--video-id` 指定の単発処理専用。再実行・検証向け）
+- `--cookie-path`: yt-dlp に渡す cookie ファイル（`--video-id` 指定時に使用。デフォルト `./cookie/cookie.txt`）
 
 **推奨**: 基本的には `--video-id` のみを指定すれば、既存ファイルの再利用とダウンロードを自動判断します。
 
