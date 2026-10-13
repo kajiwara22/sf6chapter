@@ -23,8 +23,8 @@ except ImportError:
     BOTO3_AVAILABLE = False
     ClientError = None
 
-from .utils.logger import get_logger
 from .storage.r2_uploader import publish_manifest as publish_data_manifest
+from .utils.logger import get_logger
 
 logger = get_logger()
 

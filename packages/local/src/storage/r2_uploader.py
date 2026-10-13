@@ -5,7 +5,7 @@ JSON/ParquetファイルをR2にアップロード
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import boto3
@@ -75,7 +75,7 @@ def publish_manifest(
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "version": version,
-        "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "files": files,
     }
 

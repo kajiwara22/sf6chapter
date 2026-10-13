@@ -268,16 +268,12 @@ class GaugeAnalysisParams:
                 side: [tuple(int(v) for v in pair) for pair in data["health_hue_ranges"][side]] for side in SIDES
             },
             health_low_hue_ranges={
-                side: [
-                    tuple(int(v) for v in pair)
-                    for pair in (data.get("health_low_hue_ranges") or {}).get(side, [])
-                ]
+                side: [tuple(int(v) for v in pair) for pair in (data.get("health_low_hue_ranges") or {}).get(side, [])]
                 for side in SIDES
             },
             health_poison_hue_ranges={
                 side: [
-                    tuple(int(v) for v in pair)
-                    for pair in (data.get("health_poison_hue_ranges") or {}).get(side, [])
+                    tuple(int(v) for v in pair) for pair in (data.get("health_poison_hue_ranges") or {}).get(side, [])
                 ]
                 for side in SIDES
             },
@@ -311,7 +307,9 @@ class GaugeAnalysisParams:
             "health_roi": {k: list(v) for k, v in self.health_roi.items()},
             "health_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_hue_ranges.items()},
             "health_low_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_low_hue_ranges.items()},
-            "health_poison_hue_ranges": {k: [list(pair) for pair in v] for k, v in self.health_poison_hue_ranges.items()},
+            "health_poison_hue_ranges": {
+                k: [list(pair) for pair in v] for k, v in self.health_poison_hue_ranges.items()
+            },
             "health_recoverable_hue_ranges": {
                 k: [list(pair) for pair in v] for k, v in self.health_recoverable_hue_ranges.items()
             },
@@ -1234,20 +1232,14 @@ class GaugeAnalyzer:
             )
             burnout_periods: list[list[float]] = []
             for start, end in candidate_periods:
-                indices = [
-                    i
-                    for i in range(len(states))
-                    if start - 1e-6 <= timestamps[i] <= end + 1e-6
-                ]
+                indices = [i for i in range(len(states)) if start - 1e-6 <= timestamps[i] <= end + 1e-6]
                 if not indices:
                     continue
                 recover_ratio = sum(1 for i in indices if recover_values[i] is not None) / len(indices)
                 if recover_ratio >= thresholds.burnout_recover_min_ratio:
                     burnout_periods.append([start, end])
             self.burnout_periods[side] = [
-                period
-                for period in burnout_periods
-                if period[1] - period[0] >= thresholds.burnout_min_duration_sec
+                period for period in burnout_periods if period[1] - period[0] >= thresholds.burnout_min_duration_sec
             ]
             for start, end in self.burnout_periods[side]:
                 for state, timestamp in zip(states, timestamps, strict=True):
@@ -1337,9 +1329,7 @@ class GaugeAnalyzer:
             # 従来は次ラウンド開始バナーまでを roundEndTime としていたため、勝利演出・待ち受けが
             # ゲージ詳細の表示区間に含まれていた。境界そのものは boundaryEndTime に残す
             visible_ends = [
-                float(payload["visibleTo"])
-                for payload in (player1, player2)
-                if payload.get("visibleTo") is not None
+                float(payload["visibleTo"]) for payload in (player1, player2) if payload.get("visibleTo") is not None
             ]
             if visible_ends:
                 effective_end = min(window.end_time, window.start_time + max(visible_ends))
