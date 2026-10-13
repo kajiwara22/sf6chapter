@@ -25,7 +25,7 @@ from typing import Any
 # プロジェクトのsrcディレクトリをpythonpathに追加
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from sf6_battlelog import BattlelogCollector, BattlelogSiteClient, BattlelogCacheManager
+from sf6_battlelog import BattlelogCacheManager, BattlelogCollector
 from utils.logger import get_logger
 
 logger = get_logger()
@@ -44,7 +44,7 @@ def print_pretty(data: Any) -> None:
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def test_cache_basic_operations(cache: BattlelogCacheManager) -> None:
+def check_cache_basic_operations(cache: BattlelogCacheManager) -> None:
     """キャッシュの基本操作をテスト"""
     print("\n" + "=" * 60)
     print("Test 1: キャッシュの基本操作")
@@ -120,10 +120,7 @@ def test_cache_basic_operations(cache: BattlelogCacheManager) -> None:
     print(f"   DBサイズ: {stats['db_size_bytes']} bytes")
 
 
-def test_cache_with_collector(
-    player_id: str,
-    output_format: str = "pretty"
-) -> None:
+def check_cache_with_collector(player_id: str, output_format: str = "pretty") -> None:
     """BattlelogCollector とのキャッシング統合をテスト"""
     print("\n" + "=" * 60)
     print("Test 2: BattlelogCollector との統合テスト")
@@ -161,9 +158,7 @@ def test_cache_with_collector(
         # 4. 初回実行（キャッシュなし）
         print("\n4. 初回実行（API から取得）...")
         print(f"   対象: player_id={player_id}, page=1")
-        replays_1st = asyncio.run(
-            collector.get_replay_list(player_id=player_id, page=1)
-        )
+        replays_1st = asyncio.run(collector.get_replay_list(player_id=player_id, page=1))
         print(f"   ✓ {len(replays_1st)} 件取得")
 
         stats_after_1st = cache.get_cache_stats()
@@ -174,10 +169,9 @@ def test_cache_with_collector(
         print("\n5. 2回目実行（キャッシュ + API）...")
         print(f"   対象: player_id={player_id}, page=1")
         import time
+
         start_time = time.time()
-        replays_2nd = asyncio.run(
-            collector.get_replay_list(player_id=player_id, page=1)
-        )
+        replays_2nd = asyncio.run(collector.get_replay_list(player_id=player_id, page=1))
         elapsed = time.time() - start_time
         print(f"   ✓ {len(replays_2nd)} 件取得（{elapsed:.2f}秒）")
 
@@ -201,9 +195,7 @@ def test_cache_with_collector(
 
 def main() -> None:
     """メイン処理"""
-    parser = argparse.ArgumentParser(
-        description="BattlelogCacheManager テストスクリプト"
-    )
+    parser = argparse.ArgumentParser(description="BattlelogCacheManager テストスクリプト")
     parser.add_argument(
         "--player-id",
         type=str,
@@ -240,14 +232,14 @@ def main() -> None:
     if not args.skip_basic:
         try:
             cache = BattlelogCacheManager(db_path="./test_battlelog_cache_basic.db")
-            test_cache_basic_operations(cache)
+            check_cache_basic_operations(cache)
             cache.clear_cache()  # テスト用DBをクリア
         except Exception as e:
             logger.error(f"Basic operations test failed: {e}", exc_info=True)
 
     # テスト2: 統合テスト
     if not args.skip_integration:
-        test_cache_with_collector(args.player_id, args.output_format)
+        check_cache_with_collector(args.player_id, args.output_format)
 
     print("\n" + "=" * 60)
     print("テスト完了")

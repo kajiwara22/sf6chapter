@@ -4,12 +4,12 @@ RESULT画面検出器のテスト
 ResultScreenDetector の機能をテストします。
 """
 
-import pytest
-import numpy as np
 import cv2
-from pathlib import Path
+import numpy as np
+import pytest
 
-from src.detection import ResultScreenDetector, ResultDetection
+from src.detection import ResultDetection, ResultScreenDetector
+from src.detection.preprocessing import preprocess_for_matching
 
 
 class TestResultScreenDetector:
@@ -37,15 +37,27 @@ class TestResultScreenDetector:
         result_path, win_path = dummy_templates
 
         detector = ResultScreenDetector(
-            result_template_path=result_path,
-            win_template_path=win_path,
+            result_template_paths=[result_path],
+            win_template_paths=[win_path],
         )
 
         assert detector is not None
-        assert detector.result_template is not None
-        assert detector.win_template is not None
+        assert len(detector.result_templates_edges) == 1
+        assert len(detector.win_templates_edges) == 1
         assert detector.result_threshold == 0.3
         assert detector.win_threshold == 0.3
+
+    def test_initialization_with_str_paths(self, dummy_templates):
+        """文字列パス（複数指定の単一値）でも初期化できることを確認"""
+        result_path, win_path = dummy_templates
+
+        detector = ResultScreenDetector(
+            result_template_paths=result_path,
+            win_template_paths=win_path,
+        )
+
+        assert len(detector.result_templates_edges) == 1
+        assert len(detector.win_templates_edges) == 1
 
     def test_initialization_missing_result_template(self, dummy_templates):
         """result_template が見つからない場合のテスト"""
@@ -53,8 +65,8 @@ class TestResultScreenDetector:
 
         with pytest.raises(FileNotFoundError):
             ResultScreenDetector(
-                result_template_path="/nonexistent/path.png",
-                win_template_path=win_path,
+                result_template_paths=["/nonexistent/path.png"],
+                win_template_paths=[win_path],
             )
 
     def test_initialization_missing_win_template(self, dummy_templates):
@@ -63,16 +75,16 @@ class TestResultScreenDetector:
 
         with pytest.raises(FileNotFoundError):
             ResultScreenDetector(
-                result_template_path=result_path,
-                win_template_path="/nonexistent/path.png",
+                result_template_paths=[result_path],
+                win_template_paths=["/nonexistent/path.png"],
             )
 
     def test_detect_result_no_detection(self, dummy_templates):
         """RESULT画面が検出されない場合のテスト"""
         result_path, win_path = dummy_templates
         detector = ResultScreenDetector(
-            result_template_path=result_path,
-            win_template_path=win_path,
+            result_template_paths=[result_path],
+            win_template_paths=[win_path],
         )
 
         # 真っ黒なフレーム（RESULT画面がない）
@@ -90,8 +102,8 @@ class TestResultScreenDetector:
         """テンプレートがフレーム内に含まれる場合のテスト"""
         result_path, win_path = dummy_templates
         detector = ResultScreenDetector(
-            result_template_path=result_path,
-            win_template_path=win_path,
+            result_template_paths=[result_path],
+            win_template_paths=[win_path],
         )
 
         # フレーム作成（RESULT テンプレートと Win テンプレートを配置）
@@ -102,32 +114,26 @@ class TestResultScreenDetector:
         win_tmpl = cv2.imread(win_path)
 
         # RESULT テンプレートを左上に配置
-        frame[0:result_tmpl.shape[0], 0:result_tmpl.shape[1]] = result_tmpl
+        frame[0 : result_tmpl.shape[0], 0 : result_tmpl.shape[1]] = result_tmpl
 
         # Win テンプレート（左側）を配置
         y_offset = 200
         x_offset = 100
-        frame[y_offset:y_offset + win_tmpl.shape[0], x_offset:x_offset + win_tmpl.shape[1]] = win_tmpl
+        frame[y_offset : y_offset + win_tmpl.shape[0], x_offset : x_offset + win_tmpl.shape[1]] = win_tmpl
 
         result = detector.detect_result(frame)
 
         # 高い信頼度で検出されることを期待
         assert result.winner_side is not None or result.win_position != "unknown"
 
-    def test_preprocess_for_matching(self, dummy_templates):
+    def test_preprocess_for_matching(self):
         """画像前処理（エッジ抽出）のテスト"""
-        result_path, win_path = dummy_templates
-        detector = ResultScreenDetector(
-            result_template_path=result_path,
-            win_template_path=win_path,
-        )
-
         # テスト画像
         img = np.ones((100, 200, 3), dtype=np.uint8) * 128
         cv2.rectangle(img, (20, 20), (180, 80), (255, 255, 255), -1)
 
         # 前処理実行
-        edges = detector._preprocess_for_matching(img)
+        edges = preprocess_for_matching(img)
 
         # 結果の確認
         assert isinstance(edges, np.ndarray)
@@ -140,8 +146,8 @@ class TestResultScreenDetector:
         result_path, win_path = dummy_templates
 
         detector = ResultScreenDetector(
-            result_template_path=result_path,
-            win_template_path=win_path,
+            result_template_paths=[result_path],
+            win_template_paths=[win_path],
             result_threshold=0.5,
             win_threshold=0.4,
         )

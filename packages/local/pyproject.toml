@@ -38,6 +38,10 @@ dev = [
     "ruff>=0.16.3",
 ]
 
+[tool.pytest.ini_options]
+# scripts/ 配下の手動テストスクリプト（test_*.py 名）を pytest に収集させない
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
