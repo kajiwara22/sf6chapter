@@ -173,6 +173,19 @@ function formatAbsoluteTime(dateStr: string): string {
 }
 
 /**
+ * ゲージ詳細ページ（`/matches/{matchId}`）へのリンクセルを生成する（ADR-051）
+ *
+ * Battlelog のみの行（matches に紐づかない行）は matchId が null のため遷移できない。
+ */
+export function createGaugeDetailCell(row: MatchHistoryRow): string {
+  if (!row.matchId) {
+    return '<span class="text-muted">-</span>';
+  }
+  const href = `/matches/${encodeURIComponent(row.matchId)}`;
+  return `<a href="${escapeHtml(href)}" class="history-gauge-link" title="ゲージ詳細を表示">ゲージ詳細</a>`;
+}
+
+/**
  * YouTubeリンクセルを生成
  */
 function createYoutubeCell(row: MatchHistoryRow): string {
@@ -213,6 +226,7 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
       <td class="history-opponent-input">${createInputTypeBadge(row.opponentInputType)}</td>
       <td class="history-battle-type">${row.battleTypeName ? escapeHtml(row.battleTypeName) : '<span class="text-muted">-</span>'}</td>
       <td class="history-replay">${createYoutubeCell(row)}</td>
+      <td class="history-detail">${createGaugeDetailCell(row)}</td>
       <td class="history-date">${escapeHtml(formatAbsoluteTime(row.uploadedAt))}</td>
     </tr>`;
   }).join('');
@@ -230,6 +244,7 @@ function createHistoryTable(rows: MatchHistoryRow[]): string {
           <th>相手操作</th>
           <th>モード</th>
           <th>YouTube</th>
+          <th>詳細</th>
           <th>試合日</th>
         </tr>
       </thead>

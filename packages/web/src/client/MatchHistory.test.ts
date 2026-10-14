@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createRoundBadge, createRoundCell, createCounterBadge, formatCounterText } from './components/MatchHistory';
+import { createRoundBadge, createRoundCell, createCounterBadge, formatCounterText, createGaugeDetailCell } from './components/MatchHistory';
 import type { MatchHistoryRow } from '@shared/types';
 
 const baseRow: MatchHistoryRow = {
@@ -120,6 +120,26 @@ describe('createRoundCell', () => {
       roundCounters: [{ matchId: 'vid_1', round: 1, side: 'player1', counterCount: null, punishCounterCount: null }],
     });
     expect(html).toBe('<span class="text-muted">-</span>');
+  });
+});
+
+describe('createGaugeDetailCell', () => {
+  it('matchId があればゲージ詳細ページ（/matches/{matchId}）へのリンクを生成する', () => {
+    const html = createGaugeDetailCell({ ...baseRow, matchId: 'video_20' });
+
+    expect(html).toContain('href="/matches/video_20"');
+    expect(html).toContain('history-gauge-link');
+    expect(html).toContain('ゲージ詳細');
+  });
+
+  it('matchId を URL エンコードする', () => {
+    const html = createGaugeDetailCell({ ...baseRow, matchId: 'video id/1' });
+
+    expect(html).toContain('href="/matches/video%20id%2F1"');
+  });
+
+  it('matchId が無い（Battlelogのみの）行は "-"', () => {
+    expect(createGaugeDetailCell({ ...baseRow, matchId: null })).toBe('<span class="text-muted">-</span>');
   });
 });
 
