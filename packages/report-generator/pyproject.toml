@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.5.6",
-    "boto3>=1.43.108",
-    "pytz>=2026.4",
+    "boto3>=1.43.111",
+    "pytz>=2026.5",
 ]
 
 [build-system]
@@ -19,7 +19,7 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.16.10",
+    "ruff>=0.17.0",
 ]
 
 [tool.ruff]
