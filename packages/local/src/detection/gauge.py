@@ -12,8 +12,8 @@ feed() を呼び出すため、動画の再デコードは発生しない。
 状態判定の考え方:
 
 - SA の数字（0〜3, CA）が読めていることを「HUD が表示されている」の判定に使う
-- HUD 表示中にドライブゲージの黄緑（通常ゲージ）が検出できない状態は
-  バーンアウト（銀＝回復済み／赤＝未回復の回復バー）とみなす
+- HUD 表示中に、ゲージ中央側から白/銀の回復バーが現れている状態をバーンアウトとみなす（ADR-065）。
+  黄緑の有無だけでは低ドライブ警告（金色バー）をバーンアウトと誤判定するため判定条件に使わない
 - 単発の誤検出を抑えるため、メディアンによる平滑化と最小継続時間フィルタをかける
 
 ラウンド開始バナーは「ROUND 1 / ROUND 2」と「FINAL ROUND」でレイアウトが異なるため、
@@ -64,9 +64,11 @@ class GaugeThresholds:
     drive_filled_s: int = 150
     drive_filled_h_min: int = 20
     drive_filled_h_max: int = 65
-    drive_burnout_silver_v: int = 150
-    drive_burnout_silver_s_max: int = 60
-    drive_burnout_red_h_max: int = 18
+    # ADR-065: ドライブが 2 本以下になると残りのバーは金色/オレンジ（低ドライブ警告）で描画される。
+    # これも残っているドライブなので充填として数える（黄緑と明度で分離し、二重計上しない）
+    drive_low_filled_v: int = 40
+    drive_low_filled_h_min: int = 12
+    drive_low_filled_h_max: int = 38
     drive_column_fill_ratio: float = 0.5
     drive_detect_min_fraction: float = 0.03
     drive_smoothing_window: int = 7
@@ -75,13 +77,29 @@ class GaugeThresholds:
     hud_flicker_tolerance_sec: float = 0.5
     burnout_min_duration_sec: float = 1.0
     burnout_merge_gap_sec: float = 1.0
-    # ADR-056: バーンアウト中の白/グレー回復バー（黄緑と空トラックの中間の低彩度・中間明度）
-    drive_recover_v_min: int = 100
-    drive_recover_v_max: int = 210
-    drive_recover_s_max: int = 100
-    drive_recover_column_fill_ratio: float = 0.4
+    # ADR-065: バーンアウト中の白/銀回復バー。ゲージ上下の枠線（常に明るい）を避けるため
+    # 内側の行だけを見て、画面中央側から連続する「低彩度・高明度」の列を数える
+    drive_recover_inset_px: int = 6
+    drive_recover_v_min: int = 110
+    # 明度上限は設けない（255）。回復バーは V>210 のハイライトを約2割含むため、
+    # 明度で切ると本物のバーを取りこぼす。全画面の白フラッシュは下の flash 条件で除外する
+    drive_recover_v_max: int = 255
+    # 白飛び（V > この値）の割合が drive_recover_max_flash_fraction 以上なら、
+    # 全画面の白フラッシュ（ヒット演出やラウンド移行）とみなして回復バーとしない。
+    # 実測: 回復バーは 0.02〜0.20、バーンアウト開始フラッシュ 0.34〜0.40、全画面フラッシュ 0.88〜1.00
+    drive_recover_flash_v_min: int = 210
+    drive_recover_max_flash_fraction: float = 0.6
+    drive_recover_s_max: int = 90
+    drive_recover_column_fill_ratio: float = 0.6
     drive_recover_min_fraction: float = 0.02
-    burnout_recover_min_ratio: float = 0.3
+    # バーンアウト確定に必要な白/銀回復バーの連続観測秒数（単発の白を除外）
+    burnout_min_bar_sec: float = 0.5
+    # バーンアウトの候補とするドライブ残量の上限（本）。低ドライブ警告の金色バーだけの状態も含む
+    burnout_candidate_max_drive: float = 0.5
+    # ラウンド開始バナーの前後ではゲージがまだ描画されず HUD 可視判定も残るため、
+    # 明るい背景を回復バーと誤認する。バナーのこの秒数前後は候補から外す（ADR-065）
+    burnout_round_banner_before_sec: float = 1.5
+    burnout_round_banner_after_sec: float = 3.0
     # ADR-057: ラウンド終了（K.O.）後の試合間画面での HUD 誤検出を visible_to から除外する途切れ秒数
     round_end_gap_sec: float = 5.0
     sa_digit_min_score: float = 0.45
@@ -220,6 +238,100 @@ class KoColorMaskParams:
 
 
 @dataclass
+class BurnoutBannerParams:
+    """バーンアウト開始時の EMPTY 文字（金色）マスク照合パラメータ（ADR-066）
+
+    SF6 はバーンアウトした瞬間、ドライブゲージの上に金色の「EMPTY」を表示する。
+    金色の文字マスク（テンプレート）と探索領域の金色マスクを照合し、
+    「テンプレートのどれだけが一致したか（coverage）」と
+    「探索領域の金色のうちどれだけがテンプレートと一致したか（precision）」の
+    両方で判定する。低ドライブ警告の金色バー（矩形）は precision が下がるため除かれる。
+    """
+
+    enabled: bool = False
+    search_region: dict[str, tuple[int, int, int, int]] = field(default_factory=dict)
+    templates: dict[str, str] = field(default_factory=dict)
+    h_min: int = 8
+    h_max: int = 35
+    s_min: int = 110
+    v_min: int = 215
+    coverage: float = 0.4
+    precision: float = 0.6
+    scales: tuple[float, ...] = (0.85, 1.0, 1.18)
+    min_consecutive: int = 2
+    consecutive_window_sec: float = 0.3
+    onset_tolerance_sec: float = 1.0
+    same_time_tolerance_sec: float = 0.3
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BurnoutBannerParams:
+        regions = data.get("search_region") or {}
+        return cls(
+            enabled=bool(data.get("enabled", True)),
+            search_region={side: tuple(int(v) for v in regions[side]) for side in SIDES if side in regions},
+            templates={side: str(path) for side, path in (data.get("templates") or {}).items()},
+            h_min=int(data.get("h_min", 8)),
+            h_max=int(data.get("h_max", 35)),
+            s_min=int(data.get("s_min", 110)),
+            v_min=int(data.get("v_min", 215)),
+            coverage=float(data.get("coverage", 0.4)),
+            precision=float(data.get("precision", 0.6)),
+            scales=tuple(float(v) for v in (data.get("scales") or (0.85, 1.0, 1.18))),
+            min_consecutive=int(data.get("min_consecutive", 2)),
+            consecutive_window_sec=float(data.get("consecutive_window_sec", 0.3)),
+            onset_tolerance_sec=float(data.get("onset_tolerance_sec", 1.0)),
+            same_time_tolerance_sec=float(data.get("same_time_tolerance_sec", 0.3)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "search_region": {side: list(region) for side, region in self.search_region.items()},
+            "templates": dict(self.templates),
+            "h_min": self.h_min,
+            "h_max": self.h_max,
+            "s_min": self.s_min,
+            "v_min": self.v_min,
+            "coverage": self.coverage,
+            "precision": self.precision,
+            "scales": list(self.scales),
+            "min_consecutive": self.min_consecutive,
+            "consecutive_window_sec": self.consecutive_window_sec,
+            "onset_tolerance_sec": self.onset_tolerance_sec,
+            "same_time_tolerance_sec": self.same_time_tolerance_sec,
+        }
+
+    def _validate(self) -> None:
+        for side, region in self.search_region.items():
+            if len(region) != 4:
+                raise ValueError(f"burnout_banner search_region[{side}] must have 4 elements, got {region}")
+            x1, y1, x2, y2 = region
+            if x2 <= x1 or y2 <= y1:
+                raise ValueError(f"burnout_banner search_region[{side}] must be (x1, y1, x2, y2), got {region}")
+        for side, path in self.templates.items():
+            if not path:
+                raise ValueError(f"burnout_banner templates[{side}] must not be empty")
+        for name in ("h_min", "h_max", "s_min", "v_min"):
+            value = getattr(self, name)
+            if not 0 <= value <= 255:
+                raise ValueError(f"burnout_banner {name} must be in [0, 255], got {value}")
+        if self.h_max <= self.h_min:
+            raise ValueError(f"burnout_banner h_max must be > h_min, got {self.h_max}")
+        if not 0 < self.coverage <= 1.0:
+            raise ValueError(f"burnout_banner coverage must be in (0, 1.0], got {self.coverage}")
+        if not 0 < self.precision <= 1.0:
+            raise ValueError(f"burnout_banner precision must be in (0, 1.0], got {self.precision}")
+        if not self.scales or any(scale <= 0 for scale in self.scales):
+            raise ValueError(f"burnout_banner scales must be positive, got {self.scales}")
+        if self.min_consecutive < 1:
+            raise ValueError(f"burnout_banner min_consecutive must be >= 1, got {self.min_consecutive}")
+        if self.consecutive_window_sec <= 0:
+            raise ValueError(
+                f"burnout_banner consecutive_window_sec must be positive, got {self.consecutive_window_sec}"
+            )
+
+
+@dataclass
 class GaugeAnalysisParams:
     """ゲージ計測パラメータ（座標は base_width x base_height 基準）"""
 
@@ -242,6 +354,7 @@ class GaugeAnalysisParams:
     round_banners: list[RoundBannerTemplate]
     ko_banners: list[RoundBannerTemplate] = field(default_factory=list)
     ko_color_mask: KoColorMaskParams = field(default_factory=KoColorMaskParams)
+    burnout_banner: BurnoutBannerParams = field(default_factory=BurnoutBannerParams)
     drive_fill_scale: dict[str, float] = field(default_factory=dict)
     health_fill_scale: dict[str, float] = field(default_factory=dict)
 
@@ -289,6 +402,7 @@ class GaugeAnalysisParams:
             round_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("round_banners", [])],
             ko_banners=[RoundBannerTemplate.from_dict(item) for item in data.get("ko_banners", [])],
             ko_color_mask=KoColorMaskParams.from_dict(data.get("ko_color_mask") or {}),
+            burnout_banner=BurnoutBannerParams.from_dict(data.get("burnout_banner") or {}),
             drive_fill_scale=drive_fill_scale,
             health_fill_scale=health_fill_scale,
         )
@@ -320,6 +434,7 @@ class GaugeAnalysisParams:
             "round_banners": [banner.to_dict() for banner in self.round_banners],
             "ko_banners": [banner.to_dict() for banner in self.ko_banners],
             "ko_color_mask": self.ko_color_mask.to_dict(),
+            "burnout_banner": self.burnout_banner.to_dict(),
             "calibration": {
                 "drive_fill_scale": dict(self.drive_fill_scale),
                 "health_fill_scale": dict(self.health_fill_scale),
@@ -349,6 +464,7 @@ class GaugeAnalysisParams:
         for banner in self.ko_banners:
             banner._validate()
         self.ko_color_mask._validate()
+        self.burnout_banner._validate()
 
     def log_params(self) -> None:
         logger.info("  [Gauge Analysis]")
@@ -408,9 +524,9 @@ class SideGaugeState:
     """
 
     hud_visible: bool = False
-    drive_raw: float | None = None  # 黄緑の充填率から換算した本数（0〜6）。None=黄緑なし
-    drive_recover_raw: float | None = None  # ADR-056: 白/グレー回復バーの充填率（0〜1）。None=検出なし
-    burnout_candidate: bool = False  # HUD表示中に黄緑が検出できない状態
+    drive_raw: float | None = None  # 黄緑（通常）と金色（低ドライブ警告）の充填から換算した本数。None=どちらも検出なし
+    drive_recover_raw: float | None = None  # ADR-065: 中央側から連続する白/銀回復バーの充填率（0〜1）。None=検出なし
+    burnout_candidate: bool = False  # HUD表示中に白/銀の回復バーが検出された状態（ADR-065）
     drive: float | None = None  # 平滑化・バーンアウト判定後の本数
     drive_burnout: bool = False
     sa_stock: int | None = None
@@ -597,6 +713,8 @@ class GaugeAnalyzer:
         self.samples: list[GaugeSample] = []
         self.round_banner_times: list[float] = []
         self.ko_times: list[float] = []
+        self.burnout_banner_times: dict[str, list[float]] = {side: [] for side in SIDES}  # noqa: C420
+        self._burnout_banner_hits: dict[str, list[float]] = {side: [] for side in SIDES}  # noqa: C420
         self._ko_color_streak = 0
         self._ko_color_first: float | None = None
         self.snapshots: list[dict[str, Any]] = []
@@ -623,6 +741,19 @@ class GaugeAnalyzer:
                 logger.warning("⚠️ Round banner template not found: %s", banner.template)
                 continue
             self._round_banner_templates.append((banner, image))
+
+        # バーンアウト開始の EMPTY 文字マスク（ADR-066）
+        self._burnout_banner_templates: dict[str, list[np.ndarray]] = {side: [] for side in SIDES}  # noqa: C420
+        if params.burnout_banner.enabled:
+            for side in SIDES:
+                path = params.burnout_banner.templates.get(side)
+                if not path:
+                    continue
+                mask = cv2.imread(str(self._resolve(path)), cv2.IMREAD_GRAYSCALE)
+                if mask is None:
+                    logger.warning("⚠️ Burnout banner template not found: %s", path)
+                    continue
+                self._burnout_banner_templates[side].append(mask)
 
         # K.O. バナー（勝利演出の検出、ADR-059）
         self._ko_banner_templates: list[tuple[RoundBannerTemplate, np.ndarray]] = []
@@ -677,6 +808,7 @@ class GaugeAnalyzer:
         for side in SIDES:
             raw_drive = self._measure_drive(frame, side)
             drive_recover = self._measure_drive_recover(frame, side)
+            self._detect_burnout_banner(frame, side, timestamp)
             sa_stock, sa_label, sa_score, sa_progress, sa_ca = self._measure_sa(frame, side)
             health_raw = self._measure_health(frame, side, include_poison=False)
             health_poison_raw = self._measure_health(frame, side, include_poison=True)
@@ -686,7 +818,7 @@ class GaugeAnalyzer:
                 hud_visible=hud_visible,
                 drive_raw=raw_drive,
                 drive_recover_raw=drive_recover,
-                burnout_candidate=hud_visible and raw_drive is None,
+                burnout_candidate=hud_visible and drive_recover is not None,
                 health_raw=health_raw,
                 health_poison_raw=health_poison_raw,
                 health_recoverable_raw=health_recoverable_raw,
@@ -744,6 +876,7 @@ class GaugeAnalyzer:
             "matches": out_matches,
             "roundBannerTimes": list(self.round_banner_times),
             "koTimes": list(self.ko_times),
+            "burnoutBannerTimes": {side: list(times) for side, times in self.burnout_banner_times.items()},
             "burnoutPeriods": dict(self.burnout_periods),
         }
 
@@ -779,6 +912,23 @@ class GaugeAnalyzer:
             "health": {side: scale_roi(self.params.health_roi[side]) for side in SIDES},
         }
         self._frame_size = (width, height)
+
+        # バーンアウト開始の EMPTY 文字マスク（ADR-066）: 実フレームサイズに合わせて拡大縮小する
+        self._burnout_banner_search: dict[str, tuple[int, int, int, int]] = {}
+        self._burnout_banner_masks: dict[str, list[np.ndarray]] = {side: [] for side in SIDES}  # noqa: C420
+        banner = self.params.burnout_banner
+        if banner.enabled and any(self._burnout_banner_templates.values()):
+            for side in SIDES:
+                region = banner.search_region.get(side)
+                if region is None or not self._burnout_banner_templates[side]:
+                    continue
+                self._burnout_banner_search[side] = scale_roi(region)
+                for base in self._burnout_banner_templates[side]:
+                    for scale in banner.scales:
+                        mask_w = max(4, int(round(base.shape[1] * scale_x * scale)))
+                        mask_h = max(4, int(round(base.shape[0] * scale_y * scale)))
+                        resized = cv2.resize(base, (mask_w, mask_h), interpolation=cv2.INTER_AREA)
+                        self._burnout_banner_masks[side].append((resized > 127).astype(np.uint8))
 
         banner_scale = self.params.banner_scale
         self._round_banner_prepared = []
@@ -938,6 +1088,86 @@ class GaugeAnalyzer:
         value = hsv[:, :, 2].astype(np.int16)
         return ((saturation < params.s_max) & (value > params.v_min)).astype(np.uint8)
 
+    @staticmethod
+    def _gold_mask(image: np.ndarray, params: BurnoutBannerParams) -> np.ndarray:
+        """バーンアウトの EMPTY 文字（高輝度の金色）を二値マスク化する（ADR-066）"""
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        hue = hsv[:, :, 0].astype(np.int16)
+        saturation = hsv[:, :, 1].astype(np.int16)
+        value = hsv[:, :, 2].astype(np.int16)
+        return (
+            (hue >= params.h_min) & (hue <= params.h_max) & (saturation >= params.s_min) & (value >= params.v_min)
+        ).astype(np.uint8)
+
+    def _detect_burnout_banner(self, frame: np.ndarray, side: str, timestamp: float) -> None:
+        """バーンアウト開始時の EMPTY 文字を検出する（ADR-066）
+
+        金色文字のマスクと、探索領域の金色マスクの
+        coverage（テンプレートの何割が一致したか）と
+        precision（領域の金色のうち何割をテンプレートで説明できるか）
+        の両方が閾値を超えたフレームを検出とみなす。大きな金色の塊（低ドライブ警告の金色バーや
+        全画面の演出）は precision が低いため検出されない。単発の金色演出を除外するため、
+        consecutive_window_sec 以内に min_consecutive 回検出した時点で最初の時刻を記録する
+        （EMPTY 文字は約0.5秒しか出ないため、連続フレームでは拾えないことがある）。
+        """
+        params = self.params.burnout_banner
+        search = self._burnout_banner_search.get(side)
+        masks = self._burnout_banner_masks.get(side) or []
+        if search is None or not masks:
+            return
+        region = self._crop(frame, search)
+        if region.size == 0:
+            return
+
+        detected = False
+        mask = self._gold_mask(region, params).astype(np.float32)
+        region_gold = float(mask.sum())
+        if region_gold > 0:
+            for template in masks:
+                if template.shape[0] > mask.shape[0] or template.shape[1] > mask.shape[1]:
+                    continue
+                template_f = template.astype(np.float32)
+                # 一致量は相関の最大値。coverage はテンプレートの一致割合、precision は
+                # 探索領域の金色のうちテンプレートで説明できる割合（大きな金色の塊を除く）
+                intersection = float(cv2.matchTemplate(mask, template_f, cv2.TM_CCORR).max())
+                coverage = intersection / float(template_f.sum())
+                precision = intersection / region_gold
+                if coverage >= params.coverage and precision >= params.precision:
+                    detected = True
+                    break
+
+        hits = self._burnout_banner_hits[side]
+        if detected:
+            hits.append(timestamp)
+        while hits and timestamp - hits[0] > params.consecutive_window_sec:
+            hits.pop(0)
+        if not detected or len(hits) < params.min_consecutive:
+            return
+        first = hits[0]
+        hits.clear()
+        times = self.burnout_banner_times[side]
+        if times and first - times[-1] < 3.0:
+            return
+        times.append(first)
+        self._add_snapshot(frame, timestamp, "burnout_banner")
+        logger.debug("[Gauge] EMPTY banner detected at %.2fs (%s)", first, side)
+
+    def _effective_burnout_banner_times(self, side: str) -> list[float]:
+        """EMPTY 文字の検出時刻から、全画面演出による誤検出を除いたものを返す（ADR-066）
+
+        両サイドでほぼ同時に検出されたものは全画面の金色演出なので、
+        どちらのプレイヤーのバーンアウトでもない。
+        """
+        tolerance = self.params.burnout_banner.same_time_tolerance_sec
+        other = SIDES[1] if side == SIDES[0] else SIDES[0]
+        others = self.burnout_banner_times.get(other, [])
+        results: list[float] = []
+        for timestamp in self.burnout_banner_times.get(side, []):
+            if any(abs(timestamp - value) <= tolerance for value in others):
+                continue
+            results.append(timestamp)
+        return results
+
     def _ko_color_score(self, frame: np.ndarray) -> float:
         """K.O. 文字の白/銀マスクと検索領域のマスクの最大 IoU を返す（ADR-063）"""
         if self._ko_color_search is None:
@@ -958,10 +1188,12 @@ class GaugeAnalyzer:
         return best
 
     def _measure_drive(self, frame: np.ndarray, side: str) -> float | None:
-        """ドライブゲージの黄緑（通常ゲージ）の充填量を本数で返す
+        """ドライブゲージの残量を本数で返す（ADR-065）
+
+        黄緑（通常ゲージ）と金色/オレンジ（2 本以下で出る低ドライブ警告）の両方を充填として数える。
 
         Returns:
-            0〜6（小数あり）。黄緑が検出できない場合は None
+            0〜6（小数あり）。どちらも検出できない場合は None
             （バーンアウト中や HUD 非表示時は None になる）
         """
         thresholds = self.params.thresholds
@@ -980,9 +1212,17 @@ class GaugeAnalyzer:
             & (hue >= thresholds.drive_filled_h_min)
             & (hue <= thresholds.drive_filled_h_max)
         )
+        low = (
+            (val > thresholds.drive_low_filled_v)
+            & (val <= thresholds.drive_filled_v)
+            & (sat > thresholds.drive_filled_s)
+            & (hue >= thresholds.drive_low_filled_h_min)
+            & (hue <= thresholds.drive_low_filled_h_max)
+        )
+        filled = normal | low
 
         width = float(hsv.shape[1])
-        filled_fraction = float((normal.mean(axis=0) >= thresholds.drive_column_fill_ratio).sum()) / width
+        filled_fraction = float((filled.mean(axis=0) >= thresholds.drive_column_fill_ratio).sum()) / width
         if filled_fraction < thresholds.drive_detect_min_fraction:
             return None
 
@@ -990,31 +1230,51 @@ class GaugeAnalyzer:
         return round(min(DRIVE_MAX, raw * self.params.drive_fill_scale.get(side, 1.0)), 2)
 
     def _measure_drive_recover(self, frame: np.ndarray, side: str) -> float | None:
-        """バーンアウト中の白/グレー回復バーの充填率（0〜1）を返す（ADR-056）
+        """バーンアウト中の白/銀回復バーの充填率（0〜1）を返す（ADR-065）
 
         回復バーは画面中央側（1P=右端 / 2P=左端）から溜まるため、
-        アンカー側から連続する低彩度・中間明度の列だけを数える。
-        通常時の空トラック（高彩度・低明度）や背景の映り込みを除外する。
+        中央側から連続する「低彩度・高明度」の列だけを数える。ゲージ上下の枠線は
+        常に明るいので内側の行だけを見る。通常ゲージ（黄緑）、低ドライブ警告（金色）、
+        空きトラック（暗い青）、背景の映り込みはいずれも白と判定されない。
 
         Returns:
             0〜1。回復バーが検出できない場合は None
         """
         thresholds = self.params.thresholds
         roi = self._crop(frame, self._roi["drive"][side])
-        if roi.size == 0:
+        inset = thresholds.drive_recover_inset_px
+        if roi.shape[0] <= inset * 2 + 1:
+            return None
+        inner = roi[inset : roi.shape[0] - inset]
+        if inner.size == 0:
             return None
 
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(inner, cv2.COLOR_BGR2HSV)
         sat = hsv[:, :, 1].astype(np.int16)
         val = hsv[:, :, 2].astype(np.int16)
-
-        recover = (
+        # 全画面の白フラッシュ（ヒット演出やラウンド移行）は ROI 全体が白飛びする。
+        # 白飛びの割合が高ければ回復バーではない
+        blown = float(((sat <= thresholds.drive_recover_s_max) & (val > thresholds.drive_recover_flash_v_min)).mean())
+        if blown >= thresholds.drive_recover_max_flash_fraction:
+            return None
+        white = (
             (val >= thresholds.drive_recover_v_min)
             & (val <= thresholds.drive_recover_v_max)
             & (sat <= thresholds.drive_recover_s_max)
         )
+        filled_columns = white.mean(axis=0) >= thresholds.drive_recover_column_fill_ratio
 
-        fraction = float(recover.mean())
+        # 画面中央側（1P=右端 / 2P=左端）から連続する列だけを数える
+        x1, _, x2, _ = self._roi["drive"][side]
+        anchor_right = ((x1 + x2) / 2) < (frame.shape[1] / 2)
+        width = len(filled_columns)
+        order = range(width - 1, -1, -1) if anchor_right else range(width)
+        count = 0
+        for column in order:
+            if not filled_columns[column]:
+                break
+            count += 1
+        fraction = count / float(width)
         if fraction < thresholds.drive_recover_min_fraction:
             return None
         return round(fraction, 3)
@@ -1221,26 +1481,65 @@ class GaugeAnalyzer:
             filled = _fill_short_gaps(smoothed, timestamps, thresholds.drive_max_gap_sec)
             hud_extended = self._extend_flags(hud, timestamps, thresholds.drive_max_gap_sec)
 
-            # バーンアウト（ADR-056）: HUD表示中に黄緑がなく、白/グレー回復バーが現れる区間。
-            # 黄緑なしだけではラウンド開始直後のゲージ未表示や瞬間的な検出漏れを誤判定するため、
-            # 回復バーが一定割合で観測された区間だけをバーンアウトと確定する。
+            # バーンアウト（ADR-065）: HUD 表示中にゲージが空（黄緑も低ドライブ警告の金色も無い）区間のうち、
+            # 白/銀の回復バーが観測されたものをバーンアウトとする（ADR-056 の「黄緑なし＋低彩度画素」を置換）。
+            # 黄緑の有無だけでは、1〜2 本の低ドライブ警告（金色バー）をバーンアウトと誤判定する。
             recover_values = [state.drive_recover_raw for state in states]
-            candidates = [hud[i] and raw_values[i] is None for i in range(len(states))]
+            banner_times = self._effective_burnout_banner_times(side)
+            banner_tolerance = self.params.burnout_banner.onset_tolerance_sec
+            bar_min = thresholds.drive_recover_min_fraction
+            round_intro = [
+                (
+                    banner - thresholds.burnout_round_banner_before_sec,
+                    banner + thresholds.burnout_round_banner_after_sec,
+                )
+                for banner in self.round_banner_times
+            ]
+            candidates = [
+                hud[i]
+                and (raw_values[i] is None or raw_values[i] < thresholds.burnout_candidate_max_drive)
+                and not any(start <= timestamps[i] <= end for start, end in round_intro)
+                for i in range(len(states))
+            ]
             candidate_periods = _merge_periods(
                 _runs_to_periods(_find_runs(candidates, timestamps), timestamps),
                 thresholds.burnout_merge_gap_sec,
             )
             burnout_periods: list[list[float]] = []
             for start, end in candidate_periods:
-                indices = [i for i in range(len(states)) if start - 1e-6 <= timestamps[i] <= end + 1e-6]
-                if not indices:
+                if end - start < thresholds.burnout_min_duration_sec:
                     continue
-                recover_ratio = sum(1 for i in indices if recover_values[i] is not None) / len(indices)
-                if recover_ratio >= thresholds.burnout_recover_min_ratio:
-                    burnout_periods.append([start, end])
-            self.burnout_periods[side] = [
-                period for period in burnout_periods if period[1] - period[0] >= thresholds.burnout_min_duration_sec
-            ]
+                indices = [i for i in range(len(states)) if start - 1e-6 <= timestamps[i] <= end + 1e-6]
+                # 白/銀の証拠を探す: 連続して観測される回復バー（ヒット演出の単発の白は除外される）か、
+                # バーンアウト開始時にゲージ全体が白く光るフラッシュ。最初の証拠時刻を開始点にする。
+                onset: float | None = None
+                streak_start: float | None = None
+                longest_bar = 0.0
+                for i in indices:
+                    value = recover_values[i]
+                    if value is None or value < bar_min:
+                        streak_start = None
+                        continue
+                    if onset is None:
+                        onset = timestamps[i]
+                    if streak_start is None:
+                        streak_start = timestamps[i]
+                    longest_bar = max(longest_bar, timestamps[i] - streak_start)
+                # EMPTY 文字（ADR-066）が出ていれば、回復バーが細くて連続検出できない場合でも確定する。
+                # また開始時刻は EMPTY 文字の時刻を採用する（回復バーは細く、数秒遅れて検出されることがある）
+                banner_onset = next(
+                    (t for t in banner_times if start - banner_tolerance <= t <= end + banner_tolerance), None
+                )
+                if banner_onset is not None and (onset is None or banner_onset < onset):
+                    onset = banner_onset
+                if onset is None:
+                    continue
+                if longest_bar < thresholds.burnout_min_bar_sec and banner_onset is None:
+                    continue
+                if end - onset < thresholds.burnout_min_duration_sec:
+                    continue
+                burnout_periods.append([onset, end])
+            self.burnout_periods[side] = _merge_periods(burnout_periods, thresholds.burnout_merge_gap_sec)
             for start, end in self.burnout_periods[side]:
                 for state, timestamp in zip(states, timestamps, strict=True):
                     # round() 済みの境界値と浮動小数を比較するため微小な許容幅を持たせる

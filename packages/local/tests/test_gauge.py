@@ -27,6 +27,14 @@ APP_ROOT = Path(__file__).parent.parent
 # ドライブゲージのノーマル（黄緑）に相当する BGR
 # B=60, G=220, R=220 → HSV は H=30 付近, S≈185, V=220
 NORMAL_BGR = (60, 220, 220)
+# ADR-065: 低ドライブ警告の金色バー（H≈20, S≈255, V≈130）
+GOLD_BGR = (0, 87, 130)
+# ADR-065: 空きトラックの暗い青（H≈120, S≈255, V≈15）
+EMPTY_TRACK_BGR = (15, 0, 0)
+# ADR-065: バーンアウト中の回復バー（白/銀）
+WHITE_BGR = (170, 170, 170)
+# ADR-066: バーンアウト開始時に出る EMPTY 文字の金色（H≈22, S≈160, V≈245）
+BANNER_GOLD_BGR = (90, 200, 245)
 DARK_BGR = (30, 30, 30)
 
 
@@ -98,6 +106,95 @@ class TestDriveMeasurement:
         frame[y1:y2, x1:x2] = NORMAL_BGR
         assert analyzer._measure_drive(frame, "player2") == pytest.approx(6.0, abs=0.05)
         assert analyzer._measure_drive(frame, "player1") is None
+
+    def test_low_drive_gold_bar_is_counted_as_drive(self):
+        # ADR-065: 2本以下で残りのバーが金色（低ドライブ警告）になっても、それは残っているドライブ
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        frame[y1:y2, x1:x2] = GOLD_BGR
+        assert analyzer._measure_drive(frame, "player1") == pytest.approx(6.0, abs=0.05)
+
+    def test_two_gold_cells_are_two_bars(self):
+        # ゴールド（低ドライブ警告） 2 セルだけ = 2 本（バーンアウトではない）
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        cell = (x2 - x1) // 6
+        frame[y1:y2, x1 + cell * 4 : x2] = GOLD_BGR
+        assert analyzer._measure_drive(frame, "player1") == pytest.approx(2.0, abs=0.2)
+
+
+class TestDriveRecoverMeasurement:
+    """バーンアウト中の白/銀回復バーの計測（ADR-065）"""
+
+    def _analyzer(self, frame: np.ndarray) -> GaugeAnalyzer:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        analyzer._prepare_geometry(frame)
+        return analyzer
+
+    def test_center_side_bar_is_measured(self):
+        # 1P は右端（画面中央側）、2P は左端から回復バーが伸びる
+        for side, half in (("player1", "right"), ("player2", "left")):
+            frame = make_frame()
+            analyzer = self._analyzer(frame)
+            x1, y1, x2, y2 = make_params().drive_roi[side]
+            middle = (x1 + x2) // 2
+            if half == "right":
+                frame[y1:y2, middle:x2] = WHITE_BGR
+            else:
+                frame[y1:y2, x1:middle] = WHITE_BGR
+            assert analyzer._measure_drive_recover(frame, side) == pytest.approx(0.5, abs=0.03)
+
+    def test_outer_side_white_is_not_counted(self):
+        # 中央側から連続していない白は回復バーではない（1P の左半分）
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        middle = (x1 + x2) // 2
+        frame[y1:y2, x1:middle] = WHITE_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
+
+    def test_normal_gauge_is_not_recover_bar(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        frame[y1:y2, x1:x2] = NORMAL_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
+
+    def test_gold_low_drive_bar_is_not_recover_bar(self):
+        # 低ドライブ警告の金色バーは白/銀ではない（H≈20, S≈255）
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        frame[y1:y2, x1:x2] = GOLD_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
+
+    def test_empty_track_is_not_recover_bar(self):
+        # 空きトラックは暗い青（V≈15）で白ではない
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        frame[y1:y2, x1:x2] = EMPTY_TRACK_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
+
+    def test_gauge_frame_white_is_ignored(self):
+        # ゲージ上下の白い枠線だけでは回復バーと判定しない（内側の行だけを見る）
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        frame[y1 : y1 + 3, x1:x2] = WHITE_BGR
+        frame[y2 - 3 : y2, x1:x2] = WHITE_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
+
+    def test_thin_bar_is_ignored(self):
+        # 最小幅（デフォルト 3%）未満の白は回復バーと判定しない
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().drive_roi["player1"]
+        width = x2 - x1
+        frame[y1:y2, x2 - int(width * 0.01) : x2] = WHITE_BGR
+        assert analyzer._measure_drive_recover(frame, "player1") is None
 
 
 class TestSaMeasurement:
@@ -218,6 +315,56 @@ class TestKoColorMaskDetection:
         assert analyzer._detect_ko(frame, 20.5) is None
 
 
+class TestBurnoutBannerDetection:
+    """バーンアウト開始の EMPTY 文字（金色マスク照合）の検証（ADR-066）"""
+
+    def _analyzer(self, frame: np.ndarray) -> GaugeAnalyzer:
+        analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        analyzer._prepare_geometry(frame)
+        return analyzer
+
+    def _draw_template(self, frame: np.ndarray, side: str, template_name: str) -> None:
+        mask = cv2.imread(str(APP_ROOT / "template" / template_name), cv2.IMREAD_GRAYSCALE)
+        x1, y1, _, _ = make_params().burnout_banner.search_region[side]
+        region = frame[y1 : y1 + mask.shape[0], x1 : x1 + mask.shape[1]]
+        region[mask > 127] = BANNER_GOLD_BGR
+
+    def test_detects_empty_banner_after_two_frames(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        self._draw_template(frame, "player1", "burnout_empty_player1.png")
+        analyzer._detect_burnout_banner(frame, "player1", 1.0)
+        assert analyzer.burnout_banner_times["player1"] == []
+        analyzer._detect_burnout_banner(frame, "player1", 1.1)
+        assert analyzer.burnout_banner_times["player1"] == [pytest.approx(1.0)]
+
+    def test_player2_template_is_used(self):
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        self._draw_template(frame, "player2", "burnout_empty_player2.png")
+        analyzer._detect_burnout_banner(frame, "player2", 1.0)
+        analyzer._detect_burnout_banner(frame, "player2", 1.1)
+        assert analyzer.burnout_banner_times["player2"] == [pytest.approx(1.0)]
+
+    def test_gold_block_is_not_detected(self):
+        # 低ドライブ警告の金色バーや金色の演出は precision が低いため検出しない
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        x1, y1, x2, y2 = make_params().burnout_banner.search_region["player1"]
+        frame[y1:y2, x1:x2] = BANNER_GOLD_BGR
+        for step in range(3):
+            analyzer._detect_burnout_banner(frame, "player1", 1.0 + step * 0.1)
+        assert analyzer.burnout_banner_times["player1"] == []
+
+    def test_effective_times_ignore_same_time_other_side(self):
+        # 両サイドでほぼ同時に検出された場合は全画面演出として除外する
+        frame = make_frame()
+        analyzer = self._analyzer(frame)
+        analyzer.burnout_banner_times["player1"] = [10.0, 30.0]
+        analyzer.burnout_banner_times["player2"] = [10.2]
+        assert analyzer._effective_burnout_banner_times("player1") == [pytest.approx(30.0)]
+
+
 class TestFilters:
     def test_median_filter_removes_spike(self):
         values = [5.0, 5.0, 1.0, 5.0, 5.0]
@@ -315,16 +462,20 @@ class TestDeriveStates:
         self,
         states: list[tuple[float, float | None, bool, int | None]],
         recover_raws: list[float | None] | None = None,
+        banner_times: list[float] | None = None,
     ) -> GaugeAnalyzer:
         """サンプル列から GaugeAnalyzer を構築して派生状態を計算する。
 
         `recover_raws` を省略した場合は「HUD 表示中に黄緑が無い」サンプルで
-        白/グレー回復バーが観測されたものとして扱う（ADR-056 のバーンアウト判定条件）。
+        白/銀の回復バーが観測されたものとして扱う（ADR-065 のバーンアウト判定条件）。
+        `banner_times` は EMPTY 文字（ADR-066）の検出時刻として与える。
         """
         analyzer = GaugeAnalyzer(make_params(), APP_ROOT)
+        if banner_times:
+            analyzer.burnout_banner_times["player1"] = list(banner_times)
         for index, (timestamp, drive_raw, hud_visible, sa_stock) in enumerate(states):
             if recover_raws is None:
-                drive_recover_raw = 0.5 if (hud_visible and drive_raw is None) else None
+                drive_recover_raw = 0.3 if (hud_visible and drive_raw is None) else None
             else:
                 drive_recover_raw = recover_raws[index]
             analyzer.samples.append(
@@ -362,7 +513,7 @@ class TestDeriveStates:
         assert all(s.states["player1"].drive_burnout for s in burnout_samples)
 
     def test_drive_gap_without_recover_bar_is_not_burnout(self):
-        # ADR-056: HUD 表示中でも回復バーが観測されない黄緑の欠落はバーンアウトではない
+        # ADR-056 / ADR-065: HUD 表示中でも回復バーが観測されない黄緑の欠落はバーンアウトではない
         # （ラウンド開始直後のゲージ未表示や瞬間的な検出漏れを想定）
         states = [(i * 0.1, 5.0, True, 0) for i in range(20)]
         states += [(2.0 + i * 0.1, None, True, 0) for i in range(20)]
@@ -370,6 +521,92 @@ class TestDeriveStates:
 
         assert analyzer.burnout_periods["player1"] == []
         assert not any(s.states["player1"].drive_burnout for s in analyzer.samples)
+
+    def test_low_drive_gold_bar_is_not_burnout(self):
+        # ADR-065: ドライブ 1〜2 本の低ドライブ警告（金色バー）では黄緑が検出されないが、
+        # 白/銀の回復バーが無いのでバーンアウトではない
+        states = [(i * 0.1, 5.0, True, 0) for i in range(10)]
+        states += [(1.0 + i * 0.1, None, True, 0) for i in range(30)]
+        analyzer = self._analyzer_with_samples(states, recover_raws=[None] * len(states))
+
+        assert analyzer.burnout_periods["player1"] == []
+        assert not any(s.states["player1"].drive_burnout for s in analyzer.samples)
+
+    def test_recover_bar_without_drive_gap_is_burnout(self):
+        # ADR-065: 黄緑の有無にかかわらず、白/銀の回復バーが連続する区間をバーンアウトとする
+        states = [(i * 0.1, 5.0, True, 0) for i in range(10)]
+        states += [(1.0 + i * 0.1, None, True, 0) for i in range(20)]
+        recover = [None] * 10 + [0.2] * 20
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert len(analyzer.burnout_periods["player1"]) == 1
+        assert analyzer.burnout_periods["player1"][0][0] == pytest.approx(1.0, abs=0.11)
+
+    def test_white_flash_over_full_gauge_is_not_burnout(self):
+        # 演出の白フラッシュがゲージ全体を覆った場合は、黄緑が観測されているため候補にならない
+        states = [(i * 0.1, 5.6, True, 0) for i in range(10)]
+        states += [(1.0 + i * 0.1, 5.6, True, 0) for i in range(20)]
+        recover = [None] * 10 + [0.8] * 20
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert analyzer.burnout_periods["player1"] == []
+        assert not any(s.states["player1"].drive_burnout for s in analyzer.samples)
+
+    def test_single_white_blip_is_not_burnout(self):
+        # ADR-065: ヒット演出による単発の白（回復バーが連続しない）はバーンアウトではない
+        states = [(i * 0.1, None, True, 0) for i in range(40)]
+        recover = [None] * 10 + [0.1] + [None] * 6 + [0.1] + [None] * 22
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert analyzer.burnout_periods["player1"] == []
+
+    def test_short_gauge_gap_with_white_is_not_burnout(self):
+        # ADR-065: 黄緑が 1 サンプル途切れただけ（ゲージの検出揺れ）はバーンアウトではない
+        states = [(i * 0.1, 5.0, True, 0) for i in range(10)]
+        states += [(1.0, None, True, 0), (1.1, None, True, 0)]
+        states += [(1.2 + i * 0.1, 5.0, True, 0) for i in range(10)]
+        recover = [None] * 10 + [0.4, 0.4] + [None] * 10
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert analyzer.burnout_periods["player1"] == []
+
+    def test_burnout_flash_with_empty_banner_is_burnout(self):
+        # 開始時の白フラッシュ＋EMPTY 文字（ADR-066）で確定する
+        states = [(i * 0.1, None, True, 0) for i in range(30)]
+        recover = [None] * 15 + [0.6] + [None] * 14
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover, banner_times=[1.5])
+
+        assert len(analyzer.burnout_periods["player1"]) == 1
+        # 開始はフラッシュの時刻（低ドライブ警告の金色バー区間を含めない）
+        assert analyzer.burnout_periods["player1"][0][0] == pytest.approx(1.5, abs=0.11)
+
+    def test_flash_without_empty_banner_is_not_burnout(self):
+        # ADR-066: 単発の白フラッシュ（ヒット演出など）は EMPTY 文字が無ければ確定しない
+        states = [(i * 0.1, None, True, 0) for i in range(30)]
+        recover = [None] * 15 + [0.6] + [None] * 14
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert analyzer.burnout_periods["player1"] == []
+
+    def test_persistent_recover_bar_without_banner_is_burnout(self):
+        # 回復バーが連続して観測されれば EMPTY 文字なしでも確定する（バー本体の検出）
+        states = [(i * 0.1, None, True, 0) for i in range(30)]
+        recover = [None] * 10 + [0.3] * 20
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+
+        assert len(analyzer.burnout_periods["player1"]) == 1
+
+    def test_same_time_banner_on_both_sides_is_ignored(self):
+        # ADR-066: 両サイド同時の検出は全画面の金色演出なのでバーンアウトの確証にしない
+        states = [(i * 0.1, None, True, 0) for i in range(30)]
+        recover = [None] * 15 + [0.6] + [None] * 14
+        analyzer = self._analyzer_with_samples(states, recover_raws=recover)
+        analyzer.burnout_banner_times["player1"] = [1.5]
+        analyzer.burnout_banner_times["player2"] = [1.6]
+        analyzer._derived = False
+        analyzer._derive_states()
+
+        assert analyzer.burnout_periods["player1"] == []
 
     def test_short_burnout_is_ignored(self):
         # 0.3秒だけ黄緑が消える（単発の誤検出）→ バーンアウト扱いしない
@@ -688,7 +925,7 @@ class TestHealthMeasurement:
         # ADR-062: A.K.I. の毒でバーが紫に変わっても現在体力として計測する
         frame = make_frame()
         analyzer = self._analyzer(frame)
-        for side, roi_key in (("player1", "player1"), ("player2", "player2")):
+        for _side, roi_key in (("player1", "player1"), ("player2", "player2")):
             x1, y1, x2, y2 = make_params().health_roi[roi_key]
             frame[y1:y2, x1:x2] = POISON_PURPLE_BGR
         assert analyzer._measure_health(frame, "player1") == pytest.approx(100.0, abs=0.5)
