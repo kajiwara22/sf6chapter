@@ -72,6 +72,7 @@
 | [064](./064-single-scan-video-id-entrypoint.md) | 動画ID指定による本線フローの単発実行（1回走査） | 採用 | 2026-10-14 |
 | [065](./065-burnout-low-drive-warning-vs-recover-bar.md) | バーンアウト判定の修正（低ドライブ警告の金色バーと白/銀回復バーの区別） | 採用 | 2026-10-14 |
 | [066](./066-burnout-empty-banner-detection.md) | バーンアウト開始の「EMPTY」文字検出による確証 | 採用 | 2026-10-14 |
+| [067](./067-ko-misdetection-guard-and-round-count-matching.md) | K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正 | 採用 | 2026-10-17 |
 
 ## ADRのフォーマット
 

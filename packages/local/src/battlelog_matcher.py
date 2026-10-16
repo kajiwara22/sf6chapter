@@ -106,6 +106,11 @@ class CharacterNormalizer:
 class BattlelogMatcher:
     """Battlelogマッチング処理"""
 
+    # ADR-067: 動画のラウンド数と Battlelog の round_count が食い違う候補に課す時刻差ペナルティ（秒）。
+    # 検出漏れした試合があると、時刻差最小の基準だけでは以降のリプレイが1つずつずれる。
+    # ラウンド数が一致する候補を優先させることで、そのずれを抑える
+    ROUND_MISMATCH_PENALTY_SEC = 1000.0
+
     def __init__(self, normalizer: CharacterNormalizer):
         self.normalizer = normalizer
 
@@ -204,6 +209,7 @@ class BattlelogMatcher:
         video_published_at: str,
         used_replay_ids: set[str],
         tolerance_seconds: int = 600,  # 最大 10分
+        expected_round_count: int | None = None,
     ) -> dict[str, Any]:
         """
         チャプターをBattlelogの対戦と照合
@@ -212,6 +218,7 @@ class BattlelogMatcher:
         1. チャプター推定時刻 = 配信開始時刻 + startTime
         2. キャラクター名を照合（文字揺れ吸収）
         3. 時間差が最小のリプレイを選択
+           （expected_round_count があれば round_count 一致を優先、ADR-067）
         4. 時間差600秒超は失敗、重複排除
 
         Args:
@@ -220,6 +227,7 @@ class BattlelogMatcher:
             video_published_at: 動画公開日時（ISO 8601）
             used_replay_ids: 既にマッチ済みのリプレイID集合
             tolerance_seconds: 時刻差の許容範囲（秒、デフォルト: 600秒=10分）
+            expected_round_count: 動画側で検出したラウンド数（省略時はラウンド数を見ない）
 
         Returns:
             マッピング結果
@@ -289,6 +297,10 @@ class BattlelogMatcher:
         # ステップ2&3: キャラクター一致 + 時間差最小のリプレイを探す
         best_match = None
         min_time_diff = float("inf")
+        # キャラクター認識が誤っているチャプターの救済候補（ADR-067）。
+        # 動画側のラウンド数と一致するリプレイに限って採用する
+        fallback_match = None
+        fallback_time_diff = float("inf")
 
         for replay in battlelog_replays:
             replay_id = replay.get("replay_id")
@@ -303,10 +315,7 @@ class BattlelogMatcher:
                 self.normalizer.normalize(p1_char),
                 self.normalizer.normalize(p2_char),
             }
-
-            # ステップ2: キャラクター名が一致するか？
-            if chapter_chars_set != battlelog_chars_set:
-                continue
+            chars_match = chapter_chars_set == battlelog_chars_set
 
             # 時刻をチェック
             uploaded_at = replay.get("uploaded_at")
@@ -327,34 +336,72 @@ class BattlelogMatcher:
                     # 許容範囲外（10分超）
                     continue
 
-                # 時間差が最小のものを記録
-                if time_diff < min_time_diff:
-                    min_time_diff = time_diff
-                    p1_result, p2_result = self.extract_battle_results(replay)
-                    confidence = self._determine_confidence_level(time_diff)
+                # 時間差に加えて、動画側で検出したラウンド数との整合も見る（ADR-067）。
+                # 一致しない候補にはペナルティを課し、一致する候補を優先する
+                replay_round_count = max(
+                    len(replay.get("player1_info", {}).get("round_results") or []),
+                    len(replay.get("player2_info", {}).get("round_results") or []),
+                )
+                rounds_match = expected_round_count is not None and replay_round_count == expected_round_count
 
-                    best_match = {
-                        "replay_id": replay_id,
-                        "uploaded_at": uploaded_at,
-                        "time_difference": time_diff,
-                        "player1_character": p1_char,
-                        "player1_result": p1_result,
-                        "player2_character": p2_char,
-                        "player2_result": p2_result,
-                        "confidence": confidence,
-                        # ADR-048: ラウンド数検証用（round_results の長い方の件数）
-                        "round_count": max(
-                            len(replay.get("player1_info", {}).get("round_results") or []),
-                            len(replay.get("player2_info", {}).get("round_results") or []),
-                        ),
-                        # ADR-051: ラウンド単位の勝敗・勝利方法（round_stats に反映する）
-                        "player1_round_results": list(replay.get("player1_info", {}).get("round_results") or []),
-                        "player2_round_results": list(replay.get("player2_info", {}).get("round_results") or []),
-                    }
+                # キャラクターが一致しない候補は、ラウンド数が一致するときだけ救済候補にする。
+                # 認識誤り（例: TERRY を CHUN-LI と誤認識）があっても、以降の割当が
+                # 1つずれるのを防ぐ
+                if not chars_match and not rounds_match:
+                    continue
+
+                penalized_diff = time_diff
+                if expected_round_count is not None and not rounds_match:
+                    penalized_diff += self.ROUND_MISMATCH_PENALTY_SEC
+
+                # キャラクター一致候補を優先し、無ければ救済候補を使う
+                if chars_match:
+                    if penalized_diff >= min_time_diff:
+                        continue
+                    min_time_diff = penalized_diff
+                    fallback = False
+                else:
+                    if time_diff >= fallback_time_diff:
+                        continue
+                    fallback_time_diff = time_diff
+                    fallback = True
+
+                p1_result, p2_result = self.extract_battle_results(replay)
+                confidence = self._determine_confidence_level(time_diff)
+
+                candidate = {
+                    "replay_id": replay_id,
+                    "uploaded_at": uploaded_at,
+                    "time_difference": time_diff,
+                    "player1_character": p1_char,
+                    "player1_result": p1_result,
+                    "player2_character": p2_char,
+                    "player2_result": p2_result,
+                    "confidence": confidence,
+                    # ADR-048: ラウンド数検証用（round_results の長い方の件数）
+                    "round_count": replay_round_count,
+                    "round_count_expected": expected_round_count,
+                    # ADR-051: ラウンド単位の勝敗・勝利方法（round_stats に反映する）
+                    "player1_round_results": list(replay.get("player1_info", {}).get("round_results") or []),
+                    "player2_round_results": list(replay.get("player2_info", {}).get("round_results") or []),
+                }
+                if fallback:
+                    fallback_match = candidate
+                else:
+                    best_match = candidate
 
             except Exception as e:
                 logger.debug(f"Failed to process replay: {e}")
                 continue
+
+        # キャラクター一致候補が無ければ、ラウンド数一致の救済候補を使う（ADR-067）
+        if best_match is None and fallback_match is not None:
+            best_match = fallback_match
+            logger.info(
+                "  ⚠ %ss: キャラクター不一致のためラウンド数一致のリプレイを採用: replay_id=%s",
+                start_time,
+                fallback_match["replay_id"],
+            )
 
         # ステップ4: マッチング結果の検証
         if not best_match:
@@ -380,7 +427,8 @@ class BattlelogMatcher:
             f"{best_match['player1_character']}({best_match['player1_result']}) vs "
             f"{best_match['player2_character']}({best_match['player2_result']}), "
             f"confidence={best_match['confidence']}, "
-            f"time_diff={best_match['time_difference']:.1f}s"
+            f"time_diff={best_match['time_difference']:.1f}s, "
+            f"rounds={best_match.get('round_count')}/{best_match.get('round_count_expected')}"
         )
 
         return {

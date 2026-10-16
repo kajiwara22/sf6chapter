@@ -168,12 +168,12 @@
       }
     ],
     "ko_color_mask": {
-      "description": "K.O.文字の白/銀マスク照合（ADR-063）。背景に依存しないため、ステージごとのテンプレート追加が不要",
+      "description": "K.O.文字の白/銀マスク照合（ADR-063 / ADR-067）。背景に依存しないため、ステージごとのテンプレート追加が不要。閾値は白い服装＋明るいステージでの誤検出（実測 0.60〜0.64）と真の K.O.（実測 0.68〜0.85）を分離するため 0.65 とする",
       "enabled": true,
       "search_region": [640, 360, 1280, 720],
       "s_max": 70,
       "v_min": 150,
-      "threshold": 0.6,
+      "threshold": 0.65,
       "min_consecutive": 2
     },
     "burnout_banner": {
@@ -228,6 +228,7 @@
       "burnout_round_banner_before_sec": 1.5,
       "burnout_round_banner_after_sec": 3.0,
       "round_end_gap_sec": 5.0,
+      "ko_start_guard_sec": 5.0,
       "sa_digit_min_score": 0.45,
       "sa_max_gap_sec": 1.0,
       "sa_revert_window_sec": 1.0,

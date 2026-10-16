@@ -102,6 +102,10 @@ class GaugeThresholds:
     burnout_round_banner_after_sec: float = 3.0
     # ADR-057: ラウンド終了（K.O.）後の試合間画面での HUD 誤検出を visible_to から除外する途切れ秒数
     round_end_gap_sec: float = 5.0
+    # ADR-067: ラウンド開始直後は ROUND バナー／FIGHT 演出の白文字を K.O. と誤検出しやすく、
+    # 実効終了が開始直後に切り詰められる。開始からこの秒数未満の K.O. 検出は無視する。
+    # 誤検出は実測でバナー開始 +2.5 秒、SF6 でこの範囲の真の K.O. は実質存在しない
+    ko_start_guard_sec: float = 5.0
     sa_digit_min_score: float = 0.45
     sa_bar_filled_v: int = 140
     sa_bar_filled_s: int = 100
@@ -1693,12 +1697,20 @@ class GaugeAnalyzer:
         return result
 
     def _round_ko_time(self, window: RoundWindow) -> float | None:
-        """ラウンド内の K.O. バナー検出時刻（絶対秒）を返す（ADR-059）
+        """ラウンド内の K.O. バナー検出時刻（絶対秒）を返す（ADR-059 / ADR-067）
 
         K.O. バナーは勝利演出の開始を示し、それ以降は HUD が消える。
+
+        ラウンド開始直後は ROUND バナーや FIGHT 演出の白文字を K.O. と誤検出しやすく、
+        その場合は実効終了が開始直後に切り詰められて durationSec が数秒になる。
+        開始から ko_start_guard_sec 未満の検出は誤検出として無視する（ADR-067）。
+        真に HUD が消えた場合は _visible_range の途切れ判定が終端を決める。
         """
         upper = window.boundary_time
+        guard = window.start_time + self.params.thresholds.ko_start_guard_sec
         for ko in self.ko_times:
+            if ko < guard:
+                continue
             if window.start_time - 1.0 <= ko and (upper is None or ko <= upper):
                 return ko
         return None

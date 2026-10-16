@@ -40,6 +40,33 @@ from src.youtube import YouTubeChapterUpdater
 logger = setup_logger()
 
 
+def _expected_round_counts(
+    sorted_chapters: list[dict[str, Any]], round_banner_times: list[float]
+) -> list[int | None]:
+    """チャプター区間ごとの ROUND バナー数を返す（ADR-067）
+
+    区間は各チャプターの開始から次のチャプターの開始まで。ROUND バナーはチャプター
+    開始時刻の僅か手前（int 丸め前）に検出されることがあるため、開始側に 1 秒の
+    許容を持たせる。バナーが1つも無い区間やバナー時刻が未計測の場合は None
+    （ラウンド数の情報なし）とする。
+    """
+    if not round_banner_times:
+        return [None] * len(sorted_chapters)
+
+    boundary_tolerance_sec = 1.0
+    counts: list[int | None] = []
+    for index, chapter in enumerate(sorted_chapters):
+        start = float(chapter.get("startTime", 0)) - boundary_tolerance_sec
+        end = (
+            float(sorted_chapters[index + 1].get("startTime", 0)) - boundary_tolerance_sec
+            if index + 1 < len(sorted_chapters)
+            else float("inf")
+        )
+        count = sum(1 for t in round_banner_times if start <= t < end)
+        counts.append(count if count > 0 else None)
+    return counts
+
+
 class SF6ChapterProcessor:
     """SF6チャプター処理のメインクラス"""
 
@@ -522,12 +549,14 @@ class SF6ChapterProcessor:
                 logger.info("No matches found, skipping video")
                 return
 
-            # 4. YouTube チャプター更新
-            logger.info("[4/6] Updating YouTube chapters...")
-            self.youtube_updater.update_video_description(video_id, chapters)
-
-            # 4.5. Battlelog マッピング
+            # 4. Battlelog マッピング
             chapters_with_result = self._run_battlelog_matching(video_id, chapters, message_data.get("publishedAt", ""))
+
+            # 4.1 YouTube チャプター更新
+            # Battlelog のキャラクター名を反映した後に行う（ADR-067）。
+            # 認識誤りや救済候補の採用でタイトルが Battlelog に揃うため
+            logger.info("[4/6] Updating YouTube chapters...")
+            self.youtube_updater.update_video_description(video_id, chapters_with_result)
 
             # マッチ結果を反映
             self._apply_match_results(matches, chapters_with_result)
@@ -716,24 +745,58 @@ class SF6ChapterProcessor:
         logger.info(f"  Fetched {len(replays)} replays from Battlelog (cached + new)")
         return replays
 
+    def _round_banner_times(self) -> list[float]:
+        """計測済みの ROUND バナー時刻（ADR-067 のラウンド数照合に使う）"""
+        if self.gauge_analyzer is None:
+            return []
+        return self.gauge_analyzer.banner_times
+
     def _match_chapters_with_battlelog_replays(
-        self, chapters: list[dict[str, Any]], replays: list[dict[str, Any]], video_published_at: str
+        self,
+        chapters: list[dict[str, Any]],
+        replays: list[dict[str, Any]],
+        video_published_at: str,
+        round_banner_times: list[float] | None = None,
     ) -> list[dict[str, Any]]:
         """
         チャプターをBattlelogリプレイと照合
+
+        round_banner_times を渡すと、チャプター区間ごとの ROUND バナー数を
+        動画側のラウンド数としてマッチングに使う（ADR-067）。
         """
         sorted_chapters = sorted(chapters, key=lambda c: c.get("startTime", 0))
         sorted_replays = sorted(replays, key=lambda r: r.get("uploaded_at", 0))
         used_replay_ids = set()
+        expected_round_counts = _expected_round_counts(sorted_chapters, round_banner_times or [])
 
         enriched_chapters = []
-        for chapter in sorted_chapters:
+        for index, chapter in enumerate(sorted_chapters):
             result = self.battlelog_matcher.match_chapter_with_battlelog(
-                chapter, sorted_replays, video_published_at, used_replay_ids, tolerance_seconds=600
+                chapter,
+                sorted_replays,
+                video_published_at,
+                used_replay_ids,
+                tolerance_seconds=600,
+                expected_round_count=expected_round_counts[index],
             )
             if result.get("matched") and result.get("replay_id"):
                 used_replay_ids.add(result["replay_id"])
             enriched_chapter = {**chapter, **result}
+            # Battlelog と一致したチャプターは、キャラクター名を Battlelog の表記に揃える（ADR-067）。
+            # 救済候補（キャラ不一致）を採用した場合や認識誤りがあっても、
+            # チャプタータイトルとバトルログのデータが食い違わないようにする
+            if result.get("matched") and result.get("player1_character") and result.get("player2_character"):
+                p1_display = self.character_normalizer.normalize(result["player1_character"])
+                p2_display = self.character_normalizer.normalize(result["player2_character"])
+                new_title = f"{p1_display} VS {p2_display}"
+                if new_title != enriched_chapter.get("title"):
+                    logger.info(
+                        "  チャプタータイトルを Battlelog に合わせて修正: %ss: %s → %s",
+                        chapter.get("startTime"),
+                        enriched_chapter.get("title"),
+                        new_title,
+                    )
+                    enriched_chapter["title"] = new_title
             enriched_chapters.append(enriched_chapter)
 
         matched_count = sum(1 for c in enriched_chapters if c.get("matched"))
@@ -849,7 +912,9 @@ class SF6ChapterProcessor:
                 base["rerecognition_method"] = rerecognition_method
             base_chapters.append(base)
 
-        return self._match_chapters_with_battlelog_replays(base_chapters, replays, video_published_at)
+        return self._match_chapters_with_battlelog_replays(
+            base_chapters, replays, video_published_at, self._round_banner_times()
+        )
 
     def _find_frame_image(self, video_intermediate_dir: Path, start_time: int) -> Path | None:
         """
@@ -902,7 +967,9 @@ class SF6ChapterProcessor:
             logger.info(f"  buildId: {build_id[:20]}...")
 
             replays = asyncio.run(self._fetch_battlelog_replays(self.sf6_player_id, build_id, auth_cookie))
-            chapters_with_result = self._match_chapters_with_battlelog_replays(chapters, replays, video_published_at)
+            chapters_with_result = self._match_chapters_with_battlelog_replays(
+                chapters, replays, video_published_at, self._round_banner_times()
+            )
 
             # ADR-033: 未マッチチャプターに対して画像前処理+再認識を実施
             unmatched_count = sum(1 for c in chapters_with_result if not c.get("matched", False))
