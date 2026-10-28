@@ -73,6 +73,7 @@
 | [065](./065-burnout-low-drive-warning-vs-recover-bar.md) | バーンアウト判定の修正（低ドライブ警告の金色バーと白/銀回復バーの区別） | 採用 | 2026-10-14 |
 | [066](./066-burnout-empty-banner-detection.md) | バーンアウト開始の「EMPTY」文字検出による確証 | 採用 | 2026-10-14 |
 | [067](./067-ko-misdetection-guard-and-round-count-matching.md) | K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正 | 採用 | 2026-10-17 |
+| [068](./068-perfect-round-health-and-duration-correction.md) | パーフェクト勝利ラウンドの残体力・ラウンド長補正 | 採用 | 2026-10-28 |
 
 ## ADRのフォーマット
 

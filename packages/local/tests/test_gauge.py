@@ -16,6 +16,7 @@ from src.detection.gauge import (
     _is_poison_character,
     _median_filter,
     _merge_periods,
+    _perfect_ko_time,
     _series_stats,
     _suppress_transient_reverts,
     build_round_stats_rows,
@@ -1193,6 +1194,40 @@ class TestImprovementRoundStats:
         p1_timeup = next(r for r in rows_timeup if r["side"] == "player1")
         assert p1_timeup["healthEnd"] == 30.0
 
+    def test_perfect_winner_health_is_clamped_to_full(self):
+        """パーフェクト勝利（method P）の勝者は残体力 100%（ADR-068）
+
+        K.O. 後の勝利演出で HUD が消え、背景を現在体力色として誤読した値が
+        最終値になることがあるため、Battlelog の勝利方法から補正する。
+        """
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+        gauge = self._gauge_result()
+
+        # 1P がパーフェクト（8）で勝利 → p1 は 100%、敗者は 0%
+        rows = build_round_stats_rows(
+            gauge, matches, round_results_by_match={"vid_100": {"player1": [8], "player2": [0]}}
+        )
+        p1 = next(r for r in rows if r["side"] == "player1")
+        p2 = next(r for r in rows if r["side"] == "player2")
+        assert p1["roundMethod"] == "P"
+        assert p1["healthEnd"] == 100.0
+        assert p2["healthEnd"] == 0.0
+
+        # パーフェクトでない勝利（V）は補正しない（計測値のまま）
+        rows_v = build_round_stats_rows(
+            gauge, matches, round_results_by_match={"vid_100": {"player1": [1], "player2": [0]}}
+        )
+        p1_v = next(r for r in rows_v if r["side"] == "player1")
+        assert p1_v["healthEnd"] == 30.0
+
+        # 引き分け（4）は勝敗が付かないため補正しない
+        rows_draw = build_round_stats_rows(
+            gauge, matches, round_results_by_match={"vid_100": {"player1": [4], "player2": [4]}}
+        )
+        assert rows_draw[0]["healthEnd"] == 30.0
+
     def test_burnout_is_null_without_drive_series(self):
         gauge_result = self._gauge_result()
         for side in ("player1", "player2"):
@@ -1284,3 +1319,80 @@ class TestHealthDespike:
             )
         analyzer._derive_states()
         assert all(s.states["player1"].health == pytest.approx(100.0, abs=0.1) for s in analyzer.samples)
+
+
+class TestPerfectKoTime:
+    """パーフェクト勝利ラウンドの体力ベース K.O. 推定（ADR-068）"""
+
+    def test_ko_time_from_loser_health(self):
+        # 敗者（player2）の体力が 5% 以下になった最初の変化点を K.O. とする
+        round_data = {
+            "player1": {"health": [[1.0, 99.0], [2.0, 100.0]]},
+            "player2": {"health": [[1.0, 100.0], [5.0, 40.0], [23.6, 2.4], [27.9, 0.0]]},
+        }
+        assert _perfect_ko_time(round_data) == pytest.approx(23.6)
+
+    def test_no_drop_returns_none(self):
+        round_data = {
+            "player1": {"health": [[1.0, 100.0]]},
+            "player2": {"health": [[1.0, 100.0], [20.0, 30.0]]},
+        }
+        assert _perfect_ko_time(round_data) is None
+
+    def test_perfect_round_duration_is_trimmed(self):
+        gauge_result = {
+            "matches": {
+                "vid_100": {
+                    "matchId": "vid_100",
+                    "rounds": [
+                        {
+                            "round": 1,
+                            "roundStartTime": 100.0,
+                            "roundEndTime": 130.0,
+                            "player1": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 28.0,
+                                "coverage": 0.4,
+                                "health": [[1.0, 100.0]],
+                                "drive": [],
+                                "sa": [],
+                                "driveBurnout": [],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                            "player2": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 28.0,
+                                "coverage": 0.4,
+                                "health": [[1.0, 100.0], [22.0, 2.0]],
+                                "drive": [],
+                                "sa": [],
+                                "driveBurnout": [],
+                                "saCriticalArt": [],
+                                "saProgress": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+        matches = [
+            {"id": "vid_100", "videoId": "vid", "player1": {"character": "GOUKI"}, "player2": {"character": "RYU"}}
+        ]
+
+        # パーフェクト勝利 → K.O. 推定時刻（23.0 秒 = 22.0 + visibleFrom 1.0）まで切り詰める
+        rows = build_round_stats_rows(
+            gauge_result, matches, round_results_by_match={"vid_100": {"player1": [8], "player2": [0]}}
+        )
+        p1 = next(r for r in rows if r["side"] == "player1")
+        assert p1["durationSec"] == pytest.approx(21.0)
+        assert p1["roundEndTime"] == 122
+        assert p1["healthEnd"] == 100.0
+
+        # パーフェクトでない勝利 → 切り詰めない（計測値のまま）
+        rows_v = build_round_stats_rows(
+            gauge_result, matches, round_results_by_match={"vid_100": {"player1": [1], "player2": [0]}}
+        )
+        p1_v = next(r for r in rows_v if r["side"] == "player1")
+        assert p1_v["durationSec"] == pytest.approx(27.0)
+        assert p1_v["roundEndTime"] == 128

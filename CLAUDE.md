@@ -127,6 +127,7 @@ sf6-chapter/
 - [x] バーンアウト判定の修正（低ドライブ警告の金色バーと白/銀回復バーの区別）（ADR-065） - 実装完了・3本で検証（`ovM5BMIsyKw` 70→18区間、`DSgD_bQhxp0` 148→33、`f36vyEepil4` 144→24。低ドライブ警告の誤検出と全画面白フラッシュの誤検出を解消）・R2 反映済み（`ovM5BMIsyKw`）
 - [x] バーンアウト開始の「EMPTY」文字検出による確証（ADR-066） - 実装完了・`ovM5BMIsyKw`（16件・誤検出0）と `DSgD_bQhxp0`（31件）で検証
 - [x] K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正（ADR-067） - 実装完了・`rf-kzjE9mTk` で検証（durationSec<10秒 30→0行、round_count mismatch 6→0件、YouTube チャプター 16章を Battlelog のキャラ名で補正）・`DSgD_bQhxp0` でも durationSec<10秒 8→0行を横断確認・R2 反映済み
+- [x] パーフェクト勝利ラウンドの残体力・ラウンド長補正（ADR-068） - 実装完了・`NdfHMgNzGFU_4070` R3 の healthEnd 3.9→100%、パーフェクト勝利29ラウンド中28件を補正
 
 ## 次のタスク
 
@@ -395,6 +396,7 @@ docker compose up -d
 - [065: バーンアウト判定の修正（低ドライブ警告の金色バーと白/銀回復バーの区別）](docs/adr/065-burnout-low-drive-warning-vs-recover-bar.md)
 - [066: バーンアウト開始の「EMPTY」文字検出による確証](docs/adr/066-burnout-empty-banner-detection.md)
 - [067: K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正](docs/adr/067-ko-misdetection-guard-and-round-count-matching.md)
+- [068: パーフェクト勝利ラウンドの残体力・ラウンド長補正](docs/adr/068-perfect-round-health-and-duration-correction.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

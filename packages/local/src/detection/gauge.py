@@ -2082,6 +2082,29 @@ def _round_method(value1: int | None, value2: int | None) -> str | None:
     return None
 
 
+# ADR-068: パーフェクト勝利の K.O. は K.O. バナーが照合できない（PERFECT 文字と重なる）。
+# 敗者の体力がこの％以下になった最初の変化点を K.O. とみなす
+PERFECT_KO_HEALTH_PERCENT = 5.0
+
+
+def _perfect_ko_time(round_data: dict[str, Any]) -> float | None:
+    """パーフェクト勝利ラウンドの K.O. 時刻（ラウンド開始からの相対秒）を体力から推定する（ADR-068）
+
+    パーフェクトの敗者はラウンド中に一度もダメージを受けないため、体力が 5% 以下になるのは
+    K.O. の瞬間だけである。パーフェクトでないラウンドには適用しない（削り合いを K.O. と
+    誤認しないため）。
+    """
+    earliest: float | None = None
+    for side in SIDES:
+        for event in (round_data.get(side) or {}).get("health") or []:
+            if float(event[1]) <= PERFECT_KO_HEALTH_PERCENT:
+                rel = float(event[0])
+                if earliest is None or rel < earliest:
+                    earliest = rel
+                break
+    return earliest
+
+
 def _max_drop(events: list[list[float]]) -> float | None:
     """体力の変化点列から最大の変化点間減少（％）を求める（ADR-051）
 
@@ -2151,6 +2174,10 @@ def build_round_stats_rows(
                 value_lookup.get((match_id, round_index, "player1")),
                 value_lookup.get((match_id, round_index, "player2")),
             )
+            # ADR-068: パーフェクト勝利では PERFECT 文字が K.O. と重なりバナーが照合できない。
+            # 勝利演出（4〜5秒）が durationSec に含まれるため、敗者の体力が 0% 付近に
+            # 落ちた時刻を K.O. とみなしてラウンド終端を切り詰める
+            perfect_ko_rel = _perfect_ko_time(round_data) if round_method == "P" else None
             for side in SIDES:
                 payload = round_data.get(side) or {}
                 drive_events = payload.get("drive") or []
@@ -2179,11 +2206,21 @@ def build_round_stats_rows(
                 player = match.get(side) or {}
                 counter_counts = counter_lookup.get((match_id, round_index, side))
                 round_result = _round_result(value_lookup.get((match_id, round_index, side)))
+                round_end_time = int(round(round_start + visible_to))
+                duration = round(max(0.0, visible_to - visible_from), 2)
+                if perfect_ko_rel is not None and perfect_ko_rel < visible_to:
+                    round_end_time = int(round(round_start + perfect_ko_rel))
+                    duration = round(max(0.0, perfect_ko_rel - visible_from), 2)
                 # K.O. 札着の敗者はゲーム上 0%。K.O. 演出中は HUD が消えて体力バーが 0 へ
                 # 吸い込まれる演出を計測できないため、Battlelog の勝利方法から補正する（ADR-051）
                 # （Time Up（T）の敗者は 0 にならないので補正しない。未マッチ時は計測値のまま）
                 if round_result == "loss" and round_method not in (None, "T"):
                     health_end = 0.0
+                # パーフェクト勝利（P）の勝者は無傷なので残体力は 100%。
+                # K.O. 後の勝利演出（PERFECT / CAMMY WIN / RESULT 画面）では HUD が消えており、
+                # 背景（桜の花びら等）を現在体力色として誤読した値が最終値になることがある（ADR-068）
+                elif round_result == "win" and round_method == "P":
+                    health_end = 100.0
                 rows.append(
                     {
                         "videoId": match.get("videoId"),
@@ -2192,8 +2229,8 @@ def build_round_stats_rows(
                         "side": side,
                         "character": player.get("character"),
                         "roundStartTime": int(round(round_start + visible_from)),
-                        "roundEndTime": int(round(round_start + visible_to)),
-                        "durationSec": round(max(0.0, visible_to - visible_from), 2),
+                        "roundEndTime": round_end_time,
+                        "durationSec": duration,
                         "roundResult": round_result,
                         "roundMethod": round_method,
                         "driveMin": drive_min,
