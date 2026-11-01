@@ -13,7 +13,14 @@ import sys
 from datetime import datetime, timedelta
 
 from .formatter import format_comparison, format_report
-from .query import load_parquet, query_hourly_win_rate, query_lp_history, query_matchups, query_summary
+from .query import (
+    load_parquet,
+    query_hourly_win_rate,
+    query_lp_history,
+    query_matchups,
+    query_round_score,
+    query_summary,
+)
 from .r2_client import download_parquet
 
 DEFAULT_PLAYER_ID = "1319673732"
@@ -42,6 +49,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--hourly-analysis",
         action="store_true",
         help="時間帯別勝率分析を含める（JST換算、1時間単位）",
+    )
+    parser.add_argument(
+        "--round-analysis",
+        action="store_true",
+        help="ラウンドスコア分析を含める（1R別・1P/2P別・3R勝率・決まり手）",
     )
     parser.add_argument("--local", default=None, help="ローカルParquetファイルパス（R2ダウンロードをスキップ）")
     return parser.parse_args(argv)
@@ -98,6 +110,12 @@ def main(argv: list[str] | None = None) -> None:
         print("時間帯別勝率を集計中...")
         hourly = query_hourly_win_rate(con, args.player_id, args.date_from, args.date_to, args.battle_type)
 
+    # ラウンドスコア分析（フラグが立っている場合のみ）
+    round_score = None
+    if args.round_analysis:
+        print("ラウンドスコアを集計中...")
+        round_score = query_round_score(con, args.player_id, args.date_from, args.date_to, args.battle_type)
+
     # レポート生成
     report = format_report(
         summary,
@@ -109,6 +127,7 @@ def main(argv: list[str] | None = None) -> None:
         player_name=args.player_name,
         battle_type=args.battle_type,
         hourly=hourly,
+        round_score=round_score,
     )
 
     # 前期間比較

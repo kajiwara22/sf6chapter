@@ -35,6 +35,9 @@ uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --compare-prev
 # 時間帯別勝率分析付き（JST換算、1時間単位）
 uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --hourly-analysis
 
+# ラウンドスコア分析付き（1R別・1P/2P別・3R勝率・決まり手）
+uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --round-analysis
+
 # 複数オプションの組み合わせ
 uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --hourly-analysis --compare-prev
 
@@ -57,6 +60,20 @@ uv run python -m src.main --from 2026-02-01 --to 2026-03-01 --output ./my_report
 | マッチアップ結果 | 常時出力 |
 | LP推移 | 常時出力 |
 | 時間帯別勝率（JST） | `--hourly-analysis` 指定時のみ |
+| ラウンドスコア分析 | `--round-analysis` 指定時のみ |
 | 前期間比較 | `--compare-prev` 指定時のみ |
+
+### ラウンドスコア分析（`--round-analysis`）
+
+`battlelog_replays.parquet` だけで集計します（`round_stats.parquet` は不要）。
+
+- **1R の勝敗と試合勝率**: 1Rを取った/落とした試合の勝率と差
+- **1P / 2P 別**: サイド別の勝率と 3R 勝率
+- **1-1 から 3R に入った試合**: フルラウンド率と 3R 勝率
+- **決まり手**: 自分が取ったラウンド／落としたラウンドの内訳（V / C / T / OD / SA / CA / P）
+
+`round_results` の値は ADR-037 の規則（`0`=LOSS、`4`=DRAW、それ以外=WIN）で解釈し、
+自分の side に正規化してから集計します。`round_results` が空・不正・両者でラウンド数が
+一致しない試合は除外しています。
 
 詳細は [ADR-032](../../docs/adr/032-battlelog-report-generator.md)・[ADR-035](../../docs/adr/035-hourly-win-rate-analysis-in-report-generator.md) を参照。

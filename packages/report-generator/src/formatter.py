@@ -5,7 +5,7 @@ Markdown形式のレポートフォーマッタ
 from collections import defaultdict
 from datetime import datetime
 
-from .query import HourlyRow, LPRow, MatchupRow, Summary
+from .query import HourlyRow, LPRow, MatchupRow, RoundMethodRow, RoundScore, Summary
 
 
 def format_report(
@@ -19,6 +19,7 @@ def format_report(
     player_name: str = "ゆたにぃPC",
     battle_type: str = "ranked",
     hourly: list[HourlyRow] | None = None,
+    round_score: RoundScore | None = None,
 ) -> str:
     """レポート全体をMarkdown形式で生成"""
     lines: list[str] = []
@@ -45,6 +46,11 @@ def format_report(
     if hourly is not None:
         lines.append("")
         lines.append(_format_hourly_win_rate(hourly))
+
+    # ラウンドスコア分析（--round-analysis 時のみ）
+    if round_score is not None:
+        lines.append("")
+        lines.append(_format_round_score(round_score))
 
     return "\n".join(lines)
 
@@ -292,6 +298,84 @@ def _format_hourly_win_rate(hourly: list[HourlyRow]) -> str:
     total_wr = wins_all / total_all * 100 if total_all > 0 else 0
     lines.append(f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** |")
     return "\n".join(lines)
+
+
+def _format_round_score(score: RoundScore) -> str:
+    """ラウンドスコア分析セクション"""
+    lines = ["## ラウンドスコア分析", ""]
+
+    if score.total_matches <= 0:
+        lines.append("データなし（round_results が揃っている試合がありません）")
+        return "\n".join(lines)
+
+    lines.append(f"対象: {score.total_matches:,}試合（round_results が揃っている試合）")
+    lines.append("")
+
+    # 1ラウンド目の勝敗と試合勝率
+    lines.append("### 1ラウンド目の勝敗と試合勝率")
+    lines.append("")
+    lines.append("| 1R | 試合数 | 勝利 | 勝率 |")
+    lines.append("|----|--------|------|------|")
+    labels = {True: "取った", False: "落とした"}
+    for row in score.first_round:
+        lines.append(f"| {labels.get(row.won, str(row.won))} | {row.total:,} | {row.wins:,} | {row.win_rate:.1f}% |")
+
+    won_r1 = next((r for r in score.first_round if r.won), None)
+    lost_r1 = next((r for r in score.first_round if not r.won), None)
+    if won_r1 and lost_r1:
+        diff = won_r1.win_rate - lost_r1.win_rate
+        lines.append("")
+        lines.append(f"1R を取った試合と落とした試合の勝率差: {_format_diff_pt(diff)}")
+
+    # 1P / 2P 別
+    lines.append("")
+    lines.append("### 1P / 2P 別")
+    lines.append("")
+    lines.append("| サイド | 試合数 | 勝利 | 勝率 | 3R 勝率 (n) |")
+    lines.append("|--------|--------|------|------|-------------|")
+    for row in score.sides:
+        full = (
+            f"{row.full_round_win_rate:.1f}% ({row.full_round_wins}/{row.full_round_total})"
+            if row.full_round_win_rate is not None
+            else "-"
+        )
+        lines.append(f"| {row.side} | {row.total:,} | {row.wins:,} | {row.win_rate:.1f}% | {full} |")
+
+    # 1-1 から 3R
+    lines.append("")
+    lines.append("### 1-1 から 3R に入った試合")
+    lines.append("")
+    full_rate = score.full_round_total / score.total_matches * 100
+    full_wr = (score.full_round_wins / score.full_round_total * 100) if score.full_round_total > 0 else 0.0
+    lines.append(
+        f"{score.full_round_total:,}試合 / 全{score.total_matches:,}試合（フルラウンド率 {full_rate:.1f}%）"
+    )
+    lines.append(
+        f"3R の勝率: {full_wr:.1f}%（{score.full_round_wins:,}勝 / {score.full_round_total:,}試合）"
+    )
+
+    # 決まり手
+    lines.extend(_format_round_methods("取ったラウンド（自分が決めた）", score.won_methods, score.total_rounds_won))
+    lines.extend(
+        _format_round_methods("落としたラウンド（相手に決められた）", score.lost_methods, score.total_rounds_lost)
+    )
+
+    return "\n".join(lines)
+
+
+def _format_round_methods(title: str, methods: list[RoundMethodRow], total: int) -> list[str]:
+    """決まり手の表を組み立てる"""
+    lines = ["", f"### {title}", ""]
+    if not methods:
+        lines.append("データなし")
+        return lines
+
+    lines.append("| 決まり手 | 回数 | 割合 |")
+    lines.append("|----------|------|------|")
+    for row in methods:
+        lines.append(f"| {row.method}（{row.label}） | {row.count:,} | {row.share:.1f}% |")
+    lines.append(f"| **合計** | **{total:,}** | **100.0%** |")
+    return lines
 
 
 def _aggregate_by_opponent(matchups: list[MatchupRow]) -> dict[str, tuple[int, int]]:
