@@ -128,6 +128,9 @@ sf6-chapter/
 - [x] バーンアウト開始の「EMPTY」文字検出による確証（ADR-066） - 実装完了・`ovM5BMIsyKw`（16件・誤検出0）と `DSgD_bQhxp0`（31件）で検証
 - [x] K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正（ADR-067） - 実装完了・`rf-kzjE9mTk` で検証（durationSec<10秒 30→0行、round_count mismatch 6→0件、YouTube チャプター 16章を Battlelog のキャラ名で補正）・`DSgD_bQhxp0` でも durationSec<10秒 8→0行を横断確認・R2 反映済み
 - [x] パーフェクト勝利ラウンドの残体力・ラウンド長補正（ADR-068） - 実装完了・`NdfHMgNzGFU_4070` R3 の healthEnd 3.9→100%、パーフェクト勝利29ラウンド中28件を補正
+- [x] 試合中のラウンド開始画面の誤検出による過分割チャプターの統合（ADR-069） - 実装完了・`F16OBc27nSc` で検証（検出 18→17、Battlelog 17/17、round_count mismatch 0、`1314` が 3 ラウンドに修正）
+- [x] レポートジェネレーターへのラウンドスコア分析の追加（ADR-070） - 実装完了・ローカル 1,732試合で検証（1R取った試合 72.6% / 落とした試合 20.8%、フルラウンド率 45.3%、3R勝率 46.2%、決まり手の内訳を Markdown 出力）
+- [x] Web へのラウンドスコア分析タブの追加（ADR-071） - 実装完了・DuckDB-WASM で CLI 版（ADR-070）と数値一致を検証（1,732試合・決まり手の内訳一致）。typecheck / test / build 通過
 
 ## 次のタスク
 
@@ -397,6 +400,9 @@ docker compose up -d
 - [066: バーンアウト開始の「EMPTY」文字検出による確証](docs/adr/066-burnout-empty-banner-detection.md)
 - [067: K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正](docs/adr/067-ko-misdetection-guard-and-round-count-matching.md)
 - [068: パーフェクト勝利ラウンドの残体力・ラウンド長補正](docs/adr/068-perfect-round-health-and-duration-correction.md)
+- [069: 試合中のラウンド開始画面の誤検出による過分割チャプターの統合](docs/adr/069-oversplit-chapter-merge-by-round-banner-count.md)
+- [070: レポートジェネレーターへのラウンドスコア分析の追加](docs/adr/070-round-score-analysis-in-report-generator.md)
+- [071: Web へのラウンドスコア分析タブの追加](docs/adr/071-web-round-score-tab.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

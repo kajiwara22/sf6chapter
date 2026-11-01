@@ -74,6 +74,9 @@
 | [066](./066-burnout-empty-banner-detection.md) | バーンアウト開始の「EMPTY」文字検出による確証 | 採用 | 2026-10-14 |
 | [067](./067-ko-misdetection-guard-and-round-count-matching.md) | K.O. 誤検出の抑制とラウンド数整合による Battlelog マッピング補正 | 採用 | 2026-10-17 |
 | [068](./068-perfect-round-health-and-duration-correction.md) | パーフェクト勝利ラウンドの残体力・ラウンド長補正 | 採用 | 2026-10-28 |
+| [069](./069-oversplit-chapter-merge-by-round-banner-count.md) | 試合中のラウンド開始画面の誤検出による過分割チャプターの統合 | 採用 | 2026-10-29 |
+| [070](./070-round-score-analysis-in-report-generator.md) | レポートジェネレーターへのラウンドスコア分析の追加 | 採用 | 2026-10-31 |
+| [071](./071-web-round-score-tab.md) | Web へのラウンドスコア分析タブの追加 | 採用 | 2026-10-31 |
 
 ## ADRのフォーマット
 
