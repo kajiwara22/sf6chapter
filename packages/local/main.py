@@ -67,6 +67,45 @@ def _expected_round_counts(
     return counts
 
 
+def _merge_single_round_chapters(
+    chapters: list[dict[str, Any]], round_banner_times: list[float]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """ROUND バナーが 1 つしか無いチャプターを隣接チャプターに統合する（ADR-069）
+
+    SF6 は 2 本先取なので 1 試合は必ず 2 ラウンド以上。区間内の ROUND バナーが 1 つ
+    しか無いチャプターは、試合中のラウンド開始画面を試合開始と誤検出した過分割である。
+    直前または直後のチャプターと同じカード（タイトル一致）のときだけ統合し、
+    カードが違う場合は認識の誤りと区別できないため統合しない。
+
+    Returns:
+        (統合後に残すチャプター, 統合で削除したチャプター)。バナー時刻が未計測の
+        場合やチャプターが 1 件の場合は、入力をそのまま返す。
+    """
+    if not round_banner_times or len(chapters) < 2:
+        return list(chapters), []
+
+    current = sorted(chapters, key=lambda chapter: chapter.get("startTime", 0))
+    removed: list[dict[str, Any]] = []
+    while len(current) >= 2:
+        counts = _expected_round_counts(current, round_banner_times)
+        merged = False
+        for index, count in enumerate(counts):
+            if count != 1:
+                continue
+            title = current[index].get("title")
+            if index > 0 and current[index - 1].get("title") == title:
+                removed.append(current.pop(index))
+                merged = True
+                break
+            if index + 1 < len(current) and current[index + 1].get("title") == title:
+                removed.append(current.pop(index + 1))
+                merged = True
+                break
+        if not merged:
+            break
+    return current, removed
+
+
 class SF6ChapterProcessor:
     """SF6チャプター処理のメインクラス"""
 
@@ -243,6 +282,23 @@ class SF6ChapterProcessor:
             except Exception:
                 logger.exception("Error processing recognition result for match %d", i)
                 continue
+
+        # ADR-069: ROUND バナーが 1 つしか無いチャプター（試合中のラウンド開始画面を
+        # 試合開始と誤検出した過分割）を、同じカードの隣接チャプターに統合する。
+        # ゲージ計測の前に補正することで、ラウンド分割も正しい試合範囲で行われる
+        if gauge_analyzer is not None and chapters:
+            merged_chapters, merged_removed = _merge_single_round_chapters(chapters, gauge_analyzer.banner_times)
+            if merged_removed:
+                removed_ids = {chapter.get("matchId") for chapter in merged_removed}
+                logger.info(
+                    "[ADR-069] 過分割されたチャプターを統合: %s",
+                    ", ".join(f"{chapter.get('matchId')}({chapter.get('title')})" for chapter in merged_removed),
+                )
+                chapters = merged_chapters
+                matches = [match for match in matches if match.get("id") not in removed_ids]
+                detections = [
+                    detection for detection in detections if f"{video_id}_{int(detection.timestamp)}" not in removed_ids
+                ]
 
         # ADR-048: 検出済みの試合範囲でゲージ計測結果をラウンド単位に構築する
         if gauge_analyzer is not None and matches:
