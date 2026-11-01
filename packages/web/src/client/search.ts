@@ -4,7 +4,7 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable } from '@shared/types';
+import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable, RoundScoreFilters, RoundScore, RoundScoreMethodRow } from '@shared/types';
 import type { ManifestParquetKey } from '@shared/manifest';
 import { determineResultFromRounds } from '@shared/rounds';
 import {
@@ -802,6 +802,213 @@ export async function queryMatchupChart(filters: MatchupChartFilters): Promise<M
       winRate: total > 0 ? Math.round((wins / total) * 1000) / 10 : 0,
     };
   });
+}
+
+/** 勝利方法ID → 決まり手コード */
+const ROUND_METHOD_MAP: Record<number, string> = {
+  1: 'V',
+  2: 'C',
+  3: 'T',
+  5: 'OD',
+  6: 'SA',
+  7: 'CA',
+  8: 'P',
+};
+
+/** 決まり手コードの表示順 */
+export const ROUND_METHOD_ORDER = ['V', 'C', 'T', 'OD', 'SA', 'CA', 'P', 'UNKNOWN'] as const;
+
+/**
+ * 勝利方法IDを決まり手コードに変換する（ADR-037 / ADR-051）
+ *
+ * `round_results` の値は 0=LOSS / 4=DRAW / それ以外=WIN で、
+ * WIN の値が決まり手（1=V, 2=C, 3=T, 5=OD, 6=SA, 7=CA, 8=P）を表す。
+ */
+export function roundMethodCode(value: number | null | undefined): string | null {
+  if (value == null) return null;
+  if (value === 4) return null; // DRAW は勝ちでも負けでもない
+  if (value <= 0) return null; // LOSS
+  return ROUND_METHOD_MAP[value] ?? 'UNKNOWN';
+}
+
+/**
+ * ラウンドスコア分析を集計する（ADR-070 の Web 版）
+ *
+ * `battlelog_replays` だけで完結する。`round_stats` は使わない。
+ * - 1R の勝敗と試合勝率
+ * - 1P / 2P 別の勝率と 3R 勝率
+ * - 1-1 から 3R に入った試合の勝率
+ * - 取ったラウンド / 落としたラウンドの決まり手
+ */
+export async function queryRoundScore(filters: RoundScoreFilters): Promise<RoundScore> {
+  if (!instance) {
+    throw new Error('DuckDB not initialized');
+  }
+
+  const conditions: string[] = [
+    `(p1_short_id = ${MY_PLAYER_ID} OR p2_short_id = ${MY_PLAYER_ID})`,
+  ];
+  const params: unknown[] = [];
+
+  if (filters.dateFrom) {
+    const utcFrom = convertJstDateTimeToTimestamp(filters.dateFrom, false, filters.timeFrom);
+    conditions.push(`uploaded_at >= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcFrom);
+  }
+
+  if (filters.dateTo) {
+    const utcTo = convertJstDateTimeToTimestamp(filters.dateTo, true, filters.timeTo);
+    conditions.push(`uploaded_at <= $${params.length + 1}::TIMESTAMP`);
+    params.push(utcTo);
+  }
+
+  if (filters.battleType !== undefined && filters.battleType > 0) {
+    conditions.push(`battle_type = $${params.length + 1}`);
+    params.push(filters.battleType);
+  }
+
+  if (filters.myCharacter) {
+    conditions.push(`((p1_short_id = ${MY_PLAYER_ID} AND p1_character_name = $${params.length + 1})
+      OR (p2_short_id = ${MY_PLAYER_ID} AND p2_character_name = $${params.length + 1}))`);
+    params.push(filters.myCharacter);
+  }
+
+  const baseSql = `
+    WITH base AS (
+      SELECT *,
+        CASE WHEN p1_short_id = ${MY_PLAYER_ID} THEN 1 ELSE 2 END AS my_pos
+      FROM battlelog_replays
+      WHERE ${conditions.join(' AND ')}
+    ),
+    n AS (
+      SELECT *,
+        CASE WHEN my_pos = 1 THEN match_result
+             WHEN match_result = 'win' THEN 'loss'
+             WHEN match_result = 'loss' THEN 'win'
+             ELSE match_result END AS my_result,
+        CASE WHEN my_pos = 1 THEN p1_round_results ELSE p2_round_results END AS my_rr_text,
+        CASE WHEN my_pos = 1 THEN p2_round_results ELSE p1_round_results END AS opp_rr_text,
+        CASE WHEN my_pos = 1 THEN '1P' ELSE '2P' END AS my_side
+      FROM base
+    ),
+    r AS (
+      SELECT *,
+        TRY_CAST(my_rr_text AS INTEGER[]) AS my_rr,
+        TRY_CAST(opp_rr_text AS INTEGER[]) AS opp_rr
+      FROM n
+      WHERE my_rr_text IS NOT NULL AND opp_rr_text IS NOT NULL
+        AND my_rr_text <> '[]' AND opp_rr_text <> '[]'
+    ),
+    valid AS (
+      SELECT * FROM r
+      WHERE my_rr IS NOT NULL AND opp_rr IS NOT NULL
+        AND len(my_rr) > 0 AND len(my_rr) = len(opp_rr)
+    )
+  `;
+
+  const queryWith = async <T>(sql: string): Promise<T[]> => {
+    const stmt = await instance!.conn.prepare(baseSql + sql);
+    const result = await stmt.query(...params);
+    await stmt.close();
+    return result.toArray() as unknown as T[];
+  };
+
+  type FirstRoundQueryRow = { won: boolean; total: number | bigint; wins: number | bigint | null };
+  type SideQueryRow = {
+    my_side: string;
+    total: number | bigint;
+    wins: number | bigint | null;
+    full_total: number | bigint | null;
+    full_wins: number | bigint | null;
+  };
+  type FullRoundQueryRow = { total: number | bigint | null; wins: number | bigint | null };
+  type MethodQueryRow = { my_v: number | bigint | null; opp_v: number | bigint | null };
+
+  const firstRoundRows = await queryWith<FirstRoundQueryRow>(`
+    SELECT my_rr[1] > 0 AS won,
+           COUNT(*) AS total,
+           SUM(CASE WHEN my_result = 'win' THEN 1 ELSE 0 END) AS wins
+    FROM valid
+    GROUP BY won
+    ORDER BY won DESC
+  `);
+
+  const sideRows = await queryWith<SideQueryRow>(`
+    SELECT my_side,
+           COUNT(*) AS total,
+           SUM(CASE WHEN my_result = 'win' THEN 1 ELSE 0 END) AS wins,
+           SUM(CASE WHEN len(my_rr) = 3 THEN 1 ELSE 0 END) AS full_total,
+           SUM(CASE WHEN len(my_rr) = 3 AND my_result = 'win' THEN 1 ELSE 0 END) AS full_wins
+    FROM valid
+    GROUP BY my_side
+    ORDER BY my_side
+  `);
+
+  const fullRoundRows = await queryWith<FullRoundQueryRow>(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN my_result = 'win' THEN 1 ELSE 0 END) AS wins
+    FROM valid
+    WHERE len(my_rr) = 3
+  `);
+
+  const methodRows = await queryWith<MethodQueryRow>(`
+    SELECT my_v, opp_v FROM (
+      SELECT unnest(my_rr) AS my_v, unnest(opp_rr) AS opp_v
+      FROM valid
+    )
+  `);
+
+  const firstRound = firstRoundRows.map((row) => ({
+    won: Boolean(row.won),
+    total: Number(row.total),
+    wins: Number(row.wins ?? 0),
+  }));
+
+  const sides = sideRows.map((row) => ({
+    side: row.my_side === '1P' ? ('1P' as const) : ('2P' as const),
+    total: Number(row.total),
+    wins: Number(row.wins ?? 0),
+    fullRoundTotal: Number(row.full_total ?? 0),
+    fullRoundWins: Number(row.full_wins ?? 0),
+  }));
+
+  const wonCounts = new Map<string, number>();
+  const lostCounts = new Map<string, number>();
+  for (const row of methodRows) {
+    const myValue = row.my_v == null ? null : Number(row.my_v);
+    const oppValue = row.opp_v == null ? null : Number(row.opp_v);
+    if (myValue == null) continue;
+
+    if (myValue > 0 && myValue !== 4) {
+      const code = roundMethodCode(myValue) ?? 'UNKNOWN';
+      wonCounts.set(code, (wonCounts.get(code) ?? 0) + 1);
+    } else if (myValue === 0) {
+      const code = roundMethodCode(oppValue) ?? 'UNKNOWN';
+      lostCounts.set(code, (lostCounts.get(code) ?? 0) + 1);
+    }
+  }
+
+  const toMethodRows = (counts: Map<string, number>): RoundScoreMethodRow[] =>
+    ROUND_METHOD_ORDER.filter((method) => (counts.get(method) ?? 0) > 0).map((method) => ({
+      method,
+      count: counts.get(method) ?? 0,
+    }));
+
+  const wonMethods = toMethodRows(wonCounts);
+  const lostMethods = toMethodRows(lostCounts);
+  const fullRow = fullRoundRows[0];
+
+  return {
+    totalMatches: firstRound.reduce((sum, row) => sum + row.total, 0),
+    firstRound,
+    sides,
+    fullRoundTotal: Number(fullRow?.total ?? 0),
+    fullRoundWins: Number(fullRow?.wins ?? 0),
+    wonMethods,
+    lostMethods,
+    totalRoundsWon: wonMethods.reduce((sum, row) => sum + row.count, 0),
+    totalRoundsLost: lostMethods.reduce((sum, row) => sum + row.count, 0),
+  };
 }
 
 /**

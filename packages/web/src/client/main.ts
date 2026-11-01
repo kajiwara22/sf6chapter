@@ -3,7 +3,7 @@
  */
 
 import { DOM_IDS } from './types';
-import { initCachedData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, queryMatchById, MY_PLAYER_ID } from './search';
+import { initCachedData, searchMatches, getStats, getCharacters, queryMatchupChart, getBattlelogMyCharacters, queryMatchHistory, getMatchHistoryOpponentCharacters, queryLpHistory, getLatestLp, fetchGaugesJson, queryRoundStats, queryMatchBattlelogSides, fetchCharacterHealthTable, queryMatchById, queryRoundScore, MY_PLAYER_ID } from './search';
 import { initSearchForm, updateCharacterSelect } from './components/SearchForm';
 import { renderResults, clearResults } from './components/ResultsGrid';
 import { parseMatchDetailPath, renderMatchDetailPage, renderMatchDetailPageError, renderMatchDetailPageLoading } from './components/MatchDetailPage';
@@ -12,7 +12,8 @@ import { renderStats, clearStats } from './components/StatsPanel';
 import { renderMatchupChart, clearMatchupChart, initMatchupForm, updateMatchupCharacterSelect } from './components/MatchupChart';
 import { renderMatchHistory, clearMatchHistory, renderHistoryPagination, initHistoryForm, updateHistoryCharacterSelects } from './components/MatchHistory';
 import { renderLpChart, clearLpChart, initLpForm, readLpChartOptions } from './components/LpChart';
-import type { SearchFilters, Match, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters, LpHistoryRow } from '@shared/types';
+import { renderRoundScore, clearRoundScore, initRoundScoreForm, updateRoundScoreCharacterSelect } from './components/RoundScorePanel';
+import type { SearchFilters, Match, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters, LpHistoryRow, RoundScoreFilters } from '@shared/types';
 
 /**
  * ローディング表示
@@ -333,6 +334,53 @@ async function handleLpFilter(filters: LpHistoryFilters): Promise<void> {
 }
 
 /**
+ * ラウンド分析ローディング表示
+ */
+function showRoundScoreLoading(show: boolean): void {
+  const loading = document.getElementById(DOM_IDS.ROUND_LOADING);
+  if (loading) {
+    loading.style.display = show ? 'flex' : 'none';
+  }
+}
+
+/**
+ * ラウンド分析エラー表示
+ */
+function showRoundScoreError(message: string | null): void {
+  const error = document.getElementById(DOM_IDS.ROUND_ERROR);
+  if (error) {
+    if (message) {
+      error.textContent = message;
+      error.style.display = 'block';
+    } else {
+      error.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * ラウンドスコア分析を表示
+ */
+async function handleRoundScoreFilter(filters: RoundScoreFilters): Promise<void> {
+  console.log('[App] Querying round score with filters:', filters);
+
+  showRoundScoreLoading(true);
+  showRoundScoreError(null);
+  clearRoundScore();
+
+  try {
+    const score = await queryRoundScore(filters);
+    console.log(`[App] Round score: ${score.totalMatches} matches`);
+    renderRoundScore(score);
+  } catch (err) {
+    console.error('[App] Round score error:', err);
+    showRoundScoreError(`集計に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+  } finally {
+    showRoundScoreLoading(false);
+  }
+}
+
+/**
  * 初期化
  */
 async function init(): Promise<void> {
@@ -432,6 +480,23 @@ async function init(): Promise<void> {
   } catch (err) {
     console.error('[App] LP history initialization error:', err);
     showLpError(`LP推移データの読み込みに失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+  }
+
+  // ラウンドスコア分析の初期化（battlelog_replays のみに依存。他タブの失敗に影響されないよう独立させる）
+  try {
+    const roundMyCharacters = await getBattlelogMyCharacters();
+    updateRoundScoreCharacterSelect(roundMyCharacters);
+
+    initRoundScoreForm(handleRoundScoreFilter);
+
+    // 初期表示（フィルターなし、全期間）
+    const initialRoundScore = await queryRoundScore({});
+    renderRoundScore(initialRoundScore);
+
+    console.log('[App] Round score initialized');
+  } catch (err) {
+    console.error('[App] Round score initialization error:', err);
+    showRoundScoreError(`ラウンド分析データの読み込みに失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
   }
 }
 

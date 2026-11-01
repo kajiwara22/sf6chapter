@@ -1801,3 +1801,164 @@ body {
   font-size: 0.75rem;
 }
 
+
+/* ========================================
+   ラウンドスコア分析（ADR-070）
+   ======================================== */
+.round-score-section {
+  margin-bottom: var(--space-xl);
+}
+
+.round-score-lead {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: var(--space-md);
+}
+
+.round-score-note {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  margin-bottom: var(--space-md);
+}
+
+.round-score-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.round-score-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-md);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.round-score-tile-label {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.round-score-tile-value {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.round-score-tile-sub {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.round-score-heading {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  letter-spacing: 0.05em;
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+.round-score-table {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-collapse: collapse;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  width: 100%;
+}
+
+.round-score-table th,
+.round-score-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-sm) var(--space-md);
+  text-align: center;
+}
+
+.round-score-table th {
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.round-score-table td.round-score-side {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  text-align: left;
+}
+
+.round-score-table td.round-score-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.round-score-total {
+  background: var(--color-surface);
+  font-weight: 600;
+}
+
+.round-score-total td {
+  border-bottom: none;
+}
+
+.round-score-n {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.round-score-methods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-lg);
+}
+
+.round-score-method-name {
+  text-align: left;
+}
+
+.round-score-method-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin-left: var(--space-xs);
+}
+
+.round-score-empty {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  padding: var(--space-lg) 0;
+}
+
+.round-score-footnote {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  margin-top: var(--space-md);
+}
+
+@media (max-width: 768px) {
+  .round-score-table {
+    font-size: 0.875rem;
+  }
+
+  .round-score-table th,
+  .round-score-table td {
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .round-score-table td.round-score-side {
+    font-size: 0.875rem;
+  }
+
+  .round-score-tile-value {
+    font-size: 1.5rem;
+  }
+}

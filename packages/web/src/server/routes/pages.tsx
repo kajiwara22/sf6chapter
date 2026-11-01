@@ -63,6 +63,7 @@ function renderAppHtml() {
               <button id="tab-matchup" class="tab-btn" data-view="view-matchup">マッチアップ</button>
               <button id="tab-history" class="tab-btn" data-view="view-history">対戦履歴</button>
               <button id="tab-lp" class="tab-btn" data-view="view-lp">LP推移</button>
+              <button id="tab-round" class="tab-btn" data-view="view-round">ラウンド分析</button>
             </nav>
 
             <!-- ========== 対戦検索ビュー ========== -->
@@ -391,6 +392,77 @@ function renderAppHtml() {
             </section>
 
             </div><!-- /view-lp -->
+
+            <!-- ========== ラウンド分析ビュー（ADR-070） ========== -->
+            <div id="view-round" class="tab-view">
+
+            <!-- ラウンド分析フィルター -->
+            <section class="search-section">
+              <form id="round-form" class="search-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="round-my-character">自キャラクター</label>
+                    <select id="round-my-character" name="myCharacter">
+                      <option value="">すべて</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="round-battle-type">マッチタイプ</label>
+                    <select id="round-battle-type" name="battleType">
+                      <option value="0">All</option>
+                      <option value="1">Ranked</option>
+                      <option value="3">Battle Hub</option>
+                      <option value="4">Custom Room</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="round-date-from">期間（開始）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="round-date-from" name="dateFrom" />
+                      <input type="time" id="round-time-from" name="timeFrom" />
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="round-date-to">期間（終了）</label>
+                    <div class="date-time-group">
+                      <input type="date" id="round-date-to" name="dateTo" />
+                      <input type="time" id="round-time-to" name="timeTo" />
+                    </div>
+                  </div>
+
+                  <div class="form-group form-group-button">
+                    <button type="submit" class="btn-search">
+                      集計
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <!-- ラウンド分析 ステータス -->
+            <section class="status-section">
+              <div id="round-loading" class="status-message status-loading" style="display: none;">
+                <span class="spinner"></span>
+                集計中...
+              </div>
+              <div id="round-error" class="status-message status-error" style="display: none;"></div>
+            </section>
+
+            <!-- ラウンドスコア分析 -->
+            <section class="round-score-section">
+              <h2 class="section-title">ラウンドスコア分析</h2>
+              <p class="round-score-lead">
+                1ラウンド目の勝敗、1P / 2P 別の成績、3R の勝率、取った／落としたラウンドの決まり手を集計します。
+              </p>
+              <div id="round-score"></div>
+            </section>
+
+            </div><!-- /view-round -->
 
           </main>
 

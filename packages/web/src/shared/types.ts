@@ -439,3 +439,73 @@ export interface HealthResponse {
   environment: string;
   timestamp: string;
 }
+
+/** ラウンドスコア分析のフィルター */
+export interface RoundScoreFilters {
+  /** 期間（開始） YYYY-MM-DD */
+  dateFrom?: string;
+  /** 期間（終了） YYYY-MM-DD */
+  dateTo?: string;
+  /** 開始時刻 HH:MM（JSTで指定） */
+  timeFrom?: string;
+  /** 終了時刻 HH:MM（JSTで指定） */
+  timeTo?: string;
+  /** マッチタイプ（1=Ranked, 3=BattleHub, 4=CustomRoom） */
+  battleType?: number;
+  /** 自キャラクター名 */
+  myCharacter?: string;
+}
+
+/** 1ラウンド目の勝敗ごとの試合成績 */
+export interface RoundScoreFirstRoundRow {
+  /** 1R を取ったか */
+  won: boolean;
+  /** 試合数 */
+  total: number;
+  /** 勝利数 */
+  wins: number;
+}
+
+/** 1P / 2P 別の試合成績 */
+export interface RoundScoreSideRow {
+  /** サイド */
+  side: '1P' | '2P';
+  /** 試合数 */
+  total: number;
+  /** 勝利数 */
+  wins: number;
+  /** 3ラウンド行がある試合数 */
+  fullRoundTotal: number;
+  /** 3ラウンド行がある試合の勝利数 */
+  fullRoundWins: number;
+}
+
+/** 決まり手の集計1行 */
+export interface RoundScoreMethodRow {
+  /** 決まり手コード（V / C / T / OD / SA / CA / P / UNKNOWN） */
+  method: string;
+  /** 回数 */
+  count: number;
+}
+
+/** ラウンドスコア分析の集計結果 */
+export interface RoundScore {
+  /** 対象試合数（round_results が揃っている試合） */
+  totalMatches: number;
+  /** 1R を取った / 落とした別（won=true が先） */
+  firstRound: RoundScoreFirstRoundRow[];
+  /** 1P / 2P 別 */
+  sides: RoundScoreSideRow[];
+  /** 1-1 から 3R に入った試合数 */
+  fullRoundTotal: number;
+  /** 3R に入った試合の勝利数 */
+  fullRoundWins: number;
+  /** 自分が取ったラウンドの決まり手 */
+  wonMethods: RoundScoreMethodRow[];
+  /** 落としたラウンドの決まり手 */
+  lostMethods: RoundScoreMethodRow[];
+  /** 取ったラウンド数 */
+  totalRoundsWon: number;
+  /** 落としたラウンド数 */
+  totalRoundsLost: number;
+}

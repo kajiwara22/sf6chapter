@@ -72,6 +72,19 @@ export const DOM_IDS = {
   LP_ERROR: 'lp-error',
   LP_MA_ENABLED: 'lp-ma-enabled',
   LP_MA_WINDOW: 'lp-ma-window',
+  // ラウンドスコア分析
+  TAB_ROUND: 'tab-round',
+  VIEW_ROUND: 'view-round',
+  ROUND_FORM: 'round-form',
+  ROUND_MY_CHARACTER: 'round-my-character',
+  ROUND_BATTLE_TYPE: 'round-battle-type',
+  ROUND_DATE_FROM: 'round-date-from',
+  ROUND_TIME_FROM: 'round-time-from',
+  ROUND_DATE_TO: 'round-date-to',
+  ROUND_TIME_TO: 'round-time-to',
+  ROUND_SCORE: 'round-score',
+  ROUND_LOADING: 'round-loading',
+  ROUND_ERROR: 'round-error',
   // ゲージ詳細パネル（ADR-048）
   MATCH_DETAIL: 'match-detail',
 } as const;

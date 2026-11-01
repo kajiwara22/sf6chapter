@@ -95,6 +95,16 @@ pnpm deploy
 
 生 JSON ファイルを取得（デバッグ用）。
 
+## タブ構成
+
+| タブ | 主なデータ | 内容 |
+|------|-----------|------|
+| 対戦検索 | `matches` | 動画の対戦シーン検索 |
+| マッチアップ | `battlelog_replays` | 相手キャラ・操作タイプ別の勝率 |
+| 対戦履歴 | `battlelog_replays` / `matches` | 試合単位の一覧（ラウンド結果・決まり手） |
+| LP推移 | `battlelog_replays` | 試合開始時点の LP / MR の推移 |
+| ラウンド分析 | `battlelog_replays` | 1R別・1P/2P別・3R勝率・決まり手（ADR-071） |
+
 ## クライアントサイドの仕組み
 
 1. ページロード時に DuckDB-WASM を初期化
