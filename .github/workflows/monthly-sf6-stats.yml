@@ -1,0 +1,116 @@
+name: Monthly SF6 Stats Import (Buckler)
+
+on:
+  # 毎週木曜 06:00 UTC (15:00 JST) に実行し、第二木曜日のみ処理を続行する
+  # バックラーは毎月第二木曜に先月分の統計を公開する
+  schedule:
+    - cron: '0 6 * * 4'
+  # 手動実行（テストやリカバリー用）
+  workflow_dispatch:
+    inputs:
+      month:
+        description: '対象月 YYYYMM（省略時は最新公開月）'
+        required: false
+        default: ''
+      force_run:
+        description: '第二木曜日チェックをスキップして強制実行する'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  collect:
+    name: Collect Buckler stats to R2
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/local
+
+    steps:
+      - name: 第二木曜日かどうかチェック
+        id: check_date
+        if: github.event_name == 'schedule'
+        run: |
+          DAY=$(date +%-d)
+          if [ "$DAY" -ge 8 ] && [ "$DAY" -le 14 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "✅ 今日（${DAY}日）は第二木曜日です。収集を実行します。"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ 今日（${DAY}日）は第二木曜日ではありません。スキップします。"
+          fi
+
+      - name: Checkout
+        if: |
+          steps.check_date.outputs.run == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: uv セットアップ
+        if: |
+          steps.check_date.outputs.run == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+
+      - name: 依存関係インストール
+        if: |
+          steps.check_date.outputs.run == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        run: uv sync --frozen --dev
+
+      - name: バックラー統計を収集して R2 へ配置
+        id: collect
+        if: |
+          steps.check_date.outputs.run == 'true' ||
+          github.event_name == 'workflow_dispatch'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          TARGET_MONTH: ${{ github.event.inputs.month }}
+        run: |
+          if [ -n "$TARGET_MONTH" ]; then
+            uv run python -m src.sf6_stats --month "$TARGET_MONTH"
+          else
+            uv run python -m src.sf6_stats --latest
+          fi
+
+      - name: Discord に結果通知
+        if: |
+          always() && (
+            steps.check_date.outputs.run == 'true' ||
+            github.event_name == 'workflow_dispatch'
+          )
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ "${{ steps.collect.outcome }}" = "success" ]; then
+            TITLE="✅ バックラー統計の収集が完了"
+            COLOR=3066993
+          else
+            TITLE="❌ バックラー統計の収集が失敗"
+            COLOR=15158332
+          fi
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"${TITLE}\",
+                \"description\": \"R2 の stats/ に Parquet を配置しました。\",
+                \"color\": ${COLOR},
+                \"fields\": [
+                  {\"name\": \"実行日時\", \"value\": \"$(date '+%Y-%m-%d %H:%M UTC')\", \"inline\": true},
+                  {\"name\": \"トリガー\", \"value\": \"${{ github.event_name }}\", \"inline\": true},
+                  {\"name\": \"ログ\", \"value\": \"[確認する](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"inline\": false}
+                ]
+              }]
+            }"
