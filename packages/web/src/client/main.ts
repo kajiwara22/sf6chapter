@@ -13,7 +13,19 @@ import { renderMatchupChart, clearMatchupChart, initMatchupForm, updateMatchupCh
 import { renderMatchHistory, clearMatchHistory, renderHistoryPagination, initHistoryForm, updateHistoryCharacterSelects } from './components/MatchHistory';
 import { renderLpChart, clearLpChart, initLpForm, readLpChartOptions } from './components/LpChart';
 import { renderRoundScore, clearRoundScore, initRoundScoreForm, updateRoundScoreCharacterSelect } from './components/RoundScorePanel';
-import type { SearchFilters, Match, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters, LpHistoryRow, RoundScoreFilters } from '@shared/types';
+import type { SearchFilters, Match, MatchupChartFilters, MatchHistoryFilters, LpHistoryFilters, LpHistoryRow, RoundScoreFilters, MatchupBenchmark } from '@shared/types';
+import { loadMatchupBenchmarks } from './stats';
+
+/** バックラー統計（ADR-072）。マッチアップ集計時に遅延読み込みする */
+let matchupBenchmarks: MatchupBenchmark | null = null;
+let matchupBenchmarksLoaded = false;
+
+async function ensureMatchupBenchmarks(): Promise<MatchupBenchmark | null> {
+  if (matchupBenchmarksLoaded) return matchupBenchmarks;
+  matchupBenchmarksLoaded = true;
+  matchupBenchmarks = await loadMatchupBenchmarks();
+  return matchupBenchmarks;
+}
 
 /**
  * ローディング表示
@@ -238,7 +250,9 @@ async function handleMatchupFilter(filters: MatchupChartFilters): Promise<void> 
   clearMatchupChart();
 
   try {
-    const rows = await queryMatchupChart(filters);
+    // 自キャラが指定されているときだけ同ランク帯平均を引く（ADR-072）
+    const benchmarks = filters.myCharacter ? await ensureMatchupBenchmarks() : null;
+    const rows = await queryMatchupChart(filters, benchmarks);
     console.log(`[App] Matchup chart: ${rows.length} rows`);
     renderMatchupChart(rows);
   } catch (err) {

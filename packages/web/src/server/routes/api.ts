@@ -80,6 +80,57 @@ api.get('/data/manifest', async (context) => {
 });
 
 /**
+ * GET /api/data/stats-manifest
+ * バックラー公開統計の manifest（stats/manifest.json、ADR-072）を返す
+ */
+api.get('/data/stats-manifest', async (context) => {
+  const bucket = context.env.SF6_DATA;
+
+  try {
+    const object = await bucket.get('stats/manifest.json');
+    if (!object) {
+      return context.json({ error: 'stats manifest not found' }, 404);
+    }
+    return context.json(await object.json());
+  } catch (error) {
+    console.error('Failed to fetch stats manifest:', error);
+    return context.json({ error: 'Failed to fetch stats manifest' }, 500);
+  }
+});
+
+/**
+ * GET /api/data/stats/:month/:kind
+ * バックラー統計 Parquet（stats/{kind}/{YYYYMM}.parquet）の Presigned URL を返す（ADR-072）
+ */
+api.get('/data/stats/:month/:kind', async (context) => {
+  const month = context.req.param('month');
+  const kind = context.req.param('kind');
+  const allowed = ['matchup_stats', 'matchup_details', 'character_usage'];
+
+  if (!/^\d{6}$/.test(month) || !allowed.includes(kind)) {
+    return context.json({ error: 'invalid params' }, 400);
+  }
+
+  try {
+    const { R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_BUCKET_NAME, R2_SECRET_ACCESS_KEY } = env(context);
+    const s3Client = createS3Client(R2_ENDPOINT_URL, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY);
+    const command = new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: `stats/${kind}/${month}.parquet`,
+    });
+
+    const expiresIn = 3600; // 1時間
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+    const response: PresignedUrlResponse = { url, expiresIn };
+    return context.json(response);
+  } catch (error) {
+    console.error(`Failed to generate presigned URL for stats/${kind}/${month}.parquet:`, error);
+    return context.json({ error: 'Failed to generate presigned URL' }, 500);
+  }
+});
+
+/**
  * GET /api/data/index/matches.parquet
  * Parquetファイルの Presigned URL を返却
  */

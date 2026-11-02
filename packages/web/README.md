@@ -95,12 +95,21 @@ pnpm deploy
 
 生 JSON ファイルを取得（デバッグ用）。
 
+### `GET /api/data/stats-manifest`
+
+バックラー公開統計の manifest（`stats/manifest.json`、ADR-072）を取得。未配置なら 404。
+
+### `GET /api/data/stats/:month/:kind`
+
+バックラー統計 Parquet（`stats/{kind}/{YYYYMM}.parquet`）の Presigned URL を取得。
+`kind` は `matchup_stats` / `matchup_details` / `character_usage`。
+
 ## タブ構成
 
 | タブ | 主なデータ | 内容 |
 |------|-----------|------|
 | 対戦検索 | `matches` | 動画の対戦シーン検索 |
-| マッチアップ | `battlelog_replays` | 相手キャラ・操作タイプ別の勝率 |
+| マッチアップ | `battlelog_replays` | 相手キャラ・操作タイプ別の勝率（自キャラ指定時は同ランク帯平均も表示） |
 | 対戦履歴 | `battlelog_replays` / `matches` | 試合単位の一覧（ラウンド結果・決まり手） |
 | LP推移 | `battlelog_replays` | 試合開始時点の LP / MR の推移 |
 | ラウンド分析 | `battlelog_replays` | 1R別・1P/2P別・3R勝率・決まり手（ADR-071） |
@@ -111,6 +120,16 @@ pnpm deploy
 2. `/api/data/index/matches.parquet` から Parquet ファイルを取得
 3. DuckDB-WASM にロードして SQL でクエリ
 4. フォーム送信で検索条件を指定して再クエリ
+
+### バックラー公開統計（ADR-072）
+
+マッチアップタブで**自キャラを指定したとき**、`/api/data/stats-manifest` から最新データ月を得て
+`matchup_stats` / `matchup_details` の Parquet を取得し、「バックラー平均」列を出す。
+
+- 取得は初回の自キャラ指定時のみ（遅延読み込み）。失敗しても表は表示される
+- 比較ランクは最新 LP から `getLeagueIdForLp` で推定する
+- 既存の manifest キャッシュ（ADR-055）とは分離し、統計の更新で全キャッシュが無効化されないようにしている
+- キャラ名の表記差（GOUKI/AKUMA、VEGA/M. BISON）は `shared/characters.ts` で吸収する
 
 ```typescript
 // 検索クエリ例

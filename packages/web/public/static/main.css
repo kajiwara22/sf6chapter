@@ -664,6 +664,13 @@ body {
   background: var(--color-bg-card);
 }
 
+/* ADR-072: バックラー公開統計の同ランク帯平均 */
+.matchup-table td.matchup-benchmark {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .matchup-row-detail {
   background: var(--color-bg-elevated);
 }

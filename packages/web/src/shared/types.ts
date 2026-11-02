@@ -169,6 +169,34 @@ export interface MatchupChartRow {
   draws: number;
   /** 勝率 (0-100) */
   winRate: number;
+  /** 同ランク帯の平均勝率 (0-100, ADR-072)。未取得・ミラー・自キャラ未指定時は null */
+  benchmarkWinRate?: number | null;
+}
+
+/** バックラー公開統計の manifest（R2 の stats/manifest.json、ADR-072） */
+export interface StatsManifest {
+  schema: number;
+  generatedAt: string;
+  /** 最新のデータ月（YYYYMM） */
+  latestMonth: string;
+  /** 取得済みのデータ月一覧 */
+  months: string[];
+  /** 使用率を取得しているロケール */
+  locales: string[];
+  /** 月ごとの行数など */
+  counts: Record<string, unknown>;
+}
+
+/** 同ランク帯の平均勝率（ADR-072） */
+export interface MatchupBenchmark {
+  /** 統計の対象月（YYYYMM） */
+  dataMonth: string;
+  /** 比較対象のランク ID（1=ROOKIE ... 8=MASTER） */
+  rankId: number;
+  /** ランク名 */
+  rankName: string;
+  /** 照合キー -> 同ランク帯の平均勝率（%） */
+  byMatchup: Map<string, number>;
 }
 
 /** マッチアップチャートのフィルター */

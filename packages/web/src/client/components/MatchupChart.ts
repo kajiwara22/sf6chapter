@@ -33,10 +33,17 @@ function getWinRateClass(winRate: number): string {
 /**
  * マッチアップチャートテーブルのHTMLを生成
  */
-function createMatchupTable(rows: MatchupChartRow[]): string {
+export function createMatchupTable(rows: MatchupChartRow[]): string {
   if (rows.length === 0) {
     return '<p class="matchup-empty">データがありません</p>';
   }
+
+  // ADR-072: 1つでも平均勝率があれば列を出す。統計未取得時は列ごと非表示
+  const benchmarkValues = rows
+    .map((row) => row.benchmarkWinRate)
+    .filter((value): value is number => typeof value === 'number');
+  const hasBenchmark = benchmarkValues.length > 0;
+  const benchmarkHeader = hasBenchmark ? '<th>バックラー平均</th>' : '';
 
   // キャラクター別に集約（入力タイプをまとめた合計も計算）
   const byCharacter = new Map<string, MatchupChartRow[]>();
@@ -61,6 +68,7 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
     const charLosses = charRows.reduce((sum, r) => sum + r.losses, 0);
     const charDraws = charRows.reduce((sum, r) => sum + r.draws, 0);
     const charWinRate = charTotal > 0 ? Math.round((charWins / charTotal) * 1000) / 10 : 0;
+    const charBenchmark = averageBenchmark(charRows.map((r) => r.benchmarkWinRate));
 
     totalAll += charTotal;
     winsAll += charWins;
@@ -69,6 +77,9 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
 
     // 入力タイプバッジの組み合わせを生成
     const inputBadges = charRows.map((r) => createInputTypeBadge(r.opponentInputType, r.opponentInputTypeName)).join('');
+    const charBenchmarkCell = hasBenchmark
+      ? `<td class="matchup-benchmark">${formatBenchmark(charBenchmark)}</td>`
+      : '';
 
     // キャラクター合計行
     tableRows.push(`
@@ -80,12 +91,16 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
         <td class="matchup-losses">${charLosses}</td>
         <td class="matchup-draws">${charDraws}</td>
         <td class="matchup-winrate ${getWinRateClass(charWinRate)}">${charWinRate}%</td>
+        ${charBenchmarkCell}
       </tr>
     `);
 
     // 入力タイプ別の内訳（2種類以上ある場合のみ）
     if (charRows.length > 1) {
       for (const row of charRows) {
+        const benchmarkCell = hasBenchmark
+          ? `<td class="matchup-benchmark">${formatBenchmark(row.benchmarkWinRate)}</td>`
+          : '';
         tableRows.push(`
           <tr class="matchup-row matchup-row-detail">
             <td class="matchup-character"></td>
@@ -95,6 +110,7 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
             <td class="matchup-losses">${row.losses}</td>
             <td class="matchup-draws">${row.draws}</td>
             <td class="matchup-winrate ${getWinRateClass(row.winRate)}">${row.winRate}%</td>
+            ${benchmarkCell}
           </tr>
         `);
       }
@@ -103,6 +119,10 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
 
   // 合計行
   const totalWinRate = totalAll > 0 ? Math.round((winsAll / totalAll) * 1000) / 10 : 0;
+  const totalBenchmark = averageBenchmark(benchmarkValues);
+  const totalBenchmarkCell = hasBenchmark
+    ? `<td class="matchup-benchmark">${formatBenchmark(totalBenchmark)}</td>`
+    : '';
 
   return `
     <table class="matchup-table">
@@ -115,6 +135,7 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
           <th>敗</th>
           <th>引分</th>
           <th>勝率</th>
+          ${benchmarkHeader}
         </tr>
       </thead>
       <tbody>
@@ -129,19 +150,41 @@ function createMatchupTable(rows: MatchupChartRow[]): string {
           <td>${lossesAll}</td>
           <td>${drawsAll}</td>
           <td class="${getWinRateClass(totalWinRate)}">${totalWinRate}%</td>
+          ${totalBenchmarkCell}
         </tr>
       </tfoot>
     </table>
   `;
 }
 
+/** 平均勝率を計算する（null / undefined は除外。1件も無ければ null） */
+function averageBenchmark(values: (number | null | undefined)[]): number | null {
+  const numbers = values.filter((value): value is number => typeof value === 'number');
+  if (numbers.length === 0) return null;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+}
+
+/** 平均勝率の表示（小数1桁、欠損は -） */
+function formatBenchmark(value: number | null | undefined): string {
+  if (typeof value !== 'number') return '-';
+  return `${Math.round(value * 10) / 10}%`;
+}
+
 /**
  * HTMLエスケープ
+ *
+ * DOM に依存しない実装にして、Node 環境（テスト）でも同じ結果を返す。
  */
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
 function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
 }
 
 /**

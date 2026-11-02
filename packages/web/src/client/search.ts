@@ -4,7 +4,8 @@
 
 import * as duckdb from '@duckdb/duckdb-wasm';
 import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable, RoundScoreFilters, RoundScore, RoundScoreMethodRow } from '@shared/types';
+import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable, RoundScoreFilters, RoundScore, RoundScoreMethodRow, MatchupBenchmark } from '@shared/types';
+import { benchmarkKey } from '@shared/characters';
 import type { ManifestParquetKey } from '@shared/manifest';
 import { determineResultFromRounds } from '@shared/rounds';
 import {
@@ -716,7 +717,10 @@ export function convertJstDateTimeToTimestamp(dateStr: string, isEndOfDay: boole
 /**
  * マッチアップチャートを集計
  */
-export async function queryMatchupChart(filters: MatchupChartFilters): Promise<MatchupChartRow[]> {
+export async function queryMatchupChart(
+  filters: MatchupChartFilters,
+  benchmark?: MatchupBenchmark | null,
+): Promise<MatchupChartRow[]> {
   if (!instance) {
     throw new Error('DuckDB not initialized');
   }
@@ -790,16 +794,25 @@ export async function queryMatchupChart(filters: MatchupChartFilters): Promise<M
     const losses = Number(row.losses);
     const draws = Number(row.draws);
     const inputType = Number(row.opponent_input_type);
+    const inputTypeName = INPUT_TYPE_NAMES[inputType] || String(inputType);
+
+    // ADR-072: 自キャラが指定されているときだけ同ランク帯平均を引く
+    const benchmarkWinRate =
+      benchmark && filters.myCharacter
+        ? (benchmark.byMatchup.get(benchmarkKey(filters.myCharacter, row.opponent_character, inputTypeName)) ??
+          null)
+        : null;
 
     return {
       opponentCharacter: row.opponent_character,
       opponentInputType: inputType,
-      opponentInputTypeName: INPUT_TYPE_NAMES[inputType] || String(inputType),
+      opponentInputTypeName: inputTypeName,
       total,
       wins,
       losses,
       draws,
       winRate: total > 0 ? Math.round((wins / total) * 1000) / 10 : 0,
+      benchmarkWinRate,
     };
   });
 }

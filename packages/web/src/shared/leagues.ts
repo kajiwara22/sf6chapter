@@ -46,6 +46,17 @@ export function getLeagueForLp(lp: number): LeagueDefinition | null {
 }
 
 /**
+ * LP が属するリーグ ID を返す（1=ROOKIE ... 8=MASTER）
+ *
+ * バックラー公開統計の `rank_id` と同じ並び（ADR-072）。該当なしは null。
+ */
+export function getLeagueIdForLp(lp: number): number | null {
+  const league = getLeagueForLp(lp);
+  if (!league) return null;
+  return LEAGUES.indexOf(league) + 1;
+}
+
+/**
  * リーグの終端 LP（= 次のリーグの開始 LP）を返す
  * 最上位リーグ（Master）は null
  */
