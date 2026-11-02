@@ -41,5 +41,6 @@ def download_parquet(
     )
 
     local_path = os.path.join(tempfile.gettempdir(), r2_key)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
     s3_client.download_file(bucket, r2_key, local_path)
     return local_path

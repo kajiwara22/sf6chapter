@@ -20,6 +20,8 @@ def format_report(
     battle_type: str = "ranked",
     hourly: list[HourlyRow] | None = None,
     round_score: RoundScore | None = None,
+    benchmark_label: str | None = None,
+    video_id: str | None = None,
 ) -> str:
     """レポート全体をMarkdown形式で生成"""
     lines: list[str] = []
@@ -27,6 +29,8 @@ def format_report(
     lines.append("# SF6 対戦レポート")
     lines.append(f"期間: {date_from} 〜 {date_to}")
     lines.append(f"プレイヤー: {player_name} ({player_id})")
+    if video_id:
+        lines.append(f"動画: https://youtube.com/watch?v={video_id}")
     lines.append(f"バトルタイプ: {battle_type}")
     lines.append(f"生成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
@@ -36,7 +40,7 @@ def format_report(
     lines.append("")
 
     # マッチアップ
-    lines.append(_format_matchups(matchups))
+    lines.append(_format_matchups(matchups, benchmark_label))
     lines.append("")
 
     # LP推移
@@ -160,13 +164,22 @@ def _format_summary(summary: Summary) -> str:
     return "\n".join(lines)
 
 
-def _format_matchups(matchups: list[MatchupRow]) -> str:
-    """マッチアップ結果セクション"""
+def _format_matchups(matchups: list[MatchupRow], benchmark_label: str | None = None) -> str:
+    """マッチアップ結果セクション
+
+    benchmark_label が指定され、比較データがある場合は「同ランク帯平均」と
+    「差分」の列を追加する（ADR-072）。
+    """
     lines = ["## マッチアップ結果", ""]
 
     if not matchups:
         lines.append("データなし")
         return "\n".join(lines)
+
+    has_benchmark = any(row.benchmark_win_rate is not None for row in matchups)
+    if has_benchmark and benchmark_label:
+        lines.append(f"※ 「同ランク帯平均」は {benchmark_label} のバックラー統計。ミラーは除外")
+        lines.append("")
 
     # 使用キャラ別にグループ化
     by_my_char: dict[str, list[MatchupRow]] = defaultdict(list)
@@ -178,12 +191,14 @@ def _format_matchups(matchups: list[MatchupRow]) -> str:
         lines.append("")
 
         # 対戦キャラ別に集約（入力タイプ別の内訳付き）
-        opponent_data: dict[str, dict] = defaultdict(lambda: {"total": 0, "wins": 0, "by_input": {}})
+        opponent_data: dict[str, dict] = defaultdict(lambda: {"total": 0, "wins": 0, "by_input": {}, "benchmark": []})
         for row in rows:
             d = opponent_data[row.opponent_character]
             d["total"] += row.total
             d["wins"] += row.wins
             d["by_input"][row.opponent_input_type] = (row.wins, row.total)
+            if row.benchmark_win_rate is not None:
+                d["benchmark"].append(row.benchmark_win_rate)
 
         # 試合数降順でソート
         sorted_opponents = sorted(opponent_data.items(), key=lambda x: x[1]["total"], reverse=True)
@@ -196,13 +211,16 @@ def _format_matchups(matchups: list[MatchupRow]) -> str:
 
         # ヘッダー
         input_headers = " | ".join(f"{it}勝率" for it in input_type_cols)
-        header = f"| 対戦キャラ | 試合数 | 勝利 | 敗北 | 勝率 | {input_headers} |"
-        separator = "|" + "|".join(["---"] * (5 + len(input_type_cols))) + "|"
+        bench_header = "同ランク帯平均 | 差分 | " if has_benchmark else ""
+        header = f"| 対戦キャラ | 試合数 | 勝利 | 敗北 | 勝率 | {bench_header}{input_headers} |"
+        column_count = 5 + (2 if has_benchmark else 0) + len(input_type_cols)
+        separator = "|" + "|".join(["---"] * column_count) + "|"
         lines.append(header)
         lines.append(separator)
 
         total_all = 0
         wins_all = 0
+        benchmark_all: list[float] = []
         for opp_char, d in sorted_opponents:
             total = d["total"]
             wins = d["wins"]
@@ -220,14 +238,31 @@ def _format_matchups(matchups: list[MatchupRow]) -> str:
                 else:
                     input_cols.append("-")
 
+            benchmark_cells = ""
+            if has_benchmark:
+                if d["benchmark"]:
+                    bench = sum(d["benchmark"]) / len(d["benchmark"])
+                    benchmark_all.append(bench)
+                    benchmark_cells = f"{bench:.1f}% | {_format_diff_pt(wr - bench)} | "
+                else:
+                    benchmark_cells = "- | - | "
+
             input_str = " | ".join(input_cols)
-            lines.append(f"| {opp_char} | {total} | {wins} | {losses} | {wr:.1f}% | {input_str} |")
+            lines.append(f"| {opp_char} | {total} | {wins} | {losses} | {wr:.1f}% | {benchmark_cells}{input_str} |")
 
         # 合計行
         total_wr = wins_all / total_all * 100 if total_all > 0 else 0
+        if has_benchmark and benchmark_all:
+            bench_total = sum(benchmark_all) / len(benchmark_all)
+            benchmark_cells = f"**{bench_total:.1f}%** | **{_format_diff_pt(total_wr - bench_total)}** | "
+        elif has_benchmark:
+            benchmark_cells = "- | - | "
+        else:
+            benchmark_cells = ""
         empty_cols = " | ".join([""] * len(input_type_cols))
         lines.append(
-            f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** | {empty_cols} |"
+            f"| **合計** | **{total_all}** | **{wins_all}** | **{total_all - wins_all}** | **{total_wr:.1f}%** | "
+            f"{benchmark_cells}{empty_cols} |"
         )
         lines.append("")
 
@@ -347,12 +382,8 @@ def _format_round_score(score: RoundScore) -> str:
     lines.append("")
     full_rate = score.full_round_total / score.total_matches * 100
     full_wr = (score.full_round_wins / score.full_round_total * 100) if score.full_round_total > 0 else 0.0
-    lines.append(
-        f"{score.full_round_total:,}試合 / 全{score.total_matches:,}試合（フルラウンド率 {full_rate:.1f}%）"
-    )
-    lines.append(
-        f"3R の勝率: {full_wr:.1f}%（{score.full_round_wins:,}勝 / {score.full_round_total:,}試合）"
-    )
+    lines.append(f"{score.full_round_total:,}試合 / 全{score.total_matches:,}試合（フルラウンド率 {full_rate:.1f}%）")
+    lines.append(f"3R の勝率: {full_wr:.1f}%（{score.full_round_wins:,}勝 / {score.full_round_total:,}試合）")
 
     # 決まり手
     lines.extend(_format_round_methods("取ったラウンド（自分が決めた）", score.won_methods, score.total_rounds_won))

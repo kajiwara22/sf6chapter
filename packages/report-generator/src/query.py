@@ -56,6 +56,8 @@ class MatchupRow:
     total: int
     wins: int
     losses: int
+    # ADR-072: 同ランク帯の平均勝率（%）。--external-stats 指定時のみ埋まる
+    benchmark_win_rate: float | None = None
 
     @property
     def win_rate(self) -> float:
@@ -292,6 +294,43 @@ def query_matchups(
     ]
 
 
+def query_latest_league_result(
+    con: duckdb.DuckDBPyConnection,
+    player_id: str,
+    date_to: str,
+    battle_type: str = "ranked",
+) -> tuple[int | None, int | None]:
+    """期間末時点の直近試合から (league_point, master_rating) を取得する
+
+    ADR-072: バックラー統計の比較対象ランクを推定するために使う。
+    LP/MR はランクマッチでのみ意味を持つため、ranked 以外では (None, None) を返す。
+    """
+    if battle_type != "ranked":
+        return None, None
+
+    pid = int(player_id)
+    row = con.execute(
+        """
+        SELECT
+            CASE WHEN p1_short_id = ? THEN p1_league_point
+                 ELSE p2_league_point END AS league_point,
+            CASE WHEN p1_short_id = ? THEN p1_master_rating
+                 ELSE p2_master_rating END AS master_rating
+        FROM battlelog_replays
+        WHERE (p1_short_id = ? OR p2_short_id = ?)
+          AND uploaded_at < ?::TIMESTAMP
+          AND battle_type = 1
+        ORDER BY uploaded_at DESC
+        LIMIT 1
+        """,
+        [pid, pid, pid, pid, date_to],
+    ).fetchone()
+
+    if row is None:
+        return None, None
+    return row[0], row[1]
+
+
 def query_lp_history(
     con: duckdb.DuckDBPyConnection,
     player_id: str,
@@ -516,11 +555,7 @@ def query_round_score(
 
     def _sorted_rows(counts: dict[str, int], total: int) -> list[RoundMethodRow]:
         order = list(ROUND_METHOD_MAP.values()) + ["UNKNOWN"]
-        return [
-            RoundMethodRow(method=m, count=counts[m], total=total)
-            for m in order
-            if counts.get(m)
-        ]
+        return [RoundMethodRow(method=m, count=counts[m], total=total) for m in order if counts.get(m)]
 
     return RoundScore(
         total_matches=total_matches,
