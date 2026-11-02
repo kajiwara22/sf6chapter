@@ -69,3 +69,6 @@ battlelog_cache.db
 .cocoindex_code/*
 battlelog_replays.parquet
 .claude-config/sf6-chapter
+
+# sf6_stats collector のローカル検証用出力
+packages/local/tmp/

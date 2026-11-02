@@ -671,3 +671,40 @@ print(s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME')))
 - 認識成功時: 正規化されたキャラクター名（例: `"RYU"`, `"KEN"`）
 - 認識失敗時: `"UNKNOWN"` を返し、ログに警告を出力
 - 認識失敗した場合は中間ファイルを手動で修正してください
+
+## バックラー公開統計の収集（ADR-072）
+
+月次で更新されるバックラーの公開統計（キャラ使用率・キャラ別マッチアップ）を取得し、
+R2 に Parquet として配置する。Web・レポートジェネレーター・MCP はこのデータを参照する。
+
+```bash
+# 最新月を取得して R2 に配置（R2_* の環境変数が必要）
+uv run python -m src.sf6_stats --latest
+
+# 特定月を取得（ローカルのみ。R2 へは上げない）
+uv run python -m src.sf6_stats --month 202508 --no-upload --output-dir ./tmp/sf6_stats
+
+# 生 JSON も保存する
+uv run python -m src.sf6_stats --month 202508 --no-upload --output-dir ./tmp/sf6_stats --raw-dir ./tmp/sf6_stats_raw
+```
+
+R2 レイアウト:
+
+```
+stats/character_usage/{YYYYMM}_{locale}.parquet
+stats/matchup_stats/{YYYYMM}.parquet
+stats/matchup_details/{YYYYMM}.parquet
+stats/manifest.json
+```
+
+### データの意味
+
+| 列 | 実体 |
+|---|---|
+| `matchup_stats.win_rate` | キャラの総合勝率（元 `records[]._win_rate`、0〜1） |
+| `matchup_details.win_rate` | 対戦相手別の実際の勝率（元 `_dsort`、0〜1） |
+| `matchup_details.score` | 相性スコア 0〜10（元 `val`）。勝率ではない。欠損は NULL |
+| `matchup_stats.total_score` | 総合評価値 0〜10（元 `total`） |
+
+- `val` は 0.0 が実値として存在するため、欠損を 0 に潰さず NULL で保持する
+- `-.---`（サンプル不足）は NULL、`-`（ミラー）は行を残して `character_id = opponent_character_id` で判定する
