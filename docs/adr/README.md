@@ -77,6 +77,7 @@
 | [069](./069-oversplit-chapter-merge-by-round-banner-count.md) | 試合中のラウンド開始画面の誤検出による過分割チャプターの統合 | 採用 | 2026-10-29 |
 | [070](./070-round-score-analysis-in-report-generator.md) | レポートジェネレーターへのラウンドスコア分析の追加 | 採用 | 2026-10-31 |
 | [071](./071-web-round-score-tab.md) | Web へのラウンドスコア分析タブの追加 | 採用 | 2026-10-31 |
+| [072](./072-buckler-stats-r2-integration-and-mcp-local.md) | バックラー公開統計の R2 統合と公開 MCP のローカル限定化 | 採用 | 2026-11-02 |
 
 ## ADRのフォーマット
 

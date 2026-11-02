@@ -131,6 +131,7 @@ sf6-chapter/
 - [x] 試合中のラウンド開始画面の誤検出による過分割チャプターの統合（ADR-069） - 実装完了・`F16OBc27nSc` で検証（検出 18→17、Battlelog 17/17、round_count mismatch 0、`1314` が 3 ラウンドに修正）
 - [x] レポートジェネレーターへのラウンドスコア分析の追加（ADR-070） - 実装完了・ローカル 1,732試合で検証（1R取った試合 72.6% / 落とした試合 20.8%、フルラウンド率 45.3%、3R勝率 46.2%、決まり手の内訳を Markdown 出力）
 - [x] Web へのラウンドスコア分析タブの追加（ADR-071） - 実装完了・DuckDB-WASM で CLI 版（ADR-070）と数値一致を検証（1,732試合・決まり手の内訳一致）。typecheck / test / build 通過
+- [ ] バックラー公開統計の R2 統合と公開 MCP のローカル限定化（ADR-072） - collector（`packages/local/src/sf6_stats/`）・月次 workflow（`.github/workflows/monthly-sf6-stats.yml`）・report-generator `--external-stats` / `--video-id`・Web マッチアップタブの「バックラー平均」列まで実装済み。202508/202609 を R2 へアップロード済み。残りは sf6-stats-mcp-server の archive（別リポジトリ）と Web の実データ描画確認。D1 書き込みの無料枠警告の原因は実測 23,760行/月（dia API 202508）。併せて既存の `win_rate = val / 10` が誤り（実勝率は `_dsort`、`val` は相性スコア）であることを確認
 
 ## 次のタスク
 
@@ -403,6 +404,7 @@ docker compose up -d
 - [069: 試合中のラウンド開始画面の誤検出による過分割チャプターの統合](docs/adr/069-oversplit-chapter-merge-by-round-banner-count.md)
 - [070: レポートジェネレーターへのラウンドスコア分析の追加](docs/adr/070-round-score-analysis-in-report-generator.md)
 - [071: Web へのラウンドスコア分析タブの追加](docs/adr/071-web-round-score-tab.md)
+- [072: バックラー公開統計の R2 統合と公開 MCP のローカル限定化](docs/adr/072-buckler-stats-r2-integration-and-mcp-local.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成
