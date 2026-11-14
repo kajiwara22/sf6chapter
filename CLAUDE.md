@@ -132,6 +132,11 @@ sf6-chapter/
 - [x] レポートジェネレーターへのラウンドスコア分析の追加（ADR-070） - 実装完了・ローカル 1,732試合で検証（1R取った試合 72.6% / 落とした試合 20.8%、フルラウンド率 45.3%、3R勝率 46.2%、決まり手の内訳を Markdown 出力）
 - [x] Web へのラウンドスコア分析タブの追加（ADR-071） - 実装完了・DuckDB-WASM で CLI 版（ADR-070）と数値一致を検証（1,732試合・決まり手の内訳一致）。typecheck / test / build 通過
 - [ ] バックラー公開統計の R2 統合と公開 MCP のローカル限定化（ADR-072） - collector（`packages/local/src/sf6_stats/`）・月次 workflow（`.github/workflows/monthly-sf6-stats.yml`）・report-generator `--external-stats` / `--video-id`・Web マッチアップタブの「バックラー平均」列まで実装済み。202508/202609 を R2 へアップロード済み。残りは sf6-stats-mcp-server の archive（別リポジトリ）と Web の実データ描画確認。D1 書き込みの無料枠警告の原因は実測 23,760行/月（dia API 202508）。併せて既存の `win_rate = val / 10` が誤り（実勝率は `_dsort`、`val` は相性スコア）であることを確認
+- [x] Round 1 バナー検出漏れ試合の RESULT 画面・ROUND バナーからの復元（ADR-073） - 実装完了・`ukTrNgJY3Mw` で検証（10→11 試合、`round_stats` 54→58 行、Battlelog 11/11、mismatch 0、YouTube 11 章）・R2 反映済み
+- [x] RESULT 画面から次試合 ROUND 1 バナーまでの許容間隔拡張と KO ガード（ADR-074） - 実装完了・`0SbYbTsTGSQ` で検証（16→17 試合、`round_stats` 84→88 行、チャプター 16→17 章、Battlelog 17/17 マッチ）・テスト追加
+- [x] カウンター回数の表示をゲージ詳細ページへ集約（ADR-075） - 実装完了・対戦履歴のラウンド列は勝敗バッジのみ、詳細ページに「自分/相手の合計＋ラウンド別内訳」セクションを追加。typecheck / test (205件) / build 通過
+- [x] ラウンド長（durationSec）の両サイド共通化（ADR-076） - 実装完了・`lHLbZGQ8z1E` で検証（側別の duration 不一致 21→0 ラウンド、最大差 36.1→0 秒、round_count mismatch 0）・R2 反映済み。回帰確認は `yLvxBJXxFRo`（不一致 7→0）。既存動画は再計測でバックフィルが必要
+- [x] PERFECT 演出の拡大 K.O. 文字を検出する専用テンプレートの追加（ADR-077） - 実装完了・`lHLbZGQ8z1E` で koTimes 43→46（3 件のパーフェクトラウンドを検出）、3 秒間隔サンプリングで誤検出 0・R2 反映済み
 
 ## 次のタスク
 
@@ -405,6 +410,11 @@ docker compose up -d
 - [070: レポートジェネレーターへのラウンドスコア分析の追加](docs/adr/070-round-score-analysis-in-report-generator.md)
 - [071: Web へのラウンドスコア分析タブの追加](docs/adr/071-web-round-score-tab.md)
 - [072: バックラー公開統計の R2 統合と公開 MCP のローカル限定化](docs/adr/072-buckler-stats-r2-integration-and-mcp-local.md)
+- [073: Round 1 バナー検出漏れ試合を RESULT 画面と ROUND バナーから復元する](docs/adr/073-recover-missing-match-from-result-screen.md)
+- [074: RESULT 画面から次試合 ROUND 1 バナーまでの許容間隔を拡張する](docs/adr/074-result-to-next-banner-interval-extension.md)
+- [075: カウンター回数の表示をゲージ詳細ページへ集約する](docs/adr/075-counter-display-on-match-detail-page.md)
+- [076: ラウンド長（durationSec）の両サイド共通化](docs/adr/076-round-duration-shared-between-sides.md)
+- [077: PERFECT 演出の拡大 K.O. 文字を検出する専用テンプレートの追加](docs/adr/077-perfect-ko-banner-template.md)
 
 新しいアーキテクチャ決定を記録する際は、以下の 3 つのファイルを更新してください：
 1. `docs/adr/XXX-title.md` - ADR ファイル作成

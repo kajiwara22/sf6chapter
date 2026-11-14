@@ -78,6 +78,11 @@
 | [070](./070-round-score-analysis-in-report-generator.md) | レポートジェネレーターへのラウンドスコア分析の追加 | 採用 | 2026-10-31 |
 | [071](./071-web-round-score-tab.md) | Web へのラウンドスコア分析タブの追加 | 採用 | 2026-10-31 |
 | [072](./072-buckler-stats-r2-integration-and-mcp-local.md) | バックラー公開統計の R2 統合と公開 MCP のローカル限定化 | 採用 | 2026-11-02 |
+| [073](./073-recover-missing-match-from-result-screen.md) | Round 1 バナー検出漏れ試合を RESULT 画面と ROUND バナーから復元する | 採用 | 2026-11-03 |
+| [074](./074-result-to-next-banner-interval-extension.md) | RESULT 画面から次試合 ROUND 1 バナーまでの許容間隔を拡張する | 採用 | 2026-11-04 |
+| [075](./075-counter-display-on-match-detail-page.md) | カウンター回数の表示をゲージ詳細ページへ集約する | 採用 | 2026-11-04 |
+| [076](./076-round-duration-shared-between-sides.md) | ラウンド長（durationSec）の両サイド共通化 | 採用 | 2026-11-08 |
+| [077](./077-perfect-ko-banner-template.md) | PERFECT 演出の拡大 K.O. 文字を検出する専用テンプレートの追加 | 採用 | 2026-11-08 |
 
 ## ADRのフォーマット
 
