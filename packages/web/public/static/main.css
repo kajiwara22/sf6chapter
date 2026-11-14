@@ -1592,6 +1592,87 @@ body {
   color: var(--color-accent);
 }
 
+/* カウンター / パニッシュカウンターの専用セクション（ADR-075） */
+.gg-counters {
+  margin-top: var(--space-lg);
+}
+
+.gg-counter-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.gg-counter-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  min-width: 200px;
+  padding: var(--space-sm) var(--space-md);
+}
+
+.gg-counter-card-self {
+  border-color: var(--color-primary);
+}
+
+.gg-counter-card-opponent {
+  border-color: var(--color-accent);
+}
+
+.gg-counter-card-head {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin-bottom: var(--space-xs);
+}
+
+.gg-counter-card-values {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.gg-counter-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gg-counter-key {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.gg-counter-num {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.gg-counters-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+.gg-counters-table th,
+.gg-counters-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-xs) var(--space-sm);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.gg-counters-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-align: center;
+}
+
+.gg-counters-table th:first-child,
+.gg-counters-table td:first-child {
+  text-align: left;
+}
+
 .gg-empty {
   color: var(--color-text-muted);
   padding: var(--space-lg);

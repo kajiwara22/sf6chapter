@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Match, RoundStatsRow } from '@shared/types';
-import { buildMatchDetailPageHtml, parseMatchDetailPath } from './components/MatchDetailPage';
+import { buildCounterSectionHtml, buildMatchDetailPageHtml, parseMatchDetailPath } from './components/MatchDetailPage';
 
 const match: Match = {
   id: 'vid_20',
@@ -142,5 +142,73 @@ describe('buildMatchDetailPageHtml', () => {
     expect(html).toContain('data-side="both"');
     expect(html).toContain('自分のみ');
     expect(html).toContain('相手のみ');
+  });
+});
+
+describe('buildCounterSectionHtml（ADR-075）', () => {
+  const counterRow = (
+    side: 'player1' | 'player2',
+    round: number,
+    counter: number | null,
+    punish: number | null,
+    character: string,
+  ): RoundStatsRow => ({
+    ...roundRow(side, round, 'win', character),
+    counterCount: counter,
+    punishCounterCount: punish,
+  });
+
+  it('自分/相手の試合合計とラウンド別内訳を表示する', () => {
+    const html = buildCounterSectionHtml(
+      [
+        counterRow('player1', 1, 2, 1, 'JP'),
+        counterRow('player2', 1, 3, 2, 'GOUKI'),
+        counterRow('player1', 2, 1, 0, 'JP'),
+        counterRow('player2', 2, 0, 1, 'GOUKI'),
+      ],
+      labels,
+    );
+
+    expect(html).toContain('カウンター / パニッシュカウンター');
+    expect(html).toContain('自分（JP）');
+    expect(html).toContain('相手（GOUKI）');
+    // 合計: 自分 C3 PC1 / 相手 C3 PC3
+    expect(html).toContain('<span class="gg-counter-num">3</span>');
+    expect(html).toContain('<span class="gg-counter-num">1</span>');
+    // ラウンド別: Round 1 / Round 2 の行
+    expect(html).toContain('<td>Round 1</td>');
+    expect(html).toContain('<td>Round 2</td>');
+    expect(html).toContain('<td>2</td><td>1</td><td>3</td><td>2</td>');
+    expect(html).toContain('<td>1</td><td>0</td><td>0</td><td>1</td>');
+  });
+
+  it('未計測（null）は "-"、計測済み 0 件は "0" と区別する', () => {
+    const html = buildCounterSectionHtml(
+      [
+        counterRow('player1', 1, null, null, 'JP'),
+        counterRow('player2', 1, 0, 0, 'GOUKI'),
+      ],
+      labels,
+    );
+
+    // 自分は未計測
+    expect(html).toContain('<span class="gg-counter-num">-</span>');
+    // 相手は計測済み 0 件
+    expect(html).toContain('<span class="gg-counter-num">0</span>');
+  });
+
+  it('カウンター情報が無い場合はセクションを出さない', () => {
+    const html = buildCounterSectionHtml([counterRow('player1', 1, null, null, 'JP')], labels);
+    expect(html).toBe('');
+  });
+
+  it('自分サイドが判定できない場合は 1P / 2P 表示にする', () => {
+    const html = buildCounterSectionHtml(
+      [counterRow('player1', 1, 1, 0, 'JP'), counterRow('player2', 1, 2, 0, 'GOUKI')],
+      { player1: 'opponent', player2: 'opponent' },
+    );
+
+    expect(html).toContain('1P（JP）');
+    expect(html).toContain('2P（GOUKI）');
   });
 });

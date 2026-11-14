@@ -201,14 +201,6 @@ export interface RoundStatsQueryRow {
   punishCounterCount?: number | bigint | null;
 }
 
-/** round_stats のカウンター列のDuckDBクエリ結果行（ADR-049） */
-export interface RoundCounterQueryRow {
-  matchId: string;
-  round: number | bigint;
-  side: string;
-  counterCount: number | bigint | null;
-  punishCounterCount: number | bigint | null;
-}
 
 /** Battlelog サイド情報のDuckDBクエリ結果行（ADR-048/051） */
 export interface MatchBattlelogSidesQueryRow {

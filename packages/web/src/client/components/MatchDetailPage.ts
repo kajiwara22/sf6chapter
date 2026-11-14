@@ -18,6 +18,7 @@ import {
   type GaugeSideLabels,
   type GaugeVisibleSide,
 } from './RoundGaugeChart';
+import { formatCounterCount } from './CounterBadges';
 import { createYouTubeLink, formatDate, formatTime } from './ResultsGrid';
 import { MY_PLAYER_ID } from '../search';
 
@@ -158,6 +159,106 @@ function createHeaderHtml(match: Match, data: MatchDetailPageData): string {
   `;
 }
 
+/**
+ * カウンター / パニッシュカウンターの専用セクション（ADR-075）
+ *
+ * 自分・相手の試合合計とラウンド別の内訳を表示する。
+ * 履歴（ラウンド列）からは外し、ここへ集約した。
+ * 未計測（null）は '-'、計測済み 0 件は '0' と区別する。
+ */
+export function buildCounterSectionHtml(roundStats: RoundStatsRow[], labels: GaugeSideLabels): string {
+  const measured = roundStats.some(
+    (row) => row.counterCount != null || row.punishCounterCount != null,
+  );
+  if (!measured) return '';
+
+  const selfSide = resolveSelfSide(labels);
+  const sideLabel = (side: GaugeSide): string => {
+    if (!selfSide) return side === 'player1' ? '1P' : '2P';
+    return side === selfSide ? '自分' : '相手';
+  };
+  const characterOf = (side: GaugeSide): string | null =>
+    roundStats.find((row) => row.side === side)?.character ?? null;
+
+  const total = (side: GaugeSide, key: 'counterCount' | 'punishCounterCount'): number | null => {
+    const values = roundStats
+      .filter((row) => row.side === side)
+      .map((row) => (row[key] == null ? null : Number(row[key])))
+      .filter((value): value is number => value != null);
+    if (values.length === 0) return null;
+    return values.reduce((acc, value) => acc + value, 0);
+  };
+
+  const rounds = Array.from(new Set(roundStats.map((row) => Number(row.round)))).sort((a, b) => a - b);
+  const roundCell = (
+    round: number,
+    side: GaugeSide,
+    key: 'counterCount' | 'punishCounterCount',
+  ): string => {
+    const row = roundStats.find((r) => Number(r.round) === round && r.side === side);
+    return formatCounterCount(row?.[key] as number | null | undefined);
+  };
+
+  const sides: GaugeSide[] = selfSide
+    ? [selfSide, selfSide === 'player1' ? 'player2' : 'player1']
+    : ['player1', 'player2'];
+
+  const summaryCards = sides
+    .map((side) => {
+      const isSelf = selfSide === side;
+      const character = characterOf(side);
+      const head = `${sideLabel(side)}${character ? `（${character}）` : ''}`;
+      return `
+        <div class="gg-counter-card ${isSelf ? 'gg-counter-card-self' : 'gg-counter-card-opponent'}">
+          <div class="gg-counter-card-head">${escapeHtml(head)}</div>
+          <div class="gg-counter-card-values">
+            <span class="gg-counter-metric"><span class="gg-counter-key">カウンター</span><span class="gg-counter-num">${formatCounterCount(total(side, 'counterCount'))}</span></span>
+            <span class="gg-counter-metric"><span class="gg-counter-key">パニッシュ</span><span class="gg-counter-num">${formatCounterCount(total(side, 'punishCounterCount'))}</span></span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  const tableRows = rounds
+    .map((round) => {
+      const cells = sides
+        .map(
+          (side) => `<td>${roundCell(round, side, 'counterCount')}</td><td>${roundCell(round, side, 'punishCounterCount')}</td>`,
+        )
+        .join('');
+      return `<tr><td>Round ${round}</td>${cells}</tr>`;
+    })
+    .join('');
+
+  const [firstSide, secondSide] = sides;
+  return `
+    <div class="gg-counters">
+      <div class="gg-stats-label">カウンター / パニッシュカウンター</div>
+      <div class="gg-counter-summary">${summaryCards}</div>
+      <div class="gg-stats-scroll">
+        <table class="gg-counters-table">
+          <thead>
+            <tr>
+              <th>ラウンド</th>
+              <th colspan="2">${escapeHtml(sideLabel(firstSide))}</th>
+              <th colspan="2">${escapeHtml(sideLabel(secondSide))}</th>
+            </tr>
+            <tr>
+              <th></th>
+              <th>カウンター</th>
+              <th>パニッシュ</th>
+              <th>カウンター</th>
+              <th>パニッシュ</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 /** ページ本体の HTML を生成する（DOM 非依存） */
 export function buildMatchDetailPageHtml(match: Match, data: MatchDetailPageData): string {
   const context: GaugeChartContext = {
@@ -183,6 +284,7 @@ export function buildMatchDetailPageHtml(match: Match, data: MatchDetailPageData
       ${coverageNotice}
       ${buildGaugeSideFilterHtml(data.labels)}
       <div class="gg-rounds">${buildGaugeRoundsHtml(match.videoId, data.gauges, data.labels, context)}</div>
+      ${buildCounterSectionHtml(data.roundStats, data.labels)}
       ${buildRoundStatsTableHtml(match.videoId, data.roundStats, data.labels, data.characterHealth ?? null)}
     </div>
   `;

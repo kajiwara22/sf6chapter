@@ -3,8 +3,8 @@
  */
 
 import * as duckdb from '@duckdb/duckdb-wasm';
-import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, RoundCounterQueryRow, MatchBattlelogSidesQueryRow } from './types';
-import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, RoundCounterRow, MatchBattlelogSides, CharacterHealthTable, RoundScoreFilters, RoundScore, RoundScoreMethodRow, MatchupBenchmark } from '@shared/types';
+import type { DuckDBInstance, StatsRow, CharacterCountRow, MatchupChartQueryRow, MatchHistoryQueryRow, LpHistoryQueryRow, RoundStatsQueryRow, MatchBattlelogSidesQueryRow } from './types';
+import type { SearchFilters, Match, Stats, DataManifest, MatchupChartFilters, MatchupChartRow, MatchHistoryFilters, MatchHistoryRow, LpHistoryFilters, LpHistoryRow, GaugeData, RoundStatsRow, MatchBattlelogSides, CharacterHealthTable, RoundScoreFilters, RoundScore, RoundScoreMethodRow, MatchupBenchmark } from '@shared/types';
 import { benchmarkKey } from '@shared/characters';
 import type { ManifestParquetKey } from '@shared/manifest';
 import { determineResultFromRounds } from '@shared/rounds';
@@ -1206,30 +1206,8 @@ export async function queryMatchHistory(filters: MatchHistoryFilters): Promise<M
       startTime: row.start_time != null ? Number(row.start_time) : null,
       matchId: row.match_id ?? null,
       selfSide: row.self_side === 'player2' ? 'player2' : 'player1',
-      roundCounters: [],
     };
   });
-
-  // ADR-049: ラウンドバッジにカウンター回数を併記するため、ページ内の試合の回数をまとめて取得する
-  const matchIds = mapped
-    .map((row) => row.matchId)
-    .filter((matchId): matchId is string => matchId != null);
-  if (matchIds.length > 0) {
-    const counters = await queryRoundCounters(matchIds);
-    if (counters.length > 0) {
-      const countersByMatch = new Map<string, RoundCounterRow[]>();
-      for (const counter of counters) {
-        const list = countersByMatch.get(counter.matchId) ?? [];
-        list.push(counter);
-        countersByMatch.set(counter.matchId, list);
-      }
-      for (const row of mapped) {
-        if (row.matchId) {
-          row.roundCounters = countersByMatch.get(row.matchId) ?? [];
-        }
-      }
-    }
-  }
 
   return mapped;
 }
@@ -1522,42 +1500,6 @@ async function roundStatsHasComboColumns(): Promise<boolean> {
     roundStatsComboColumnsCache = false;
   }
   return roundStatsComboColumnsCache;
-}
-
-/**
- * 複数試合のラウンド別カウンター回数をまとめて取得する（ADR-049）
- *
- * round_stats テーブルやカウンター列が無い場合は空配列を返す（呼び出し側でフォールバック不要）。
- */
-export async function queryRoundCounters(matchIds: string[]): Promise<RoundCounterRow[]> {
-  if (!instance || matchIds.length === 0) return [];
-  if (!(await roundStatsHasCounterColumns())) return [];
-
-  const placeholders = matchIds.map((_, index) => `$${index + 1}`).join(', ');
-  const query = `
-    SELECT matchId, round, side, counterCount, punishCounterCount
-    FROM round_stats
-    WHERE matchId IN (${placeholders})
-    ORDER BY matchId ASC, round ASC, side ASC
-  `;
-
-  try {
-    const stmt = await instance.conn.prepare(query);
-    const result = await stmt.query(...matchIds);
-    await stmt.close();
-
-    const rows = result.toArray() as unknown as RoundCounterQueryRow[];
-    return rows.map((row) => ({
-      matchId: row.matchId,
-      round: Number(row.round),
-      side: row.side === 'player2' ? 'player2' : 'player1',
-      counterCount: row.counterCount == null ? null : Number(row.counterCount),
-      punishCounterCount: row.punishCounterCount == null ? null : Number(row.punishCounterCount),
-    }));
-  } catch (error) {
-    console.warn('[DuckDB] Failed to query round counters:', error);
-    return [];
-  }
 }
 
 /**

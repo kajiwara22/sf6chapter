@@ -3,7 +3,7 @@
  */
 
 import { DOM_IDS } from '../types';
-import type { MatchHistoryRow, MatchHistoryFilters, RoundCounterRow } from '@shared/types';
+import type { MatchHistoryRow, MatchHistoryFilters } from '@shared/types';
 import { getRound, parseRoundIds } from '@shared/rounds';
 
 export type MatchHistoryFilterHandler = (filters: MatchHistoryFilters) => void;
@@ -64,85 +64,21 @@ export function createRoundBadge(id: number): string {
 }
 
 /**
- * カウンター回数の表示テキストを生成する（ADR-049）
+ * 対戦履歴の「ラウンド」セルを生成する（ADR-047 / ADR-075）
  *
- * 0 件の項目は省略し、両方 0 件（あるいは未計測）の場合は空文字を返す。
- */
-export function formatCounterText(
-  counterCount: number | null,
-  punishCounterCount: number | null,
-): string {
-  if (counterCount == null && punishCounterCount == null) return '';
-  const parts: string[] = [];
-  if (counterCount) parts.push(`C${counterCount}`);
-  if (punishCounterCount) parts.push(`PC${punishCounterCount}`);
-  return parts.join(' ');
-}
-
-/**
- * カウンター回数のバッジHTMLを生成する（0 件なら空文字）
- */
-export function createCounterBadge(counterCount: number | null, punishCounterCount: number | null): string {
-  const text = formatCounterText(counterCount, punishCounterCount);
-  if (!text) return '';
-  const title = `COUNTER ${counterCount ?? 0} / PUNISH COUNTER ${punishCounterCount ?? 0}`;
-  return `<span class="round-counter" title="${escapeHtml(title)}">${escapeHtml(text)}</span>`;
-}
-
-/**
- * 対戦履歴の「ラウンド」セルを生成する（ADR-047 / ADR-049）
- *
- * 上段に自分、下段に相手のラウンドバッジを並べ、各バッジにそのラウンドの
- * カウンター回数（ADR-049）を併記する。
- * round_results がない（YouTube側のみの）行でもカウンター回数があれば表示する。
+ * 上段に自分、下段に相手のラウンドバッジを並べる。
+ * カウンター回数は履歴には出さず、ゲージ詳細ページに集約する（ADR-075）。
  */
 export function createRoundCell(row: MatchHistoryRow): string {
   const myRounds = parseRoundIds(row.myRounds);
   const oppRounds = parseRoundIds(row.oppRounds);
 
-  const mySide = row.selfSide ?? 'player1';
-  const oppSide: 'player1' | 'player2' = mySide === 'player1' ? 'player2' : 'player1';
-  const roundCounters = row.roundCounters ?? [];
-
-  const countersByRound = (side: 'player1' | 'player2'): Map<number, RoundCounterRow> =>
-    new Map(roundCounters.filter((counter) => counter.side === side).map((counter) => [counter.round, counter]));
-  const myCounters = countersByRound(mySide);
-  const oppCounters = countersByRound(oppSide);
-
   if (myRounds.length === 0 && oppRounds.length === 0) {
-    const totalOf = (side: 'player1' | 'player2') => {
-      const list = roundCounters.filter((counter) => counter.side === side);
-      return {
-        measured: list.some((counter) => counter.counterCount != null || counter.punishCounterCount != null),
-        counter: list.reduce((acc, counter) => acc + (counter.counterCount ?? 0), 0),
-        punish: list.reduce((acc, counter) => acc + (counter.punishCounterCount ?? 0), 0),
-      };
-    };
-    const myTotal = totalOf(mySide);
-    const oppTotal = totalOf(oppSide);
-    if (!myTotal.measured && !oppTotal.measured) {
-      return '<span class="text-muted">-</span>';
-    }
-    const myHtml = createCounterBadge(myTotal.counter, myTotal.punish) || '<span class="text-muted">-</span>';
-    const oppHtml = createCounterBadge(oppTotal.counter, oppTotal.punish) || '<span class="text-muted">-</span>';
-    return `<div class="round-list">
-      <div class="round-side round-side-self" title="自分">${myHtml}</div>
-      <div class="round-side round-side-opponent" title="相手">${oppHtml}</div>
-    </div>`;
+    return '<span class="text-muted">-</span>';
   }
 
-  const badgeWithCounter = (id: number, round: number, counters: Map<number, RoundCounterRow>): string => {
-    const counter = counters.get(round);
-    const annotation = counter ? createCounterBadge(counter.counterCount, counter.punishCounterCount) : '';
-    return `${createRoundBadge(id)}${annotation}`;
-  };
-
-  const myBadges = myRounds
-    .map((id, index) => badgeWithCounter(id, index + 1, myCounters))
-    .join('');
-  const oppBadges = oppRounds
-    .map((id, index) => badgeWithCounter(id, index + 1, oppCounters))
-    .join('');
+  const myBadges = myRounds.map((id) => createRoundBadge(id)).join('');
+  const oppBadges = oppRounds.map((id) => createRoundBadge(id)).join('');
 
   return `<div class="round-list">
       <div class="round-side round-side-self" title="自分">${myBadges}</div>
