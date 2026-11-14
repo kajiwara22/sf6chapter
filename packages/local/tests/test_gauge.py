@@ -723,6 +723,85 @@ class TestBuildRoundStatsRows:
         assert p2["saMax"] == 1
         assert p2["saUsedCount"] == 0
 
+    def test_round_duration_is_shared_between_sides(self):
+        """片側の HUD 検出が途中で途切れても、ラウンド長は両サイドで共通になる（ADR-076）"""
+        gauge_result = {
+            "matches": {
+                "vid_200": {
+                    "matchId": "vid_200",
+                    "rounds": [
+                        {
+                            "round": 1,
+                            "roundStartTime": 200.0,
+                            "roundEndTime": 260.0,
+                            "boundaryEndTime": 261.5,
+                            "player1": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 56.0,
+                                "coverage": 0.98,
+                                "drive": [[1.0, 6.0]],
+                                "sa": [[1.0, 2]],
+                                "driveBurnout": [],
+                            },
+                            "player2": {
+                                "visibleFrom": 2.5,
+                                "visibleTo": 24.0,
+                                "coverage": 0.57,
+                                "drive": [[2.5, 4.0]],
+                                "sa": [[2.5, 1]],
+                                "driveBurnout": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+        matches = [{"id": "vid_200", "videoId": "vid", "player1": {"character": "JP"}, "player2": {"character": "MAI"}}]
+
+        rows = build_round_stats_rows(gauge_result, matches)
+        assert [row["durationSec"] for row in rows] == [pytest.approx(55.0), pytest.approx(55.0)]
+        assert all(row["roundEndTime"] == 256 for row in rows)
+        assert all(row["roundStartTime"] == 201 for row in rows)
+
+    def test_round_end_is_clipped_by_boundary(self):
+        """HUD の可視終端が次ラウンドバナーを超える場合は境界で切り詰める（ADR-076）"""
+        gauge_result = {
+            "matches": {
+                "vid_201": {
+                    "matchId": "vid_201",
+                    "rounds": [
+                        {
+                            "round": 1,
+                            "roundStartTime": 300.0,
+                            "roundEndTime": 340.0,
+                            "boundaryEndTime": 330.0,
+                            "player1": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 60.0,
+                                "coverage": 0.5,
+                                "drive": [[1.0, 6.0]],
+                                "sa": [[1.0, 2]],
+                                "driveBurnout": [],
+                            },
+                            "player2": {
+                                "visibleFrom": 1.0,
+                                "visibleTo": 39.0,
+                                "coverage": 0.9,
+                                "drive": [[1.0, 4.0]],
+                                "sa": [[1.0, 1]],
+                                "driveBurnout": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+        matches = [{"id": "vid_201", "videoId": "vid", "player1": {"character": "JP"}, "player2": {"character": "RYU"}}]
+
+        rows = build_round_stats_rows(gauge_result, matches)
+        assert [row["durationSec"] for row in rows] == [pytest.approx(29.0), pytest.approx(29.0)]
+        assert all(row["roundEndTime"] == 330 for row in rows)
+
     def test_missing_match_metadata(self):
         gauge_result = {"matches": {"unknown": {"rounds": [{"round": 1, "roundStartTime": 0, "player1": {}}]}}}
         rows = build_round_stats_rows(gauge_result, [])

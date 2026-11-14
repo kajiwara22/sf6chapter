@@ -2178,15 +2178,38 @@ def build_round_stats_rows(
             # 勝利演出（4〜5秒）が durationSec に含まれるため、敗者の体力が 0% 付近に
             # 落ちた時刻を K.O. とみなしてラウンド終端を切り詰める
             perfect_ko_rel = _perfect_ko_time(round_data) if round_method == "P" else None
+            # ADR-076: 同じラウンドの両サイドは同じ長さなので、HUD 可視範囲を統合して
+            # ラウンドの実効的な開始・終端を決める。片側の HUD 検出がラウンド途中で
+            # 途切れても、もう片方の可視終端までをラウンド長とする。
+            visible_to_by_side = {side: float((round_data.get(side) or {}).get("visibleTo") or 0.0) for side in SIDES}
+            round_end_rel = max(visible_to_by_side.values())
+            # 次ラウンドバナー（boundaryEndTime）を超える値は試合間画面の誤検出として切り詰める
+            boundary_end = round_data.get("boundaryEndTime")
+            if boundary_end is not None:
+                boundary_rel = float(boundary_end) - float(round_data.get("roundStartTime", 0.0))
+                if boundary_rel > 0:
+                    round_end_rel = min(round_end_rel, boundary_rel)
+            # ラウンド開始も両サイドで共通にする（片側の HUD 検出が遅れた分を揃える）。
+            # HUD が一度も見えていないサイドは無視する
+            detected_sides = [side for side in SIDES if visible_to_by_side[side] > 0]
+            round_start_rel = (
+                min(float((round_data.get(side) or {}).get("visibleFrom") or 0.0) for side in detected_sides)
+                if detected_sides
+                else 0.0
+            )
+            round_duration = round(max(0.0, round_end_rel - round_start_rel), 2)
+            if perfect_ko_rel is not None and perfect_ko_rel < round_end_rel:
+                round_end_rel = perfect_ko_rel
+                round_duration = round(max(0.0, perfect_ko_rel - round_start_rel), 2)
+            round_end_time = int(round(float(round_data.get("roundStartTime", 0.0)) + round_end_rel))
+            round_start_time = int(round(float(round_data.get("roundStartTime", 0.0)) + round_start_rel))
             for side in SIDES:
                 payload = round_data.get(side) or {}
                 drive_events = payload.get("drive") or []
                 sa_events = payload.get("sa") or []
                 health_events = payload.get("health") or []
                 recoverable_events = payload.get("healthRecoverable") or []
-                visible_from = float(payload.get("visibleFrom") or 0.0)
                 visible_to = float(payload.get("visibleTo") or 0.0)
-                round_start = float(round_data.get("roundStartTime", 0.0))
 
                 drive_min, _, drive_end = _series_stats(drive_events, visible_to)
                 _, _, health_end = _series_stats(health_events, visible_to)
@@ -2206,11 +2229,6 @@ def build_round_stats_rows(
                 player = match.get(side) or {}
                 counter_counts = counter_lookup.get((match_id, round_index, side))
                 round_result = _round_result(value_lookup.get((match_id, round_index, side)))
-                round_end_time = int(round(round_start + visible_to))
-                duration = round(max(0.0, visible_to - visible_from), 2)
-                if perfect_ko_rel is not None and perfect_ko_rel < visible_to:
-                    round_end_time = int(round(round_start + perfect_ko_rel))
-                    duration = round(max(0.0, perfect_ko_rel - visible_from), 2)
                 # K.O. 札着の敗者はゲーム上 0%。K.O. 演出中は HUD が消えて体力バーが 0 へ
                 # 吸い込まれる演出を計測できないため、Battlelog の勝利方法から補正する（ADR-051）
                 # （Time Up（T）の敗者は 0 にならないので補正しない。未マッチ時は計測値のまま）
@@ -2228,9 +2246,9 @@ def build_round_stats_rows(
                         "round": round_index,
                         "side": side,
                         "character": player.get("character"),
-                        "roundStartTime": int(round(round_start + visible_from)),
+                        "roundStartTime": round_start_time,
                         "roundEndTime": round_end_time,
-                        "durationSec": duration,
+                        "durationSec": round_duration,
                         "roundResult": round_result,
                         "roundMethod": round_method,
                         "driveMin": drive_min,
