@@ -268,10 +268,24 @@ class TestKoColorMaskDetection:
         assert template is not None
         frame[360 : 360 + template.shape[0], 640 : 640 + template.shape[1]] = template
 
+    @staticmethod
+    def _paste_perfect_ko(frame: np.ndarray) -> None:
+        template = cv2.imread(str(APP_ROOT / "template/gauge/ko_banner_perfect.png"))
+        assert template is not None
+        frame[360 : 360 + template.shape[0], 640 : 640 + template.shape[1]] = template
+
     def test_config_enables_color_mask(self):
         params = make_params()
         assert params.ko_color_mask.enabled is True
         assert params.ko_color_mask.min_consecutive >= 2
+
+    def test_perfect_ko_banner_is_configured(self):
+        """超拡大の K.O. 文字（PERFECT 演出）用テンプレートが設定されている（ADR-077）"""
+        params = make_params()
+        names = [banner.name for banner in params.ko_banners]
+        assert "ko_perfect" in names
+        template_path = APP_ROOT / "template/gauge/ko_banner_perfect.png"
+        assert template_path.is_file()
 
     def test_validate_rejects_bad_threshold(self):
         params = make_params()
@@ -304,6 +318,12 @@ class TestKoColorMaskDetection:
         # リセット後は再び2回連続が必要
         assert analyzer._detect_ko(frame, 10.5) is None
         assert analyzer._detect_ko(frame, 10.75) == 10.5
+
+    def test_color_score_high_for_perfect_ko_frame(self):
+        """PERFECT 演出の拡大 K.O. 文字も専用テンプレートで検出できる（ADR-077）"""
+        analyzer, frame = self._prepare()
+        self._paste_perfect_ko(frame)
+        assert analyzer._ko_color_score(frame) >= 0.9
 
     def test_edge_template_detects_immediately(self):
         analyzer = GaugeAnalyzer(make_params(), APP_ROOT)

@@ -165,6 +165,12 @@
         "template": "./template/gauge/ko_banner_2458.png",
         "search_region": [640, 360, 1280, 720],
         "threshold": 0.4
+      },
+      {
+        "name": "ko_perfect",
+        "template": "./template/gauge/ko_banner_perfect.png",
+        "search_region": [640, 360, 1280, 720],
+        "threshold": 0.4
       }
     ],
     "ko_color_mask": {
