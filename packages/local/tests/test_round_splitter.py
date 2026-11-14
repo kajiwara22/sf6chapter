@@ -2,6 +2,7 @@
 
 from src.detection.round_splitter import (
     MAX_ROUNDS,
+    find_missing_match_starts,
     merge_banner_times,
     split_rounds,
 )
@@ -104,3 +105,97 @@ class TestSyntheticRoundFlag:
         assert windows[0].banner_detected is False
         assert windows[1].start_time == 265.75
         assert windows[1].banner_detected is True
+
+
+class TestFindMissingMatchStarts:
+    """ADR-073: RESULT 画面と ROUND バナーによる検出漏れ試合の復元"""
+
+    def test_recovers_match_after_result_screen(self):
+        # ukTrNgJY3Mw_1032 の実例: バナー5つ + RESULT 1147.6s（1125.5 と 1152.0 の間）
+        starts = find_missing_match_starts(
+            match_start=1032.0,
+            match_end=1331.0,
+            round_banner_times=[1032.25, 1072.25, 1125.5, 1152.0, 1217.25],
+            result_times=[990.7, 1147.6, 1518.4],
+        )
+        assert starts == [1152.0]
+
+    def test_no_recovery_without_result_screen(self):
+        starts = find_missing_match_starts(
+            match_start=1032.0,
+            match_end=1331.0,
+            round_banner_times=[1032.25, 1072.25, 1125.5, 1152.0, 1217.25],
+            result_times=[990.7, 1518.4],
+        )
+        assert starts == []
+
+    def test_no_recovery_when_banners_fit_one_match(self):
+        starts = find_missing_match_starts(
+            match_start=100.0,
+            match_end=400.0,
+            round_banner_times=[100.5, 160.0, 220.0],
+            result_times=[215.0],
+        )
+        assert starts == []
+
+    def test_no_recovery_when_result_is_too_far_from_banner(self):
+        # RESULT から 60 秒以上経ったバナーは次試合の開始とみなさない（65 秒後）
+        starts = find_missing_match_starts(
+            match_start=100.0,
+            match_end=400.0,
+            round_banner_times=[100.5, 160.0, 220.0, 280.0, 340.0],
+            result_times=[155.0],
+        )
+        assert starts == []
+
+    def test_no_recovery_when_split_leaves_too_many_rounds(self):
+        # 前半が 4 ラウンドになってしまう分割は採用しない（安全側で見送る）
+        starts = find_missing_match_starts(
+            match_start=100.0,
+            match_end=400.0,
+            round_banner_times=[100.5, 160.0, 220.0, 280.0, 340.0],
+            result_times=[335.0],
+        )
+        assert starts == []
+
+    def test_recovers_two_matches_in_one_interval(self):
+        # 7 バナー（2 + 2 + 3）のケース。RESULT の直後のバナーごとに分割する
+        starts = find_missing_match_starts(
+            match_start=100.0,
+            match_end=600.0,
+            round_banner_times=[100.5, 160.0, 220.0, 280.0, 340.0, 400.0, 460.0],
+            result_times=[215.0, 335.0],
+        )
+        assert starts == [220.0, 340.0]
+
+    def test_no_recovery_without_banners(self):
+        starts = find_missing_match_starts(
+            match_start=100.0,
+            match_end=400.0,
+            round_banner_times=[],
+            result_times=[200.0],
+        )
+        assert starts == []
+
+    def test_recovers_match_when_result_to_banner_is_60s(self):
+        # 0SbYbTsTGSQ の実例: RESULT 232.8s → 次試合の ROUND 1 は 292.5s（約 60 秒後）
+        # ELENA 戦（バナー 143.5/185.8、KO 182.2/226.2）と GOUKI 戦（292.5/359.5/387.5）
+        starts = find_missing_match_starts(
+            match_start=143.0,
+            match_end=429.0,
+            round_banner_times=[143.5, 185.8, 292.5, 359.5, 387.5],
+            result_times=[232.8],
+            ko_times=[182.2, 226.2, 355.5, 423.5],
+        )
+        assert starts == [292.5]
+
+    def test_no_recovery_when_ko_after_result(self):
+        # RESULT の後に KO があるなら試合は続いていた（RESULT は誤検出）
+        starts = find_missing_match_starts(
+            match_start=143.0,
+            match_end=429.0,
+            round_banner_times=[143.5, 185.8, 292.5, 359.5, 387.5],
+            result_times=[232.8],
+            ko_times=[182.2, 250.0, 355.5, 423.5],
+        )
+        assert starts == []

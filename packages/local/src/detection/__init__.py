@@ -23,7 +23,7 @@ from .gauge import (
 )
 from .matcher import MatchDetection, TemplateMatcher
 from .result_detector import ResultDetection, ResultScreenDetector
-from .round_splitter import RoundWindow, split_rounds
+from .round_splitter import RoundWindow, find_missing_match_starts, split_rounds
 
 __all__ = [
     "TemplateMatcher",
@@ -41,6 +41,7 @@ __all__ = [
     "DRIVE_MAX",
     "RoundWindow",
     "split_rounds",
+    "find_missing_match_starts",
     "CounterAnalyzer",
     "CounterAnalysisParams",
     "CounterThresholds",

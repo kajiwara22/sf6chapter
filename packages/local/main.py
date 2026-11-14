@@ -25,6 +25,7 @@ from src.detection import (
     MatchDetection,
     ResultScreenDetector,
     TemplateMatcher,
+    find_missing_match_starts,
     get_available_profiles,
     load_detection_params,
 )
@@ -38,6 +39,14 @@ from src.youtube import YouTubeChapterUpdater
 
 # ロガー初期化
 logger = setup_logger()
+
+# ADR-073: 検出漏れ試合を復元するときのフレーム取得オフセット候補（秒）
+# キャラクター名はラウンド開始演出中に画面下部へ大きく出る。バナー検出時刻が演出の
+# どの位置に当たるかは安定しないため、複数候補からコントラストが最大のものを選ぶ
+RECOVERED_FRAME_OFFSETS_SEC = (0.0, 0.4, 0.8)
+
+# ADR-073: 復元処理の繰り返し上限（1 区間に複数試合が隠れるケースに備える）
+MAX_RECOVERY_PASSES = 3
 
 
 def _expected_round_counts(
@@ -184,6 +193,66 @@ class SF6ChapterProcessor:
             # TemplateMatcher に result_detector を設定（動画走査内で RESULT検出を統合）
             self.matcher.result_detector = self.result_detector
 
+    def _recover_missing_matches(
+        self,
+        video_path: str,
+        detections: list[MatchDetection],
+        round_banner_times: list[float],
+        result_times: list[float],
+        ko_times: list[float] | None = None,
+    ) -> list[MatchDetection]:
+        """検出漏れした試合を RESULT 画面と ROUND バナーから復元する（ADR-073）
+
+        Round 1 テンプレートのマッチングスコアが閾値に僅かに届かないと試合が検出されない。
+        そのままだと round_splitter がラウンド数を MAX_ROUNDS で切り捨ててしまい、
+        ゲージ・ラウンド統計・チャプターごと失われる。RESULT 画面（試合終了）が検出
+        できている場合に限り、その直後の ROUND バナーを次試合の開始とみなして
+        フレームを取り直し、検出結果を補う。
+        """
+        if not round_banner_times or not result_times or not detections:
+            return detections
+
+        video_end = self.matcher.video_duration(video_path)
+        if video_end is None:
+            return detections
+
+        ordered = sorted(detections, key=lambda detection: detection.timestamp)
+        known = {round(detection.timestamp, 2) for detection in ordered}
+        recovered: list[MatchDetection] = []
+
+        for _ in range(MAX_RECOVERY_PASSES):
+            starts = sorted([detection.timestamp for detection in [*ordered, *recovered]])
+            boundaries = [*starts[1:], video_end]
+            added = False
+            for start, end in zip(starts, boundaries, strict=True):
+                for missing in find_missing_match_starts(
+                    start, end, round_banner_times, result_times, ko_times=ko_times
+                ):
+                    if round(missing, 2) in known:
+                        continue
+                    detection = self.matcher.build_detection_at(
+                        video_path,
+                        missing,
+                        crop_region=self.detection_params.crop_region,
+                        offsets_sec=RECOVERED_FRAME_OFFSETS_SEC,
+                    )
+                    if detection is None:
+                        logger.warning("[ADR-073] 未検出試合のフレーム取得に失敗: %.2fs", missing)
+                        continue
+                    known.add(round(missing, 2))
+                    recovered.append(detection)
+                    added = True
+                    logger.info(
+                        "[ADR-073] 検出漏れの試合を復元: %.2fs（RESULT 画面と ROUND バナーから）",
+                        missing,
+                    )
+            if not added:
+                break
+
+        if not recovered:
+            return ordered
+        return sorted([*ordered, *recovered], key=lambda detection: detection.timestamp)
+
     def _detect_and_recognize(
         self, video_id: str, video_path: str, message_data: dict[str, Any], video_intermediate_dir: Path
     ) -> tuple[list[MatchDetection], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -216,6 +285,19 @@ class SF6ChapterProcessor:
             video_path=video_path,
             crop_region=self.detection_params.crop_region,
         )
+
+        # ADR-073: Round 1 テンプレートのスコアが閾値に僅かに届かず検出漏れした試合を、
+        # RESULT 画面（試合終了）と ROUND バナーの位置から復元する。
+        # ラウンド分割より前に補うことで、ゲージ・カウンター・チャプターが揃う
+        if gauge_analyzer is not None and detections:
+            detections = self._recover_missing_matches(
+                video_path,
+                detections,
+                gauge_analyzer.banner_times,
+                self.matcher.result_timestamps,
+                ko_times=gauge_analyzer.ko_times,
+            )
+
         logger.info("Found %d matches", len(detections))
         self._save_detection_summary(video_id, video_intermediate_dir, detections)
 

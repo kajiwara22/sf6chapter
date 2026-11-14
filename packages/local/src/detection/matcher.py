@@ -93,6 +93,8 @@ class TemplateMatcher:
         self.recognize_frame_offset_alt = recognize_frame_offset_alt
         self.recognize_frame_offset_threshold = recognize_frame_offset_threshold
         self.result_detector = result_detector
+        # RESULT 画面（試合終了）の検出時刻（ADR-073）。検出漏れした試合の復元に使う
+        self.result_timestamps: list[float] = []
         # ゲージ計測器（ADR-048）。設定するとデコードループ内で feed() が呼ばれる
         self.gauge_analyzer: GaugeAnalyzer | None = None
         # カウンター計測器（ADR-049）。同じくデコードループ内で feed() が呼ばれる
@@ -408,6 +410,7 @@ class TemplateMatcher:
                         result_detection = self.result_detector.detect_result(frame)
                         if result_detection.winner_side is not None:
                             detections[-1].winner_side = result_detection.winner_side
+                            self.result_timestamps.append(frame_count / fps)
                             logger.info(
                                 "RESULT detected at %.1fs: %s (win_position=%s)",
                                 frame_count / fps,
@@ -426,3 +429,85 @@ class TemplateMatcher:
     def save_detection_frame(detection: MatchDetection, output_path: str) -> None:
         """検出フレームを画像として保存"""
         cv2.imwrite(output_path, detection.frame)
+
+    @staticmethod
+    def video_duration(video_path: str) -> float | None:
+        """動画長（秒）を返す（ADR-073 の復元で最終試合の範囲終端に使う）"""
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            return None
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            if not fps or fps <= 0 or not total_frames or total_frames <= 0:
+                return None
+            return float(total_frames) / float(fps)
+        finally:
+            cap.release()
+
+    def build_detection_at(
+        self,
+        video_path: str,
+        timestamp: float,
+        crop_region: tuple[int, int, int, int] | None = None,
+        offsets_sec: tuple[float, ...] = (0.0,),
+    ) -> MatchDetection | None:
+        """指定時刻のフレームから検出結果を組み立てる（ADR-073 の検出漏れ試合の復元用）
+
+        Round 1 テンプレートのスコアが閾値に届かず試合が検出されなかった場合に、
+        RESULT 画面と ROUND バナーから求めた試合開始時刻のフレームを動画から取り直す。
+        テンプレート照合は行わないため confidence は 0.0（復元であることを示す）とする。
+
+        キャラクター名はラウンド開始演出中（ROUND バナーと同時）に画面下部へ大きく出る。
+        バナー検出時刻は演出のどの位置に当たるかが安定しないため、offsets_sec の候補ごとに
+        フレームを取得し、切り抜き領域のコントラストが最大のものを採用する。
+
+        Args:
+            video_path: 動画ファイルのパス
+            timestamp: 復元する試合の開始時刻（秒）
+            crop_region: キャラクター名領域の切り抜き (x1, y1, x2, y2)
+            offsets_sec: 開始時刻からのフレーム取得オフセット候補（秒）
+
+        Returns:
+            MatchDetection。フレームが取得できない場合は None
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            logger.warning("Cannot open video for recovered match: %s", video_path)
+            return None
+        try:
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if not fps or fps <= 0:
+                logger.warning("Invalid FPS for recovered match: %s", fps)
+                return None
+
+            best_crop: np.ndarray | None = None
+            best_frame_number = 0
+            best_std = -1.0
+            for offset_sec in offsets_sec:
+                frame_number = int((timestamp + offset_sec) * fps)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                ret, frame = cap.read()
+                if not ret:
+                    continue
+                cropped = frame
+                if crop_region:
+                    x1, y1, x2, y2 = crop_region
+                    cropped = frame[y1:y2, x1:x2]
+                std = self._calc_frame_std(cropped)
+                if std > best_std:
+                    best_std = std
+                    best_crop = cropped.copy()
+                    best_frame_number = frame_number
+
+            if best_crop is None:
+                logger.warning("Failed to read frame for recovered match at %.1fs", timestamp)
+                return None
+            return MatchDetection(
+                timestamp=timestamp,
+                frame_number=best_frame_number,
+                confidence=0.0,
+                frame=best_crop,
+            )
+        finally:
+            cap.release()
