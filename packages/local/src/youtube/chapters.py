@@ -97,7 +97,11 @@ class YouTubeChapterUpdater:
             チャプター付き説明文
         """
         # チャプター部分を生成
-        chapter_lines = ["0:00 本編開始"]
+        # 0 秒開始のチャプター（配信開始時点で対戦中の試合）がある場合は
+        # "0:00 本編開始" を重ねない（YouTube は 0:00 の重複をチャプターと認識しない）
+        chapter_lines = []
+        if not any(int(chapter.get("startTime", 0)) == 0 for chapter in chapters):
+            chapter_lines.append("0:00 本編開始")
 
         for chapter in sorted(chapters, key=lambda x: x["startTime"]):
             timestamp = self.format_timestamp(chapter["startTime"])
